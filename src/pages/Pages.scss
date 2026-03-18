@@ -1,0 +1,284 @@
+@use '../styles/variables' as *;
+@use '../styles/mixins' as *;
+
+// Toolbar
+.page-toolbar {
+  @include flex(row, flex-end, center, $space-4);
+  margin-bottom: $space-5;
+
+  &__filter {
+    margin-right: auto;
+
+    select {
+      padding: $space-2 $space-4;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: $bg-card;
+      outline: none;
+      min-width: 200px;
+
+      &:focus {
+        border-color: $primary;
+      }
+    }
+  }
+}
+
+.page-loading {
+  @include flex-center;
+  padding: $space-10;
+}
+
+// Buttons
+.btn {
+  @include btn-base;
+
+  &--primary {
+    background: $primary;
+    color: $text-white;
+
+    &:hover:not(:disabled) {
+      background: $primary-dark;
+    }
+  }
+
+  &--ghost {
+    background: transparent;
+    color: $text-secondary;
+    border: 1px solid $border-color;
+
+    &:hover:not(:disabled) {
+      background: $bg-body;
+      color: $text-primary;
+    }
+  }
+
+  &--danger {
+    background: $danger;
+    color: $text-white;
+
+    &:hover:not(:disabled) {
+      background: #d63434;
+    }
+  }
+
+  &--full {
+    width: 100%;
+  }
+}
+
+// Table
+.table-card {
+  @include card(0);
+  overflow: hidden;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th, td {
+    padding: $space-3 $space-5;
+    text-align: left;
+    font-size: $font-size-sm;
+  }
+
+  th {
+    background: $bg-body;
+    color: $text-secondary;
+    font-weight: 600;
+    font-size: $font-size-xs;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid $border-color;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid $border-color;
+    transition: background $transition-fast;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: rgba($primary, 0.02);
+    }
+  }
+
+  td {
+    color: $text-primary;
+  }
+}
+
+.td-truncate {
+  max-width: 300px;
+  @include truncate;
+}
+
+// Badge
+.badge {
+  display: inline-block;
+  padding: 2px $space-3;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: 500;
+  text-transform: capitalize;
+
+  &--success {
+    background: rgba($secondary, 0.1);
+    color: $secondary;
+  }
+
+  &--danger {
+    background: rgba($danger, 0.1);
+    color: $danger;
+  }
+
+  &--warning {
+    background: rgba($warning, 0.1);
+    color: #d97706;
+  }
+
+  &--default {
+    background: $bg-body;
+    color: $text-secondary;
+  }
+
+  &--super_admin {
+    background: rgba($primary, 0.1);
+    color: $primary;
+  }
+
+  &--hospital_admin {
+    background: rgba($info, 0.1);
+    color: $info;
+  }
+
+  &--admin {
+    background: rgba($info, 0.1);
+    color: $info;
+  }
+
+  &--user {
+    background: rgba($secondary, 0.1);
+    color: $secondary;
+  }
+}
+
+// Modal shared
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: $space-5;
+}
+
+.modal-actions {
+  @include flex(row, flex-end, center, $space-3);
+  margin-top: $space-6;
+}
+
+// Config toolbar (hospital selector + view toggle)
+.config-toolbar {
+  @include flex(row, space-between, flex-end, $space-5);
+  margin-bottom: $space-6;
+  flex-wrap: wrap;
+
+  &__left {
+    min-width: 260px;
+    max-width: 320px;
+  }
+
+  @include mobile {
+    flex-direction: column;
+    align-items: stretch;
+
+    &__left {
+      max-width: 100%;
+    }
+  }
+}
+
+.input--readonly {
+  background: $bg-body !important;
+  cursor: default;
+}
+
+// Config editor
+.config-editor {
+  &__card {
+    @include card(0);
+    overflow: hidden;
+  }
+
+  &__textarea {
+    width: 100%;
+    min-height: 400px;
+    padding: $space-6;
+    border: none;
+    outline: none;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-sm;
+    line-height: 1.7;
+    resize: vertical;
+    background: $bg-card;
+    color: $text-primary;
+  }
+
+  &__actions {
+    @include flex(row, flex-end, center, $space-3);
+    margin-top: $space-5;
+  }
+}
+
+// Workflow
+.workflow {
+  &__form-card {
+    @include card;
+    max-width: 500px;
+
+    .form-group {
+      margin-bottom: $space-5;
+    }
+
+    .btn {
+      margin-top: $space-2;
+    }
+  }
+
+  &__results {
+    margin-top: $space-6;
+  }
+
+  &__section {
+    @include card;
+    margin-bottom: $space-5;
+
+    h3 {
+      font-size: $font-size-base;
+      font-weight: 600;
+      margin-bottom: $space-4;
+      color: $text-primary;
+    }
+  }
+
+  &__summary {
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    line-height: 1.7;
+  }
+
+  &__json {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: $space-5;
+    border-radius: $radius-md;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-xs;
+    line-height: 1.6;
+    overflow-x: auto;
+    max-height: 400px;
+  }
+}

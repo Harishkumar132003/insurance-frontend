@@ -1,0 +1,116 @@
+@use '../styles/variables' as *;
+@use '../styles/mixins' as *;
+
+.login {
+  @include flex-center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: $space-4;
+
+  &__card {
+    @include card($space-8);
+    width: 100%;
+    max-width: 420px;
+    border-radius: $radius-xl;
+    box-shadow: $shadow-xl;
+  }
+
+  &__header {
+    text-align: center;
+    margin-bottom: $space-7;
+  }
+
+  &__logo {
+    font-size: $font-size-3xl;
+    font-weight: 800;
+    color: $primary;
+    letter-spacing: 3px;
+    margin-bottom: $space-2;
+  }
+
+  &__subtitle {
+    color: $text-secondary;
+    font-size: $font-size-sm;
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: $space-5;
+  }
+
+  &__btn {
+    @include btn-base;
+    width: 100%;
+    padding: $space-3 $space-5;
+    background: $primary;
+    color: $text-white;
+    font-size: $font-size-base;
+    font-weight: 600;
+    border-radius: $radius-md;
+    margin-top: $space-2;
+
+    &:hover:not(:disabled) {
+      background: $primary-dark;
+    }
+
+    .spinner {
+      border-top-color: white;
+      border-color: rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+    }
+  }
+}
+
+// Shared form styles
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+
+  label {
+    font-size: $font-size-sm;
+    font-weight: 500;
+    color: $text-primary;
+  }
+
+  input,
+  select,
+  textarea {
+    padding: $space-3 $space-4;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    background: $bg-card;
+    transition: border-color $transition-fast, box-shadow $transition-fast;
+    outline: none;
+
+    &::placeholder {
+      color: $text-light;
+    }
+
+    &:focus {
+      border-color: $primary;
+      box-shadow: 0 0 0 3px rgba($primary, 0.1);
+    }
+
+    &.input--error {
+      border-color: $danger;
+
+      &:focus {
+        box-shadow: 0 0 0 3px rgba($danger, 0.1);
+      }
+    }
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 100px;
+  }
+}
+
+.form-error {
+  font-size: $font-size-xs;
+  color: $danger;
+}

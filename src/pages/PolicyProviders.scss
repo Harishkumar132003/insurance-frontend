@@ -1,0 +1,153 @@
+@use '../styles/variables' as *;
+@use '../styles/mixins' as *;
+
+// ─── Page ───────────────────────────────────────────────
+
+.pp-page {
+  // inherits layout padding
+}
+
+.pp-back {
+  @include flex(row, flex-start, center, $space-2);
+  background: none;
+  border: none;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+  font-weight: 500;
+  cursor: pointer;
+  padding: $space-2 0;
+  margin-bottom: $space-4;
+  font-family: $font-family;
+  transition: color $transition-fast;
+
+  &:hover {
+    color: $primary;
+  }
+}
+
+.pp-toolbar {
+  @include flex(row, flex-end, center);
+  margin-bottom: $space-6;
+}
+
+.pp-empty {
+  @include card(0);
+}
+
+// ─── Provider Name Card ─────────────────────────────────
+
+.pp-name-card {
+  @include card;
+
+  input {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    padding: $space-3 $space-4;
+  }
+}
+
+// ─── Provider Grid ──────────────────────────────────────
+
+.pp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: $space-5;
+}
+
+// ─── Provider Card ──────────────────────────────────────
+
+.pp-card {
+  @include card($space-5);
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+  transition: box-shadow $transition-fast, transform $transition-fast;
+
+  &:hover {
+    box-shadow: $shadow-lg;
+    transform: translateY(-2px);
+  }
+
+  &__header {
+    @include flex(row, flex-start, center, $space-3);
+  }
+
+  &__icon {
+    @include flex-center;
+    width: 36px;
+    height: 36px;
+    border-radius: $radius-md;
+    background: rgba($primary, 0.08);
+    color: $primary;
+    flex-shrink: 0;
+  }
+
+  &__title {
+    min-width: 0;
+
+    h3 {
+      font-size: $font-size-sm;
+      font-weight: 600;
+      color: $text-primary;
+      @include truncate;
+    }
+  }
+
+  &__meta {
+    @include flex(row, flex-start, center, $space-6);
+  }
+
+  &__stat {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+  }
+
+  &__stat-val {
+    font-size: $font-size-sm;
+    font-weight: 700;
+    color: $text-primary;
+  }
+
+  &__stat-label {
+    font-size: $font-size-xs;
+    color: $text-light;
+  }
+
+  &__actions {
+    @include flex(row, flex-start, center, $space-2);
+    margin-top: auto;
+    padding-top: $space-3;
+    border-top: 1px solid $border-color;
+
+    .btn {
+      flex: 1;
+    }
+  }
+
+  &__delete-btn {
+    flex: 0 0 auto !important;
+    color: $text-light;
+
+    &:hover:not(:disabled) {
+      color: $danger;
+      background: rgba($danger, 0.06);
+      border-color: rgba($danger, 0.2);
+    }
+  }
+}
+
+// ─── Delete confirm (shared) ────────────────────────────
+
+.delete-confirm {
+  p {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    line-height: 1.6;
+    margin-bottom: $space-2;
+
+    strong {
+      color: $text-primary;
+    }
+  }
+}

@@ -1,0 +1,14 @@
+@use '../styles/variables' as *;
+
+.layout {
+  &__main {
+    margin-left: $sidebar-width;
+    min-height: 100vh;
+    padding: $space-7;
+    transition: margin-left 0.3s ease;
+  }
+
+  &--collapsed &__main {
+    margin-left: $sidebar-collapsed-width;
+  }
+}

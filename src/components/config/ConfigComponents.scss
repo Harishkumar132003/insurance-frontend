@@ -1,0 +1,469 @@
+@use '../../styles/variables' as *;
+@use '../../styles/mixins' as *;
+
+// ─── Collapsible Card ───────────────────────────────────
+
+.collapsible-card {
+  background: $bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-md;
+  overflow: hidden;
+
+  &__header {
+    @include flex-between;
+    padding: $space-4 $space-5;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+    transition: background $transition-fast;
+
+    &:hover {
+      background: rgba($primary, 0.02);
+    }
+  }
+
+  &--open &__header {
+    border-bottom-color: $border-color;
+  }
+
+  &__title-row {
+    @include flex(row, flex-start, center, $space-3);
+
+    h3 {
+      font-size: $font-size-sm;
+      font-weight: 600;
+      color: $text-primary;
+    }
+  }
+
+  &__chevron {
+    transition: transform $transition-fast;
+    color: $text-light;
+    flex-shrink: 0;
+
+    &--open {
+      transform: rotate(90deg);
+    }
+  }
+
+  &__actions {
+    @include flex(row, flex-end, center, $space-2);
+  }
+
+  &__body {
+    padding: $space-5;
+    animation: fadeSlideDown 0.15s ease;
+  }
+}
+
+@keyframes fadeSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ─── Toggle Button ──────────────────────────────────────
+
+.toggle-btn {
+  @include btn-base;
+  padding: $space-1 $space-3;
+  font-size: $font-size-xs;
+  border-radius: $radius-full;
+  background: $bg-body;
+  color: $text-secondary;
+  border: 1px solid $border-color;
+
+  &--on {
+    background: rgba($secondary, 0.1);
+    color: $secondary;
+    border-color: rgba($secondary, 0.3);
+  }
+}
+
+// ─── Section Hint ───────────────────────────────────────
+
+.section-hint {
+  font-size: $font-size-sm;
+  color: $text-light;
+  padding: $space-2 0;
+}
+
+// ─── Form Row ───────────────────────────────────────────
+
+.form-row {
+  display: flex;
+  gap: $space-4;
+
+  .form-group {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .form-group--grow {
+    flex: 2;
+  }
+
+  @include mobile {
+    flex-direction: column;
+  }
+}
+
+// ─── Auth Section ───────────────────────────────────────
+
+.auth-section {
+  display: flex;
+  flex-direction: column;
+  gap: $space-5;
+}
+
+// ─── Key-Value Input ────────────────────────────────────
+
+.kv-input {
+  &__label {
+    display: block;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: $space-2;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+  }
+
+  &__row {
+    display: flex;
+    gap: $space-2;
+    align-items: center;
+
+    input {
+      flex: 1;
+      padding: $space-2 $space-3;
+      border: 1px solid $border-color;
+      border-radius: $radius-sm;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: $bg-body;
+      outline: none;
+      transition: border-color $transition-fast;
+      min-width: 0;
+
+      &:focus {
+        border-color: $primary;
+        background: $bg-card;
+      }
+
+      &::placeholder {
+        color: $text-light;
+      }
+    }
+  }
+
+  &__remove {
+    @include flex-center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: none;
+    color: $text-light;
+    cursor: pointer;
+    border-radius: $radius-sm;
+    flex-shrink: 0;
+    transition: all $transition-fast;
+
+    &:hover {
+      background: rgba($danger, 0.1);
+      color: $danger;
+    }
+  }
+
+  &__add {
+    @include btn-base;
+    @include flex(row, flex-start, center, $space-1);
+    padding: $space-2 $space-3;
+    margin-top: $space-2;
+    font-size: $font-size-xs;
+    color: $primary;
+    background: rgba($primary, 0.06);
+    border-radius: $radius-sm;
+
+    &:hover {
+      background: rgba($primary, 0.12);
+    }
+  }
+}
+
+// ─── Tag Input ──────────────────────────────────────────
+
+.tag-input {
+  &__label {
+    display: block;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    color: $text-primary;
+    margin-bottom: $space-2;
+  }
+
+  &__box {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+    padding: $space-2 $space-3;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    background: $bg-card;
+    min-height: 40px;
+    align-items: center;
+    transition: border-color $transition-fast;
+    cursor: text;
+
+    &:focus-within {
+      border-color: $primary;
+      box-shadow: 0 0 0 3px rgba($primary, 0.1);
+    }
+
+    input {
+      flex: 1;
+      min-width: 100px;
+      border: none;
+      outline: none;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: transparent;
+
+      &::placeholder {
+        color: $text-light;
+      }
+    }
+  }
+
+  &__tag {
+    @include flex(row, flex-start, center, $space-1);
+    padding: 2px $space-2 2px $space-3;
+    background: rgba($primary, 0.08);
+    color: $primary;
+    border-radius: $radius-full;
+    font-size: $font-size-xs;
+    font-weight: 500;
+
+    button {
+      @include flex-center;
+      width: 16px;
+      height: 16px;
+      border: none;
+      background: none;
+      color: $primary;
+      cursor: pointer;
+      border-radius: 50%;
+      padding: 0;
+
+      &:hover {
+        background: rgba($primary, 0.15);
+      }
+    }
+  }
+}
+
+// ─── JSON Preview ───────────────────────────────────────
+
+.json-preview {
+  background: #1e1e2e;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  position: sticky;
+  top: $space-7;
+
+  &__header {
+    @include flex-between;
+    padding: $space-3 $space-5;
+    background: #2a2a3e;
+    border-bottom: 1px solid #363650;
+
+    h3 {
+      font-size: $font-size-sm;
+      font-weight: 600;
+      color: #cdd6f4;
+    }
+  }
+
+  &__copy {
+    @include btn-base;
+    padding: $space-1 $space-3;
+    font-size: $font-size-xs;
+    color: #cdd6f4;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: $radius-sm;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+  }
+
+  &__code {
+    padding: $space-5;
+    color: #cdd6f4;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-xs;
+    line-height: 1.6;
+    overflow: auto;
+    max-height: calc(100vh - 200px);
+    margin: 0;
+    white-space: pre;
+  }
+}
+
+// ─── Step Card ──────────────────────────────────────────
+
+.step-card {
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: $space-5;
+  }
+
+  &__delete {
+    @include btn-base;
+    @include flex(row, flex-start, center, $space-1);
+    padding: $space-1 $space-3;
+    font-size: $font-size-xs;
+    color: $danger;
+    background: rgba($danger, 0.06);
+    border-radius: $radius-sm;
+
+    &:hover {
+      background: rgba($danger, 0.12);
+    }
+  }
+}
+
+// ─── Config Builder ─────────────────────────────────────
+
+.config-builder {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: $space-6;
+  align-items: start;
+
+  @include tablet {
+    grid-template-columns: 1fr;
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: $space-5;
+  }
+
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: $space-4;
+  }
+
+  &__section-header {
+    @include flex-between;
+
+    h2 {
+      font-size: $font-size-lg;
+      font-weight: 700;
+      color: $text-primary;
+    }
+  }
+
+  &__steps {
+    display: flex;
+    flex-direction: column;
+    gap: $space-4;
+  }
+
+  &__step-wrapper {
+    display: flex;
+    gap: $space-2;
+    align-items: flex-start;
+    transition: opacity $transition-fast;
+
+    &[draggable='true'] {
+      cursor: grab;
+
+      &:active {
+        cursor: grabbing;
+        opacity: 0.7;
+      }
+    }
+  }
+
+  &__drag-handle {
+    @include flex-center;
+    width: 24px;
+    min-height: 48px;
+    color: $text-light;
+    font-size: 1rem;
+    user-select: none;
+    flex-shrink: 0;
+    padding-top: $space-4;
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  &__step-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__actions {
+    @include flex(row, flex-end, center, $space-3);
+    padding-top: $space-4;
+    border-top: 1px solid $border-color;
+  }
+
+  &__preview {
+    @include tablet {
+      order: -1;
+    }
+  }
+}
+
+// ─── Button modifier ────────────────────────────────────
+
+.btn--sm {
+  padding: $space-2 $space-3;
+  font-size: $font-size-xs;
+}
+
+// ─── View Toggle ────────────────────────────────────────
+
+.view-toggle {
+  @include flex(row, flex-start, center);
+  background: $bg-body;
+  border-radius: $radius-md;
+  padding: 3px;
+  border: 1px solid $border-color;
+
+  &__btn {
+    @include btn-base;
+    padding: $space-2 $space-4;
+    font-size: $font-size-xs;
+    font-weight: 500;
+    color: $text-secondary;
+    background: transparent;
+    border-radius: $radius-sm;
+
+    &--active {
+      background: $bg-card;
+      color: $primary;
+      box-shadow: $shadow-sm;
+    }
+  }
+}

@@ -1,0 +1,19 @@
+@use '../styles/variables' as *;
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $space-10 $space-6;
+  color: $text-light;
+
+  svg {
+    font-size: 3rem;
+    margin-bottom: $space-4;
+  }
+
+  p {
+    font-size: $font-size-sm;
+  }
+}
