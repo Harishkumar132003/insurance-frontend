@@ -75,11 +75,18 @@ export const policyProviderService = {
   create: (data) => api.post('/policy-providers', data),
   update: (id, data) => api.put(`/policy-providers/${id}`, data),
   delete: (id) => api.delete(`/policy-providers/${id}`),
-  run: (providerId, input) => api.post(`/run-policy/${providerId}`, { input }),
+  runPolicy: (providerId, policyId) => api.post(`/run-policy/${providerId}/${policyId}`),
 };
 
 // GET & POST /hospitals/{hospital_id}/config
 export const configService = {
   get: (hospitalId) => api.get(`/hospitals/${hospitalId}/config`),
   save: (hospitalId, data) => api.post(`/hospitals/${hospitalId}/config`, data),
+};
+
+// Global variables per hospital
+export const variablesService = {
+  getAll: (hospitalId) => api.get(`/hospitals/${hospitalId}/config/variables`),
+  save: (hospitalId, variables) => api.put(`/hospitals/${hospitalId}/config/variables`, { variables }),
+  delete: (hospitalId, key) => api.delete(`/hospitals/${hospitalId}/config/variables/${key}`),
 };

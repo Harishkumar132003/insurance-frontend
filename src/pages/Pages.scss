@@ -235,9 +235,23 @@
 
 // Workflow
 .workflow {
+  &--split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: $space-6;
+    align-items: start;
+
+    @include mobile {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  &__panel {
+    min-width: 0;
+  }
+
   &__form-card {
     @include card;
-    max-width: 500px;
 
     .form-group {
       margin-bottom: $space-5;
@@ -246,6 +260,19 @@
     .btn {
       margin-top: $space-2;
     }
+  }
+
+  &__card-title {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: $space-1;
+  }
+
+  &__card-desc {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    margin-bottom: $space-5;
   }
 
   &__results {
@@ -280,5 +307,38 @@
     line-height: 1.6;
     overflow-x: auto;
     max-height: 400px;
+  }
+
+  &__select-loading {
+    @include flex(row, flex-start, center, $space-2);
+    padding: $space-3;
+    color: $text-light;
+    font-size: $font-size-sm;
+  }
+
+  &__select-empty {
+    padding: $space-3;
+    color: $text-light;
+    font-size: $font-size-sm;
+    font-style: italic;
+  }
+
+  &__provider-hint {
+    display: block;
+    margin-top: $space-1;
+    font-size: $font-size-xs;
+    color: $text-light;
+  }
+}
+
+// Config page — Global Variables link card
+.config-global-vars {
+  margin-bottom: $space-6;
+
+  h3 {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: $space-3;
   }
 }

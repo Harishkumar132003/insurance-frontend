@@ -324,10 +324,37 @@
 // ─── Step Card ──────────────────────────────────────────
 
 .step-card {
+  min-width: 0;
+  overflow: hidden;
+
   &__body {
     display: flex;
     flex-direction: column;
     gap: $space-5;
+    min-width: 0;
+  }
+
+  &__body-textarea {
+    width: 100%;
+    max-width: 100%;
+    min-height: 120px;
+    box-sizing: border-box;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-sm;
+    line-height: 1.5;
+    padding: $space-3;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    background: $bg-card;
+    color: $text-primary;
+    resize: vertical;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+
+    &:focus {
+      outline: none;
+      border-color: $primary;
+    }
   }
 
   &__delete {
@@ -361,6 +388,8 @@
     display: flex;
     flex-direction: column;
     gap: $space-5;
+    min-width: 0;
+    overflow: hidden;
   }
 
   &__section {

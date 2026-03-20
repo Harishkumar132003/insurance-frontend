@@ -1,0 +1,107 @@
+@use '../styles/variables' as *;
+@use '../styles/mixins' as *;
+
+.gv-page {
+  &__back {
+    @include flex(row, flex-start, center, $space-2);
+    background: none;
+    border: none;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-family: $font-family;
+    cursor: pointer;
+    padding: $space-1 0;
+    margin-bottom: $space-4;
+    transition: color $transition-fast;
+
+    &:hover {
+      color: $primary;
+    }
+  }
+
+  &__toolbar {
+    @include flex(row, space-between, center);
+    margin-bottom: $space-5;
+  }
+
+  &__count {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  &__key-cell {
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-sm;
+    color: $primary;
+    font-weight: 500;
+  }
+
+  &__value-cell {
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-sm;
+  }
+
+  &__value-text {
+    display: block;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+
+  &__empty {
+    color: $text-light;
+    font-style: italic;
+  }
+
+  &__input {
+    width: 100%;
+    padding: $space-2 $space-3;
+    border: 1px solid $primary;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    outline: none;
+    background: $bg-card;
+    color: $text-primary;
+
+    &:focus {
+      box-shadow: 0 0 0 2px rgba($primary, 0.15);
+    }
+  }
+
+  &__actions {
+    @include flex(row, flex-end, center, $space-1);
+  }
+
+  &__icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: $space-2;
+    border-radius: $radius-sm;
+    color: $text-secondary;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color $transition-fast, background $transition-fast;
+
+    &:hover {
+      color: $text-primary;
+      background: $bg-body;
+    }
+
+    &--danger:hover {
+      color: $danger;
+      background: rgba($danger, 0.08);
+    }
+
+    &--save:hover {
+      color: $secondary;
+      background: rgba($secondary, 0.08);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}

@@ -60,13 +60,17 @@ export default function StepCard({ step, index, onChange, onRemove }) {
             valuePlaceholder="Header value"
           />
 
-          <KeyValueInput
-            label="Body Template"
-            items={step.body_template || []}
-            onChange={(items) => update('body_template', items)}
-            keyPlaceholder="Field name"
-            valuePlaceholder="Value or {{variable}}"
-          />
+          <div className="form-group">
+            <label>Body Template</label>
+            <textarea
+              className="step-card__body-textarea"
+              placeholder='{"clientid": "{{clientid}}"}'
+              value={step.body_template || ''}
+              onChange={(e) => update('body_template', e.target.value)}
+              rows={4}
+              spellCheck={false}
+            />
+          </div>
 
           <KeyValueInput
             label="Response Mapping"

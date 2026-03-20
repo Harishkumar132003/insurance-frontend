@@ -53,6 +53,9 @@ input, select, textarea {
 
 // Utility classes
 .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: $space-6;
 
   h1 {

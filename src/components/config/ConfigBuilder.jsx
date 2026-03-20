@@ -13,7 +13,7 @@ const EMPTY_STEP = {
   url: '',
   method: 'GET',
   headers: [],
-  body_template: [],
+  body_template: '',
   response_mapping: [],
 };
 
@@ -37,7 +37,7 @@ function buildJSON(auth, steps, requiredFields) {
       url: s.url,
       method: s.method,
       headers: kvToObj(s.headers || []),
-      body_template: kvToObj(s.body_template || []),
+      body_template: (() => { try { return JSON.parse(s.body_template || '{}'); } catch { return {}; } })(),
       response_mapping: kvToObj(s.response_mapping || []),
     })),
     required_fields: requiredFields || [],
@@ -68,7 +68,7 @@ export function parseConfigToForm(config) {
           url: s.url || '',
           method: s.method || 'GET',
           headers: objToKV(s.headers),
-          body_template: objToKV(s.body_template),
+          body_template: s.body_template ? JSON.stringify(s.body_template, null, 2) : '',
           response_mapping: objToKV(s.response_mapping),
         }))
       : [{ ...EMPTY_STEP }];
@@ -214,14 +214,14 @@ export default function ConfigBuilder({ initialConfig, onSave, saving }) {
         </div>
 
         {/* Required Fields */}
-        <div className="config-builder__section">
+        {/* <div className="config-builder__section">
           <TagInput
             label="Prompt Required Fields"
             tags={requiredFields}
             onChange={setRequiredFields}
             placeholder="e.g. patient_id, name, diagnosis"
           />
-        </div>
+        </div> */}
 
         {/* Actions */}
         <div className="config-builder__actions">

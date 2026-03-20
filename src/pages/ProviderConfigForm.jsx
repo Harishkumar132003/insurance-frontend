@@ -36,6 +36,7 @@ function parseProvider(rawProvider) {
   const provider = normalize(rawProvider);
   if (!provider) {
     return {
+      provider_id: '',
       name: '',
       auth: null,
       steps: [{ ...EMPTY_STEP }],
@@ -67,6 +68,7 @@ function parseProvider(rawProvider) {
       : [{ ...EMPTY_STEP }];
 
   return {
+    provider_id: provider.provider_id || '',
     name: provider.name || '',
     auth: parsedAuth,
     steps: parsedSteps,
@@ -74,7 +76,7 @@ function parseProvider(rawProvider) {
   };
 }
 
-function buildPayload(name, auth, steps, requiredFields) {
+function buildPayload(providerId, name, auth, steps, requiredFields) {
   const builtAuth = auth
     ? {
         type: auth.type,
@@ -87,6 +89,7 @@ function buildPayload(name, auth, steps, requiredFields) {
     : null;
 
   return {
+    provider_id: providerId,
     name,
     auth: builtAuth,
     steps: steps.map((s) => ({
@@ -103,6 +106,7 @@ function buildPayload(name, auth, steps, requiredFields) {
 
 export default function ProviderConfigForm({ provider, onSaved }) {
   const parsed = parseProvider(provider);
+  const [providerId, setProviderId] = useState(parsed.provider_id);
   const [name, setName] = useState(parsed.name);
   const [auth, setAuth] = useState(parsed.auth);
   const [steps, setSteps] = useState(parsed.steps);
@@ -143,9 +147,13 @@ export default function ProviderConfigForm({ provider, onSaved }) {
     dragOverItem.current = null;
   };
 
-  const jsonOutput = buildPayload(name, auth, steps, requiredFields);
+  const jsonOutput = buildPayload(providerId, name, auth, steps, requiredFields);
 
   const validate = () => {
+    if (!providerId.trim()) {
+      toast.error('Provider ID is required');
+      return false;
+    }
     if (!name.trim()) {
       toast.error('Provider name is required');
       return false;
@@ -163,7 +171,7 @@ export default function ProviderConfigForm({ provider, onSaved }) {
 
   const handleSave = async () => {
     if (!validate()) return;
-    const payload = buildPayload(name, auth, steps, requiredFields);
+    const payload = buildPayload(providerId, name, auth, steps, requiredFields);
     setSaving(true);
     try {
       if (isEdit) {
@@ -183,6 +191,7 @@ export default function ProviderConfigForm({ provider, onSaved }) {
 
   const handleReset = useCallback(() => {
     const p = parseProvider(provider);
+    setProviderId(p.provider_id);
     setName(p.name);
     setAuth(p.auth);
     setSteps(p.steps);
@@ -192,17 +201,28 @@ export default function ProviderConfigForm({ provider, onSaved }) {
   return (
     <div className="config-builder">
       <div className="config-builder__form">
-        {/* Provider Name */}
+        {/* Provider ID & Name */}
         <div className="pp-name-card">
-          <div className="form-group">
-            <label>Provider Name</label>
-            <input
-              type="text"
-              placeholder="e.g. Star Health"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus={!isEdit}
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label>Provider ID</label>
+              <input
+                type="text"
+                placeholder="e.g. STAR_HEALTH_001"
+                value={providerId}
+                onChange={(e) => setProviderId(e.target.value)}
+                autoFocus={!isEdit}
+              />
+            </div>
+            <div className="form-group">
+              <label>Provider Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Star Health"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 

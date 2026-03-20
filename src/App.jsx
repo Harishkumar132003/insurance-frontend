@@ -13,6 +13,7 @@ import RunWorkflow from './pages/RunWorkflow';
 import Prompts from './pages/Prompts';
 import PolicyProviders from './pages/PolicyProviders';
 import Logs from './pages/Logs';
+import GlobalVariablesPage from './pages/GlobalVariablesPage';
 import './styles/global.scss';
 
 const { SUPER_ADMIN, HOSPITAL_ADMIN } = ROLES;
@@ -35,6 +36,14 @@ export default function App() {
               {/* Both roles */}
               <Route path="/" element={<Dashboard />} />
               <Route path="/configurations" element={<Configurations />} />
+              <Route
+                path="/configurations/:hospitalId"
+                element={
+                  <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
+                    <GlobalVariablesPage />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/logs" element={<Logs />} />
 
               {/* Super Admin only */}

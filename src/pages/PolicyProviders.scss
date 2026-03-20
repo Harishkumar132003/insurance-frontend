@@ -93,6 +93,17 @@
     }
   }
 
+  &__provider-id {
+    display: inline-block;
+    font-size: $font-size-xs;
+    color: $text-light;
+    font-family: monospace;
+    background: rgba($primary, 0.06);
+    padding: 1px $space-2;
+    border-radius: $radius-sm;
+    @include truncate;
+  }
+
   &__meta {
     @include flex(row, flex-start, center, $space-6);
   }
@@ -112,6 +123,21 @@
   &__stat-label {
     font-size: $font-size-xs;
     color: $text-light;
+  }
+
+  &__auth-badge {
+    font-size: $font-size-xs;
+    font-weight: 500;
+    padding: 2px $space-2;
+    border-radius: $radius-full;
+    background: rgba($text-light, 0.1);
+    color: $text-light;
+    margin-left: auto;
+
+    &--active {
+      background: rgba($secondary, 0.1);
+      color: $secondary;
+    }
   }
 
   &__actions {

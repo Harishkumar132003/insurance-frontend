@@ -128,6 +128,7 @@ export default function PolicyProviders() {
                 </div>
                 <div className="pp-card__title">
                   <h3>{p.name}</h3>
+                  {p.provider_id && <span className="pp-card__provider-id">{p.provider_id}</span>}
                 </div>
               </div>
 
@@ -135,6 +136,13 @@ export default function PolicyProviders() {
                 <div className="pp-card__stat">
                   <span className="pp-card__stat-val">{p.steps?.length || 0}</span>
                   <span className="pp-card__stat-label">Steps</span>
+                </div>
+                <div className="pp-card__stat">
+                  <span className="pp-card__stat-val">{p.required_fields?.length || 0}</span>
+                  <span className="pp-card__stat-label">Fields</span>
+                </div>
+                <div className={`pp-card__auth-badge ${p.auth ? 'pp-card__auth-badge--active' : ''}`}>
+                  {p.auth ? 'Auth' : 'No Auth'}
                 </div>
               </div>
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../context/AuthContext';
-import { configService, hospitalService } from '../services/api';
+import { configService, hospitalService, variablesService } from '../services/api';
 import ConfigBuilder from '../components/config/ConfigBuilder';
 import Spinner from '../components/Spinner';
 import './Pages.scss';
@@ -10,6 +11,7 @@ const EMPTY_CONFIG = { auth: null, steps: [], required_fields: [] };
 
 export default function Configurations() {
   const { user, isSuperAdmin } = useAuth();
+  const navigate = useNavigate();
   const [configData, setConfigData] = useState(null);
   const [rawJson, setRawJson] = useState(JSON.stringify(EMPTY_CONFIG, null, 2));
   const [loading, setLoading] = useState(true);
@@ -18,6 +20,7 @@ export default function Configurations() {
   const [hospitals, setHospitals] = useState([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState('');
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [globalVariables, setGlobalVariables] = useState({});
   const toast = useToast();
 
   useEffect(() => {
@@ -51,6 +54,7 @@ export default function Configurations() {
     if (!hospitalId) return;
     setLoading(true);
     setConfigLoaded(false);
+    setGlobalVariables({});
     try {
       const res = await configService.get(hospitalId);
       const data = res.data?.config ?? res.data;
@@ -63,6 +67,14 @@ export default function Configurations() {
       setConfigLoaded(true);
     } finally {
       setLoading(false);
+    }
+    // Fetch global variables separately
+    try {
+      const varsRes = await variablesService.getAll(hospitalId);
+      const gv = varsRes.data?.global_variables ?? {};
+      setGlobalVariables(typeof gv === 'object' && !Array.isArray(gv) ? gv : {});
+    } catch {
+      setGlobalVariables({});
     }
   };
 
@@ -127,8 +139,18 @@ export default function Configurations() {
   return (
     <div>
       <div className="page-header">
-        <h1>Configurations</h1>
-        <p>Manage hospital workflow configuration</p>
+        <div>
+          <h1>Configurations</h1>
+          <p>Manage hospital workflow configuration</p>
+        </div>
+        {isSuperAdmin && selectedHospitalId && Object.keys(globalVariables).length > 0 && (
+          <button
+            className="btn btn--primary"
+            onClick={() => navigate(`/configurations/${selectedHospitalId}`)}
+          >
+            Manage Variables
+          </button>
+        )}
       </div>
 
       {/* Hospital selector + view toggle */}
@@ -174,6 +196,30 @@ export default function Configurations() {
         </div>
       </div>
 
+      {/* {!loading && Object.keys(globalVariables).length > 0 && (
+        <div className="config-global-vars">
+          <h3>Global Variables</h3>
+          <div className="table-card">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(globalVariables).map(([key, value]) => (
+                  <tr key={key}>
+                    <td>{key}</td>
+                    <td>{typeof value === 'string' ? value : JSON.stringify(value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )} */}
+
       {loading ? (
         <div className="page-loading"><Spinner /></div>
       ) : view === 'form' ? (
@@ -207,6 +253,7 @@ export default function Configurations() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
