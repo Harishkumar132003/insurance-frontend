@@ -143,7 +143,7 @@ export default function Configurations() {
           <h1>Configurations</h1>
           <p>Manage hospital workflow configuration</p>
         </div>
-        {isSuperAdmin && selectedHospitalId && Object.keys(globalVariables).length > 0 && (
+        {isSuperAdmin && selectedHospitalId && (
           <button
             className="btn btn--primary"
             onClick={() => navigate(`/configurations/${selectedHospitalId}`)}
