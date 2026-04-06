@@ -180,6 +180,43 @@
   margin-top: $space-6;
 }
 
+// Claim filters
+.claim-filters {
+  @include flex(row, flex-start, center, $space-2);
+  margin-bottom: $space-5;
+
+  &__btn {
+    @include btn-base;
+    background: transparent;
+    color: $text-secondary;
+    border: 1px solid $border-color;
+    font-size: $font-size-sm;
+    padding: $space-2 $space-4;
+
+    &:hover:not(:disabled) {
+      background: $bg-body;
+      color: $text-primary;
+    }
+
+    &--active {
+      background: $primary;
+      color: $text-white;
+      border-color: $primary;
+
+      &:hover:not(:disabled) {
+        background: $primary-dark;
+        color: $text-white;
+      }
+    }
+  }
+}
+
+// Badge info variant
+.badge--info {
+  background: rgba($info, 0.1);
+  color: $info;
+}
+
 // Config toolbar (hospital selector + view toggle)
 .config-toolbar {
   @include flex(row, space-between, flex-end, $space-5);
@@ -331,6 +368,607 @@
   }
 }
 
+// Step tracker
+.step-tracker {
+  @include flex(row, center, center);
+  margin-bottom: $space-7;
+  padding: $space-5 $space-6;
+  background: $bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+
+  &__step {
+    @include flex(row, center, center, $space-3);
+    position: relative;
+  }
+
+  &__circle {
+    @include flex-center;
+    width: 36px;
+    height: 36px;
+    border-radius: $radius-full;
+    border: 2px solid $border-color;
+    background: $bg-card;
+    color: $text-light;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    transition: all $transition-base;
+    flex-shrink: 0;
+  }
+
+  &__label {
+    font-size: $font-size-sm;
+    font-weight: 500;
+    color: $text-light;
+    transition: color $transition-base;
+    white-space: nowrap;
+  }
+
+  &__line {
+    width: 60px;
+    height: 2px;
+    background: $border-color;
+    margin: 0 $space-4;
+    transition: background $transition-base;
+
+    @include mobile {
+      width: 30px;
+      margin: 0 $space-2;
+    }
+  }
+
+  &__step--active {
+    .step-tracker__circle {
+      border-color: $primary;
+      background: rgba($primary, 0.08);
+      color: $primary;
+    }
+    .step-tracker__label {
+      color: $primary;
+      font-weight: 600;
+    }
+  }
+
+  &__step--done {
+    .step-tracker__circle {
+      border-color: $secondary;
+      background: $secondary;
+      color: $text-white;
+    }
+    .step-tracker__label {
+      color: $secondary;
+    }
+    .step-tracker__line {
+      background: $secondary;
+    }
+  }
+
+  &__step--clickable {
+    cursor: pointer;
+
+    &:hover .step-tracker__circle {
+      box-shadow: 0 0 0 3px rgba($primary, 0.15);
+    }
+  }
+}
+
+// Apply step — email client layout
+.apply-step {
+  &__layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 0;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    overflow: hidden;
+    background: $bg-card;
+    min-height: 500px;
+
+    @include mobile {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  // Left sidebar — template list
+  &__sidebar {
+    border-right: 1px solid $border-color;
+    background: $bg-body;
+    overflow-y: auto;
+
+    @include mobile {
+      border-right: none;
+      border-bottom: 1px solid $border-color;
+      max-height: 200px;
+    }
+  }
+
+  &__sidebar-title {
+    font-size: $font-size-xs;
+    font-weight: 700;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: $space-4 $space-4 $space-3;
+  }
+
+  &__sidebar-empty {
+    padding: $space-4;
+    font-size: $font-size-sm;
+    color: $text-light;
+    font-style: italic;
+  }
+
+  &__tpl-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__tpl-item {
+    padding: $space-3 $space-4;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background $transition-fast, border-color $transition-fast;
+
+    &:hover {
+      background: rgba($primary, 0.04);
+    }
+
+    &--active {
+      background: $bg-card;
+      border-left-color: $primary;
+    }
+  }
+
+  &__tpl-name {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: 2px;
+  }
+
+  &__tpl-subject {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    @include truncate;
+  }
+
+  // Right — compose area
+  &__compose {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__compose-empty {
+    @include flex-center;
+    flex-direction: column;
+    gap: $space-3;
+    flex: 1;
+    color: $text-light;
+    padding: $space-8;
+
+    p {
+      font-size: $font-size-sm;
+    }
+  }
+
+  &__compose-form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  // Email header fields (To, Subject, Attach)
+  &__field {
+    @include flex(row, flex-start, center);
+    border-bottom: 1px solid $border-color;
+    padding: 0;
+
+    input {
+      flex: 1;
+      border: none;
+      outline: none;
+      padding: $space-3 $space-4;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: transparent;
+
+      &::placeholder {
+        color: $text-light;
+      }
+    }
+  }
+
+  &__field-label {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-secondary;
+    min-width: 60px;
+    padding-left: $space-4;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+  }
+
+  // Attachments
+  &__attach-area {
+    @include flex(row, flex-start, center, $space-2);
+    flex-wrap: wrap;
+    padding: $space-2 $space-3;
+    flex: 1;
+  }
+
+  &__attach-chip {
+    @include flex(row, center, center, $space-1);
+    background: rgba($primary, 0.08);
+    color: $primary;
+    border-radius: $radius-full;
+    padding: 2px $space-3 2px $space-3;
+    font-size: $font-size-xs;
+    font-weight: 500;
+
+    button {
+      @include flex-center;
+      background: none;
+      border: none;
+      color: $primary;
+      font-size: $font-size-base;
+      cursor: pointer;
+      padding: 0;
+      margin-left: $space-1;
+      line-height: 1;
+
+      &:hover {
+        color: $danger;
+      }
+    }
+  }
+
+  &__attach-btn {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    cursor: pointer;
+    padding: $space-1 $space-2;
+    border-radius: $radius-sm;
+    transition: background $transition-fast;
+
+    &:hover {
+      background: $bg-body;
+      color: $primary;
+    }
+  }
+
+  // Email body
+  &__body {
+    flex: 1;
+    padding: $space-5;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    line-height: 1.7;
+    overflow-y: auto;
+    min-height: 250px;
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: $space-3 0;
+
+      th, td {
+        padding: $space-2 $space-3;
+        border: 1px solid $border-color;
+        font-size: $font-size-xs;
+        text-align: left;
+      }
+
+      th {
+        background: $bg-body;
+        font-weight: 600;
+      }
+    }
+  }
+
+  // Send bar
+  &__compose-actions {
+    @include flex(row, flex-start, center, $space-3);
+    padding: $space-3 $space-4;
+    border-top: 1px solid $border-color;
+    background: $bg-body;
+  }
+}
+
+// Status step
+.status-step {
+  @include card;
+  text-align: center;
+  max-width: 560px;
+  margin: 0 auto;
+
+  &__icon {
+    @include flex-center;
+    width: 64px;
+    height: 64px;
+    border-radius: $radius-full;
+    background: rgba($secondary, 0.1);
+    color: $secondary;
+    margin: 0 auto $space-5;
+  }
+
+  &__title {
+    font-size: $font-size-xl;
+    font-weight: 700;
+    color: $text-primary;
+    margin-bottom: $space-2;
+  }
+
+  &__desc {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    margin-bottom: $space-6;
+  }
+
+  &__details {
+    text-align: left;
+    background: $bg-body;
+    border-radius: $radius-md;
+    padding: $space-5;
+  }
+
+  &__row {
+    @include flex(row, space-between, center);
+    padding: $space-2 0;
+    font-size: $font-size-sm;
+
+    span:first-child {
+      color: $text-secondary;
+    }
+
+    strong {
+      color: $text-primary;
+    }
+  }
+
+  &__divider {
+    height: 1px;
+    background: $border-color;
+    margin: $space-3 0;
+  }
+
+  &__query-detail {
+    padding: $space-2 0;
+
+    p {
+      font-size: $font-size-sm;
+      color: $text-primary;
+      margin: $space-1 0 0;
+      line-height: 1.5;
+    }
+  }
+
+  &__query-label {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    font-weight: 600;
+  }
+
+  &__actions {
+    @include flex-center;
+    margin-top: $space-5;
+  }
+}
+
+// Pre Auth Form
+.preauth-lookup {
+  @include card;
+  margin-bottom: $space-6;
+
+  &__form {
+    @include flex(row, flex-start, flex-end, $space-4);
+
+    .form-group {
+      flex: 1;
+      max-width: 400px;
+    }
+
+    @include mobile {
+      flex-direction: column;
+      align-items: stretch;
+
+      .form-group {
+        max-width: 100%;
+      }
+    }
+  }
+}
+
+.preauth-form {
+  &__actions {
+    @include flex(row, flex-end, center, $space-3);
+    margin-top: $space-6;
+    padding-top: $space-5;
+    border-top: 1px solid $border-color;
+  }
+}
+
+.preauth-section {
+  @include card;
+  margin-bottom: $space-5;
+
+  &__number {
+    @include flex-center;
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    border-radius: $radius-full;
+    background: $primary;
+    color: $text-white;
+    font-size: $font-size-xs;
+    font-weight: 700;
+    margin-right: $space-3;
+    flex-shrink: 0;
+  }
+
+  &__title {
+    @include flex(row, flex-start, center);
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: $space-5;
+    padding-bottom: $space-3;
+    border-bottom: 1px solid $border-color;
+  }
+
+  &__fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: $space-5;
+
+    &--after {
+      margin-top: $space-5;
+    }
+
+    @include mobile {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+.form-group--wide {
+  grid-column: 1 / -1;
+}
+
+.preauth-subgroup {
+  margin-top: $space-5;
+  padding: $space-4 $space-5;
+  background: $bg-body;
+  border-radius: $radius-md;
+  border: 1px solid $border-color;
+
+  &__title {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $primary;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: $space-4;
+  }
+}
+
+.preauth-radio-group,
+.preauth-checkbox-group {
+  @include flex(row, flex-start, center, $space-4);
+  flex-wrap: wrap;
+  padding: $space-2 0;
+}
+
+.preauth-radio,
+.preauth-checkbox {
+  @include flex(row, flex-start, center, $space-2);
+  cursor: pointer;
+  font-size: $font-size-sm;
+  color: $text-primary;
+
+  input {
+    accent-color: $primary;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+}
+
+// Boolean toggle
+.preauth-toggle {
+  @include flex(row, flex-start, center, $space-3);
+  cursor: pointer;
+  padding: $space-2 0;
+
+  input {
+    display: none;
+  }
+
+  &__slider {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    background: $border-color;
+    border-radius: $radius-full;
+    transition: background $transition-fast;
+    flex-shrink: 0;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      background: $text-white;
+      border-radius: $radius-full;
+      transition: transform $transition-fast;
+    }
+  }
+
+  input:checked + &__slider {
+    background: $primary;
+
+    &::after {
+      transform: translateX(18px);
+    }
+  }
+
+  &__label {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    font-weight: 500;
+  }
+}
+
+// File input
+.form-group input[type="file"] {
+  padding: $space-2;
+  font-size: $font-size-sm;
+}
+
+// Print styles for Pre Auth Form
+@media print {
+  .sidebar,
+  .sidebar__toggle,
+  .layout__header,
+  .preauth-lookup,
+  .preauth-form__actions,
+  .page-header p {
+    display: none !important;
+  }
+
+  .layout__main,
+  .layout__content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .preauth-section {
+    box-shadow: none !important;
+    border: 1px solid #ddd;
+    break-inside: avoid;
+  }
+
+  .preauth-section__fields {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    border: none !important;
+    box-shadow: none !important;
+    padding-left: 0 !important;
+    background: transparent !important;
+  }
+}
+
 // Config page — Global Variables link card
 .config-global-vars {
   margin-bottom: $space-6;
@@ -340,5 +978,258 @@
     font-weight: 600;
     color: $text-primary;
     margin-bottom: $space-3;
+  }
+}
+
+// Query Management — attachments
+.query-attachments {
+  margin-top: $space-5;
+  padding-top: $space-4;
+  border-top: 1px solid $border-color;
+
+  h4 {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $text-secondary;
+    margin-bottom: $space-3;
+  }
+
+  .btn {
+    margin-right: $space-2;
+    margin-bottom: $space-2;
+  }
+}
+
+// Email page
+.email-tabs {
+  @include flex(row, flex-start, center, $space-2);
+  margin-bottom: $space-6;
+  border-bottom: 2px solid $border-color;
+  padding-bottom: 0;
+
+  &__btn {
+    @include flex(row, center, center, $space-2);
+    background: transparent;
+    border: none;
+    padding: $space-3 $space-5;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    color: $text-secondary;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color $transition-fast, border-color $transition-fast;
+
+    &:hover {
+      color: $text-primary;
+    }
+
+    &--active {
+      color: $primary;
+      border-bottom-color: $primary;
+    }
+  }
+}
+
+// Send email
+.email-send {
+  &__card {
+    @include card;
+    max-width: 560px;
+  }
+
+  &__title {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: $space-1;
+  }
+
+  &__desc {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    margin-bottom: $space-6;
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: $space-5;
+
+    .btn {
+      align-self: flex-start;
+    }
+  }
+
+  &__result {
+    @include flex(row, flex-start, center, $space-4);
+    margin-top: $space-6;
+    padding: $space-4 $space-5;
+    background: rgba($secondary, 0.06);
+    border: 1px solid rgba($secondary, 0.2);
+    border-radius: $radius-md;
+  }
+
+  &__result-icon {
+    @include flex-center;
+    width: 44px;
+    height: 44px;
+    border-radius: $radius-full;
+    background: rgba($secondary, 0.12);
+    color: $secondary;
+    flex-shrink: 0;
+  }
+
+  &__result-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    strong {
+      font-size: $font-size-sm;
+      color: $secondary;
+    }
+
+    span {
+      font-size: $font-size-xs;
+      color: $text-secondary;
+    }
+  }
+}
+
+// Email inbox
+.email-inbox {
+  &__toolbar {
+    @include flex(row, space-between, center);
+    margin-bottom: $space-4;
+  }
+
+  &__count {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    font-weight: 500;
+  }
+
+  &__list {
+    @include card(0);
+    overflow: hidden;
+  }
+
+  &__item {
+    @include flex(row, flex-start, flex-start, $space-4);
+    padding: $space-4 $space-5;
+    border-bottom: 1px solid $border-color;
+    cursor: pointer;
+    transition: background $transition-fast;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: rgba($primary, 0.03);
+    }
+  }
+
+  &__item-avatar {
+    @include flex-center;
+    width: 40px;
+    height: 40px;
+    border-radius: $radius-full;
+    background: rgba($primary, 0.1);
+    color: $primary;
+    font-weight: 600;
+    font-size: $font-size-sm;
+    flex-shrink: 0;
+  }
+
+  &__item-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__item-header {
+    @include flex(row, space-between, center);
+    margin-bottom: 2px;
+  }
+
+  &__item-from {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $text-primary;
+    @include truncate;
+    max-width: 300px;
+  }
+
+  &__item-date {
+    font-size: $font-size-xs;
+    color: $text-light;
+    flex-shrink: 0;
+  }
+
+  &__item-subject {
+    font-size: $font-size-sm;
+    font-weight: 500;
+    color: $text-primary;
+    margin-bottom: 2px;
+    @include truncate;
+  }
+
+  &__item-preview {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    line-height: 1.4;
+    @include truncate;
+  }
+}
+
+// Email detail modal
+.email-detail {
+  &__meta {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+  }
+
+  &__row {
+    @include flex(row, flex-start, center, $space-3);
+    font-size: $font-size-sm;
+  }
+
+  &__label {
+    font-weight: 600;
+    color: $text-secondary;
+    min-width: 60px;
+  }
+
+  &__divider {
+    height: 1px;
+    background: $border-color;
+    margin: $space-5 0;
+  }
+
+  &__body {
+    font-size: $font-size-sm;
+    color: $text-primary;
+    line-height: 1.7;
+    overflow-x: auto;
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: $space-3 0;
+
+      th, td {
+        padding: $space-2 $space-3;
+        border: 1px solid $border-color;
+        text-align: left;
+        font-size: $font-size-xs;
+      }
+
+      th {
+        background: $bg-body;
+        font-weight: 600;
+      }
+    }
   }
 }

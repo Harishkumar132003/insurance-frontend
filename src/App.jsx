@@ -10,10 +10,14 @@ import Hospitals from './pages/Hospitals';
 import Users from './pages/Users';
 import Configurations from './pages/Configurations';
 import RunWorkflow from './pages/RunWorkflow';
+import ClaimList from './pages/ClaimList';
+import PreAuthForm from './pages/PreAuthForm';
+import Email from './pages/Email';
 import Prompts from './pages/Prompts';
 import PolicyProviders from './pages/PolicyProviders';
 import Logs from './pages/Logs';
 import GlobalVariablesPage from './pages/GlobalVariablesPage';
+import QueryManagement from './pages/QueryManagement';
 import './styles/global.scss';
 
 const { SUPER_ADMIN, HOSPITAL_ADMIN } = ROLES;
@@ -81,6 +85,38 @@ export default function App() {
               />
 
               {/* Hospital Admin only */}
+              <Route
+                path="/claim-list"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <ClaimList />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/query-management"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <QueryManagement />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/pre-auth"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <PreAuthForm />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/email"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <Email />
+                  </PrivateRoute>
+                }
+              />
               <Route
                 path="/run-workflow"
                 element={

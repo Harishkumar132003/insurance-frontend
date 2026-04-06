@@ -84,6 +84,50 @@ export const configService = {
   save: (hospitalId, data) => api.post(`/hospitals/${hospitalId}/config`, data),
 };
 
+// Form templates
+export const formTemplateService = {
+  getById: (id) => api.get(`/form-templates/${id}`),
+  getByProvider: () => api.get(`/form-templates/provider/first`),
+};
+
+// Claim cases
+export const claimCaseService = {
+  getAll: (params) => api.get('/claim-cases', { params }),
+  getById: (id) => api.get(`/claim-cases/${id}`),
+  getAllEmails: (id) => api.get(`/claim-cases/${id}/emails/all`),
+  getEmails: (id, direction) =>
+    api.get(`/claim-cases/${id}/emails`, { params: direction ? { direction } : {} }),
+  getEmailDetail: (id, emailId) =>
+    api.get(`/claim-cases/${id}/emails/${emailId}`),
+  downloadAttachment: (id, emailId, attId) =>
+    api.get(`/claim-cases/${id}/emails/${emailId}/attachments/${attId}/download`, {
+      responseType: 'blob',
+    }),
+};
+
+// Form data
+export const formDataService = {
+  submit: (data) => api.post('/form-data/submit-form', data),
+  update: (formDataId, data) => api.patch(`/form-data/${formDataId}`, data),
+};
+
+// Email
+export const emailService = {
+  send: (formData) => api.post('/email/send', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  query: (formData) => api.post('/email/query', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  inbox: (limit = 10) => api.get('/email/inbox', { params: { limit } }),
+};
+
+// Email templates
+export const emailTemplateService = {
+  getAll: () => api.get('/email-templates'),
+  getById: (id) => api.get(`/email-templates/${id}`),
+};
+
 // Global variables per hospital
 export const variablesService = {
   getAll: (hospitalId) => api.get(`/hospitals/${hospitalId}/config/variables`),
