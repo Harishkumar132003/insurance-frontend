@@ -89,7 +89,7 @@ export default function ClaimList() {
             </thead>
             <tbody>
               {filtered.map((claim, i) => (
-                <tr key={claim.claim_case_id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/pre-auth?claim_case_id=${claim.claim_case_id}`)}>
+                <tr key={claim.claim_case_id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/claim-list/${claim.claim_case_id}`)}>
                   <td>{i + 1}</td>
                   <td>{claim.patient_name}</td>
                   <td>{claim.claim_number || '--'}</td>

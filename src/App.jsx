@@ -94,6 +94,14 @@ export default function App() {
                 }
               />
               <Route
+                path="/claim-list/:claimCaseId"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <PreAuthForm />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/query-management"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>

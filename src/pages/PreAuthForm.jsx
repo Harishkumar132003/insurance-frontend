@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { formDataService, claimCaseService, policyProviderService, emailTemplateService, emailService } from '../services/api';
-import { IconCheck, IconSend } from '../components/icons/Icons';
+import { IconCheck, IconSend, IconArrowLeft } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import './Pages.scss';
 
@@ -335,6 +335,7 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [subject, setSubject] = useState('');
+  const [content, setContent] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [sending, setSending] = useState(false);
 
@@ -359,6 +360,7 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
       const res = await emailTemplateService.getById(tpl.id);
       setSelectedTemplate(res.data);
       setSubject(res.data.subject || '');
+      setContent(res.data.body_html || res.data.body || '');
     } catch {
       // handled
     } finally {
@@ -386,7 +388,7 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
     const fd = new FormData();
     fd.append('claim_case_id', submitResult.claim_case_id);
     fd.append('subject', subject.trim());
-    fd.append('content', selectedTemplate.body_html || selectedTemplate.body || '');
+    fd.append('content', content);
     attachments.forEach((file) => fd.append('file', file));
 
     setSending(true);
@@ -472,9 +474,12 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
               </div>
 
               {/* Email body */}
-              <div
+              <textarea
                 className="apply-step__body"
-                dangerouslySetInnerHTML={{ __html: selectedTemplate.body_html || selectedTemplate.body || '<em>No content</em>' }}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Enter email content..."
+                rows={12}
               />
 
               {/* Send */}
@@ -659,7 +664,9 @@ function EmailStepView({ emails, claimCaseId, onReplyClick }) {
 
 export default function PreAuthForm() {
   const toast = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { claimCaseId: routeClaimCaseId } = useParams();
   const [currentStep, setCurrentStep] = useState('form');
   const [completedSteps, setCompletedSteps] = useState([]);
 
@@ -718,7 +725,7 @@ export default function PreAuthForm() {
 
   // Load claim case from URL if claim_case_id is present
   useEffect(() => {
-    const claimCaseId = searchParams.get('claim_case_id');
+    const claimCaseId = routeClaimCaseId || searchParams.get('claim_case_id');
     if (!claimCaseId) return;
 
     const loadClaimCase = async () => {
@@ -778,7 +785,7 @@ export default function PreAuthForm() {
       }
     };
     loadClaimCase();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [routeClaimCaseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Form helpers ──
 
@@ -857,8 +864,13 @@ export default function PreAuthForm() {
           data_json: payload,
         });
         setSubmitResult(res.data);
-        setSearchParams({ claim_case_id: res.data.claim_case_id });
         toast.success(`Form saved — Claim Case #${res.data.claim_case_id}`);
+
+        // On /pre-auth, navigate to claim detail page
+        if (!routeClaimCaseId) {
+          navigate(`/claim-list/${res.data.claim_case_id}`);
+          return;
+        }
       }
 
       setCompletedSteps((prev) => prev.includes('form') ? prev : [...prev, 'form']);
@@ -943,12 +955,20 @@ export default function PreAuthForm() {
 
   return (
     <div>
+      {routeClaimCaseId && (
+        <button className="gv-page__back" onClick={() => navigate('/claim-list')}>
+          <IconArrowLeft size={18} />
+          <span>Back to Claim List</span>
+        </button>
+      )}
       <div className="page-header">
-        <h1>Pre Auth Form</h1>
-        <p>Fill and submit insurance pre-authorization form</p>
+        <h1>{routeClaimCaseId ? 'Claim Detail' : 'Pre Auth Form'}</h1>
+        <p>{routeClaimCaseId ? `Claim Case #${routeClaimCaseId}` : 'Fill and submit insurance pre-authorization form'}</p>
       </div>
 
-      <StepTracker steps={steps} currentStep={currentStep} completedSteps={completedSteps} onStepClick={handleStepClick} />
+      {routeClaimCaseId && (
+        <StepTracker steps={steps} currentStep={currentStep} completedSteps={completedSteps} onStepClick={handleStepClick} />
+      )}
 
       {loadingCase && (
         <div className="page-loading"><Spinner /></div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { claimCaseService, policyProviderService } from '../services/api';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
@@ -15,6 +16,8 @@ const STATUS_BADGE = {
 };
 
 export default function QueryManagement() {
+  const navigate = useNavigate();
+
   // Provider filter
   const [providers, setProviders] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('');
@@ -152,7 +155,7 @@ export default function QueryManagement() {
             </thead>
             <tbody>
               {claims.map((claim, i) => (
-                <tr key={claim.claim_case_id}>
+                <tr key={claim.claim_case_id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/claim-list/${claim.claim_case_id}`)}>
                   <td>{i + 1}</td>
                   <td>{claim.patient_name}</td>
                   <td>{claim.claim_number}</td>
@@ -174,7 +177,7 @@ export default function QueryManagement() {
                       ? new Date(claim.created_at).toLocaleDateString('en-IN')
                       : '\u2014'}
                   </td>
-                  <td>
+                  <td onClick={(e) => e.stopPropagation()}>
                     <button
                       className="btn btn--ghost btn--sm"
                       onClick={() => handleViewQuery(claim)}

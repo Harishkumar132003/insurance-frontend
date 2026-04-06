@@ -646,6 +646,12 @@
     line-height: 1.7;
     overflow-y: auto;
     min-height: 250px;
+    border: none;
+    outline: none;
+    resize: vertical;
+    width: 100%;
+    font-family: inherit;
+    background: transparent;
 
     table {
       width: 100%;
