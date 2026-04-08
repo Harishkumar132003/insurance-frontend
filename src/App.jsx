@@ -12,6 +12,7 @@ import Configurations from './pages/Configurations';
 import RunWorkflow from './pages/RunWorkflow';
 import ClaimList from './pages/ClaimList';
 import PreAuthForm from './pages/PreAuthForm';
+import PreAuthFormPage from './pages/PreAuthFormPage';
 import Email from './pages/Email';
 import Prompts from './pages/Prompts';
 import PolicyProviders from './pages/PolicyProviders';
@@ -113,7 +114,15 @@ export default function App() {
                 path="/pre-auth"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <PreAuthForm />
+                    <PreAuthFormPage key="new" />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/pre-auth/:claimCaseId"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <PreAuthFormPage key="edit" />
                   </PrivateRoute>
                 }
               />

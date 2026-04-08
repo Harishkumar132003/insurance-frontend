@@ -103,11 +103,32 @@ export const claimCaseService = {
     api.get(`/claim-cases/${id}/emails/${emailId}/attachments/${attId}/download`, {
       responseType: 'blob',
     }),
+  viewAttachment: (id, emailId, attId) =>
+    api.get(`/claim-cases/${id}/emails/${emailId}/attachments/${attId}/view`, {
+      responseType: 'blob',
+    }),
+};
+
+// Documents
+export const documentService = {
+  list: (claimCaseId) => api.get(`/claim-cases/${claimCaseId}/documents`),
+  upload: (claimCaseId, formData) => api.post(`/claim-cases/${claimCaseId}/documents`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  download: (claimCaseId, documentId) => api.get(`/claim-cases/${claimCaseId}/documents/${documentId}/download`, {
+    responseType: 'blob',
+  }),
+  view: (claimCaseId, documentId) => api.get(`/claim-cases/${claimCaseId}/documents/${documentId}/view`, {
+    responseType: 'blob',
+  }),
+  delete: (claimCaseId, documentId) => api.delete(`/claim-cases/${claimCaseId}/documents/${documentId}`),
 };
 
 // Form data
 export const formDataService = {
-  submit: (data) => api.post('/form-data/submit-form', data),
+  submit: (formData) => api.post('/form-data/submit-form', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   update: (formDataId, data) => api.patch(`/form-data/${formDataId}`, data),
 };
 

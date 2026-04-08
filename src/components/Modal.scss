@@ -20,6 +20,10 @@
   max-height: 85vh;
   overflow-y: auto;
   animation: slideUp 0.2s ease;
+
+  &--lg {
+    max-width: 900px;
+  }
 }
 
 .modal-header {
