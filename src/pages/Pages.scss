@@ -621,8 +621,13 @@
     margin-top: $space-4;
   }
 
-  &__reply-btn {
+  &__actions {
+    @include flex(row, flex-start, center, $space-3);
     margin-top: $space-4;
+  }
+
+  &__reply-btn {
+    // inside actions row
   }
 }
 
@@ -979,7 +984,11 @@
 
 .preauth-section {
   @include card;
-  margin-bottom: $space-5;
+  margin-bottom: $space-3;
+
+  &--collapsed {
+    padding: 0;
+  }
 
   &__number {
     @include flex-center;
@@ -996,13 +1005,53 @@
   }
 
   &__title {
-    @include flex(row, flex-start, center);
+    display: flex;
+    align-items: center;
     font-size: $font-size-lg;
     font-weight: 600;
     color: $text-primary;
-    margin-bottom: $space-5;
+    margin: 0 0 $space-5 0;
     padding-bottom: $space-3;
     border-bottom: 1px solid $border-color;
+    cursor: pointer;
+    user-select: none;
+    transition: color $transition-fast;
+
+    &:hover {
+      color: $primary;
+    }
+  }
+
+  &--collapsed &__title {
+    margin: 0;
+    padding: $space-4 $space-6;
+    border-bottom: none;
+  }
+
+  &__chevron {
+    @include flex-center;
+    margin-left: auto;
+    width: 32px;
+    height: 32px;
+    border-radius: $radius-full;
+    background: rgba(0, 0, 0, 0.05);
+    color: $text-light;
+    transition: transform 0.3s ease, color $transition-fast, background $transition-fast;
+    transform: rotate(0deg);
+    flex-shrink: 0;
+
+    &--open {
+      transform: rotate(180deg);
+    }
+
+    svg {
+      display: block;
+    }
+  }
+
+  &__title:hover &__chevron {
+    color: $primary;
+    background: rgba($primary, 0.1);
   }
 
   &__fields {
@@ -1419,6 +1468,35 @@
         background: $bg-body;
         font-weight: 600;
       }
+    }
+  }
+}
+
+// Email pagination
+.email-pagination {
+  @include flex(row, flex-end, center, $space-3);
+  margin-top: $space-5;
+  padding: $space-4 0;
+
+  &__info {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  &__size {
+    padding: $space-1 $space-2;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    background: $bg-card;
+    outline: none;
+    cursor: pointer;
+
+    &:focus {
+      border-color: $primary;
     }
   }
 }

@@ -37,10 +37,12 @@ export default function ClaimList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     claimCaseService.getAll()
-      .then((res) => setClaims(res.data))
-      .catch(() => setClaims([]))
-      .finally(() => setLoading(false));
+      .then((res) => { if (!cancelled) setClaims(res.data); })
+      .catch(() => { if (!cancelled) setClaims([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const filtered = activeFilter === 'all'
@@ -83,6 +85,7 @@ export default function ClaimList() {
                 <th>Type</th>
                 <th>Provider</th>
                 <th>Amount</th>
+                <th>Approved Amount</th>
                 <th>Status</th>
                 <th>Date</th>
               </tr>
@@ -100,6 +103,7 @@ export default function ClaimList() {
                   </td>
                   <td>{claim.provider_name}</td>
                   <td>{claim.amount?.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</td>
+                  <td>{claim.approved_amount != null ? claim.approved_amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }) : '--'}</td>
                   <td>
                     <span className={`badge badge--${STATUS_BADGE[claim.status] || 'default'}`}>
                       {claim.status?.replace('_', ' ')}

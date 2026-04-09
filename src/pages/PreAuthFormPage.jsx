@@ -312,6 +312,18 @@ export default function PreAuthFormPage() {
   const [docViewName, setDocViewName] = useState('');
   const [docViewType, setDocViewType] = useState('');
 
+  // Accordion state — only first section open by default
+  const [openSections, setOpenSections] = useState(() => {
+    const initial = {};
+    FORM_SECTIONS.forEach((s, i) => { initial[s.name] = i === 0; });
+    initial['documents'] = false;
+    return initial;
+  });
+
+  const toggleSection = (name) => {
+    setOpenSections((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
   const isEdit = !!routeClaimCaseId;
 
   useEffect(() => {
@@ -598,53 +610,71 @@ export default function PreAuthFormPage() {
 
           <form onSubmit={handleSaveAndProceed} className="preauth-form">
             {FORM_SECTIONS.map((section, idx) => (
-              <div key={section.name} className="preauth-section">
-                <h3 className="preauth-section__title">
+              <div key={section.name} className={`preauth-section ${openSections[section.name] ? '' : 'preauth-section--collapsed'}`}>
+                <h3 className="preauth-section__title" onClick={() => toggleSection(section.name)}>
                   <span className="preauth-section__number">{idx + 1}</span>
                   {section.label}
+                  <span className={`preauth-section__chevron ${openSections[section.name] ? 'preauth-section__chevron--open' : ''}`}>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </span>
                 </h3>
-                <div className="preauth-section__fields">
-                  {renderFields(section.fields, section.name)}
-                </div>
-                {renderSubgroups(section.subgroups, section.name)}
-                {section.fieldsAfterSubgroups && (
-                  <div className="preauth-section__fields preauth-section__fields--after">
-                    {renderFields(section.fieldsAfterSubgroups, section.name)}
-                  </div>
+                {openSections[section.name] && (
+                  <>
+                    <div className="preauth-section__fields">
+                      {renderFields(section.fields, section.name)}
+                    </div>
+                    {renderSubgroups(section.subgroups, section.name)}
+                    {section.fieldsAfterSubgroups && (
+                      <div className="preauth-section__fields preauth-section__fields--after">
+                        {renderFields(section.fieldsAfterSubgroups, section.name)}
+                      </div>
+                    )}
+                    {renderSubgroups(section.additionalSubgroups, section.name)}
+                  </>
                 )}
-                {renderSubgroups(section.additionalSubgroups, section.name)}
               </div>
             ))}
 
-            <div className="preauth-section">
-              <h3 className="preauth-section__title">
+            <div className={`preauth-section ${openSections['documents'] ? '' : 'preauth-section--collapsed'}`}>
+              <h3 className="preauth-section__title" onClick={() => toggleSection('documents')}>
                 <span className="preauth-section__number">{FORM_SECTIONS.length + 1}</span>
                 Documents
+                <span className={`preauth-section__chevron ${openSections['documents'] ? 'preauth-section__chevron--open' : ''}`}>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </span>
               </h3>
-              <button type="button" className="btn btn--primary" onClick={() => setShowUploadModal(true)}>
-                Upload Documents
-              </button>
-              {isEdit && existingDocs.length > 0 && (
-                <div style={{ marginTop: 16 }}>
-                  {existingDocs.map((doc) => (
-                    <div key={doc.id} className="apply-step__attach-chip" style={{ marginBottom: 6 }}>
-                      <span style={{ cursor: 'pointer' }} onClick={() => handleViewDoc(doc)}>
-                        {doc.original_filename} ({(doc.file_size / 1024).toFixed(1)} KB)
-                      </span>
-                      <button type="button" onClick={() => handleDeleteDoc(doc.id)}>&times;</button>
+              {openSections['documents'] && (
+                <>
+                  <button type="button" className="btn btn--primary" onClick={() => setShowUploadModal(true)}>
+                    Upload Documents
+                  </button>
+                  {isEdit && existingDocs.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      {existingDocs.map((doc) => (
+                        <div key={doc.id} className="apply-step__attach-chip" style={{ marginBottom: 6 }}>
+                          <span style={{ cursor: 'pointer' }} onClick={() => handleViewDoc(doc)}>
+                            {doc.original_filename} ({(doc.file_size / 1024).toFixed(1)} KB)
+                          </span>
+                          <button type="button" onClick={() => handleDeleteDoc(doc.id)}>&times;</button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-              {files.length > 0 && (
-                <div className="apply-step__attach-area" style={{ marginTop: 12 }}>
-                  {files.map((file, idx) => (
-                    <div key={idx} className="apply-step__attach-chip">
-                      <span>{file.name}</span>
-                      <button type="button" onClick={() => setFiles((prev) => prev.filter((_, i) => i !== idx))}>&times;</button>
+                  )}
+                  {files.length > 0 && (
+                    <div className="apply-step__attach-area" style={{ marginTop: 12 }}>
+                      {files.map((file, idx) => (
+                        <div key={idx} className="apply-step__attach-chip">
+                          <span>{file.name}</span>
+                          <button type="button" onClick={() => setFiles((prev) => prev.filter((_, i) => i !== idx))}>&times;</button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </div>
 

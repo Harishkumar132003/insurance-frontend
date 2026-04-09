@@ -95,6 +95,7 @@ export const claimCaseService = {
   getAll: (params) => api.get('/claim-cases', { params }),
   getById: (id) => api.get(`/claim-cases/${id}`),
   getAllEmails: (id) => api.get(`/claim-cases/${id}/emails/all`),
+  getAllEmailsPaginated: (params) => api.get('/claim-cases/emails/all', { params }),
   getEmails: (id, direction) =>
     api.get(`/claim-cases/${id}/emails`, { params: direction ? { direction } : {} }),
   getEmailDetail: (id, emailId) =>
@@ -107,6 +108,8 @@ export const claimCaseService = {
     api.get(`/claim-cases/${id}/emails/${emailId}/attachments/${attId}/view`, {
       responseType: 'blob',
     }),
+  updateExtractedData: (claimCaseId, emailId, data) =>
+    api.patch(`/claim-cases/${claimCaseId}/emails/${emailId}/extracted-data`, data),
 };
 
 // Documents

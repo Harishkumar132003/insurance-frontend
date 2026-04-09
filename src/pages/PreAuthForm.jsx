@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService, emailTemplateService, emailService, documentService } from '../services/api';
 import { IconSend, IconArrowLeft } from '../components/icons/Icons';
@@ -242,6 +242,8 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
 
 export default function PreAuthForm() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const backPath = location.state?.from || '/claim-list';
   const { claimCaseId: routeClaimCaseId } = useParams();
   const [loadingCase, setLoadingCase] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
@@ -251,59 +253,44 @@ export default function PreAuthForm() {
   const [showReplyCompose, setShowReplyCompose] = useState(false);
   const [replyEmailType, setReplyEmailType] = useState(null);
 
-  // Load claim case
-  useEffect(() => {
+  // Load claim case + emails
+  const loadClaimData = async (showLoader = true) => {
     if (!routeClaimCaseId) return;
+    if (showLoader) setLoadingCase(true);
+    try {
+      const [caseRes, emailsRes] = await Promise.all([
+        claimCaseService.getById(routeClaimCaseId),
+        claimCaseService.getAllEmails(routeClaimCaseId).catch(() => ({ data: [] })),
+      ]);
+      const cc = caseRes.data;
+      const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
+        ? cc.form_data[cc.form_data.length - 1]
+        : null;
 
-    const loadClaimCase = async () => {
-      setLoadingCase(true);
-      try {
-        const res = await claimCaseService.getById(routeClaimCaseId);
-        const cc = res.data;
-
-        const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
-          ? cc.form_data[cc.form_data.length - 1]
-          : null;
-
-        setSubmitResult({
-          claim_case_id: cc.id,
-          form_data_id: latestForm?.id,
-          status: cc.status,
-          claim_status: cc.claim_status,
-          query_logs: cc.query_logs || [],
-        });
-
-        // Fetch all emails for this claim case
-        let emailsList = [];
-        try {
-          const emailsRes = await claimCaseService.getAllEmails(routeClaimCaseId);
-          emailsList = Array.isArray(emailsRes.data) ? emailsRes.data : [];
-          setClaimEmails(emailsList);
-        } catch {
-          // no emails
-        }
-
-      } catch {
-        // handled by interceptor
-      } finally {
-        setLoadingCase(false);
-      }
-    };
-    loadClaimCase();
-  }, [routeClaimCaseId]);
-
-  const handleSendSuccess = async () => {
-    // Refresh emails after successful send
-    if (routeClaimCaseId) {
-      try {
-        const emailsRes = await claimCaseService.getAllEmails(routeClaimCaseId);
-        const emailsList = Array.isArray(emailsRes.data) ? emailsRes.data : [];
-        setClaimEmails(emailsList);
-      } catch {
-        // handled
-      }
+      setSubmitResult({
+        claim_case_id: cc.id,
+        form_data_id: latestForm?.id,
+        status: cc.status,
+        claim_status: cc.claim_status,
+        claim_number: cc.claim_number || '',
+        approved_amount: cc.approved_amount ?? '',
+        query_logs: cc.query_logs || [],
+      });
+      setClaimEmails(Array.isArray(emailsRes.data) ? emailsRes.data : []);
+    } catch {
+      // handled by interceptor
+    } finally {
+      if (showLoader) setLoadingCase(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (routeClaimCaseId && !cancelled) loadClaimData();
+    return () => { cancelled = true; };
+  }, [routeClaimCaseId]);
+
+  const handleRefresh = () => loadClaimData(false);
 
   const handleTimelineReplyClick = (emailType) => {
     setShowReplyCompose(true);
@@ -313,22 +300,14 @@ export default function PreAuthForm() {
   const handleTimelineReplySuccess = async () => {
     setShowReplyCompose(false);
     setReplyEmailType(null);
-    if (routeClaimCaseId) {
-      try {
-        const emailsRes = await claimCaseService.getAllEmails(routeClaimCaseId);
-        const emailsList = Array.isArray(emailsRes.data) ? emailsRes.data : [];
-        setClaimEmails(emailsList);
-      } catch {
-        // handled
-      }
-    }
+    await handleRefresh();
   };
 
   return (
     <div>
-      <button className="gv-page__back" onClick={() => navigate('/claim-list')}>
+      <button className="gv-page__back" onClick={() => navigate(backPath)}>
         <IconArrowLeft size={18} />
-        <span>Back to Claim List</span>
+        <span>{backPath === '/query-management' ? 'Back to Query Management' : 'Back to Claim List'}</span>
       </button>
       <div className="page-header">
         <h1>Claim Detail</h1>
@@ -358,14 +337,16 @@ export default function PreAuthForm() {
           <ClaimTimeline
             claimEmails={claimEmails}
             claimCaseId={submitResult?.claim_case_id}
+            claimData={submitResult}
             onReplyClick={handleTimelineReplyClick}
+            onDataSaved={handleRefresh}
           />
         </>
       )}
 
       {/* ─── Not yet applied: show Apply directly ─── */}
       {claimEmails.length === 0 && !loadingCase && submitResult && (
-        <ApplyStep submitResult={submitResult} onSendSuccess={handleSendSuccess} />
+        <ApplyStep submitResult={submitResult} onSendSuccess={handleRefresh} />
       )}
 
     </div>
