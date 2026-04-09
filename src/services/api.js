@@ -94,7 +94,7 @@ export const formTemplateService = {
 export const claimCaseService = {
   getAll: (params) => api.get('/claim-cases', { params }),
   getById: (id) => api.get(`/claim-cases/${id}`),
-  getAllEmails: (id) => api.get(`/claim-cases/${id}/emails/all`),
+  getAllEmails: (id, params) => api.get(`/claim-cases/${id}/emails/all`, { params }),
   getAllEmailsPaginated: (params) => api.get('/claim-cases/emails/all', { params }),
   getEmails: (id, direction) =>
     api.get(`/claim-cases/${id}/emails`, { params: direction ? { direction } : {} }),

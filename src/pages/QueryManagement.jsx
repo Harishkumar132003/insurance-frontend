@@ -1,23 +1,42 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { claimCaseService } from '../services/api';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
+import Modal from '../components/Modal';
 import { IconRefresh } from '../components/icons/Icons';
+import { useToast } from '../components/Toast';
 import './Pages.scss';
+
+const CLAIM_STATUS_OPTIONS = ['APPROVED', 'REJECTED', 'QUERY', 'ADR'];
+const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'QUERY_RAISED', 'QUERY_RESPONSE', 'REJECTION', 'ADR'];
 
 export default function QueryManagement() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterClaimId = searchParams.get('id');
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [totalPages, setTotalPages] = useState(1);
   const [totalEmails, setTotalEmails] = useState(0);
+  const [selectedEmail, setSelectedEmail] = useState(null);
+  const [emailType, setEmailType] = useState('');
+  const [claimStatus, setClaimStatus] = useState('');
+  const [claimNumber, setClaimNumber] = useState('');
+  const [approvedAmount, setApprovedAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [viewUrl, setViewUrl] = useState(null);
+  const [viewFilename, setViewFilename] = useState('');
+  const [viewContentType, setViewContentType] = useState('');
 
   const fetchEmails = (p = page) => {
     setLoading(true);
-    claimCaseService.getAllEmailsPaginated({ page: p, page_size: pageSize })
+    const params = { page: p, page_size: pageSize };
+    if (filterClaimId) params.claim_case_id = filterClaimId;
+    claimCaseService.getAllEmailsPaginated(params)
       .then((res) => {
         const data = res.data;
         setEmails(Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : []);
@@ -34,7 +53,61 @@ export default function QueryManagement() {
 
   useEffect(() => {
     fetchEmails(page);
-  }, [page, pageSize]);
+  }, [page, pageSize, filterClaimId]);
+
+  const handleEmailClick = (email) => {
+    if (!email.is_read) {
+      setSelectedEmail(email);
+      setEmailType(email.email_type || EMAIL_TYPE_OPTIONS[0]);
+      setClaimStatus(email.ai_suggested_status || CLAIM_STATUS_OPTIONS[0]);
+      setClaimNumber(email.claim_number || '');
+      setApprovedAmount(email.approved_amount ?? '');
+    } else {
+      navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } });
+    }
+  };
+
+  const handleViewAttachment = async (email, attId, filename) => {
+    try {
+      const res = await claimCaseService.viewAttachment(email.claim_case_id, email.id, attId);
+      const contentType = res.headers?.['content-type'] || '';
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: contentType }));
+      setViewUrl(url);
+      setViewFilename(filename || 'attachment');
+      setViewContentType(contentType);
+    } catch {
+      // handled by interceptor
+    }
+  };
+
+  const closeAttachmentView = () => {
+    if (viewUrl) window.URL.revokeObjectURL(viewUrl);
+    setViewUrl(null);
+    setViewFilename('');
+    setViewContentType('');
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        email_type: emailType,
+      };
+      if (selectedEmail.is_latest) {
+        payload.claim_status = claimStatus;
+        payload.claim_number = claimNumber || undefined;
+        payload.approved_amount = claimStatus === 'APPROVED' && approvedAmount !== '' ? Number(approvedAmount) : null;
+      }
+      await claimCaseService.updateExtractedData(selectedEmail.claim_case_id, selectedEmail.id, payload);
+      toast.success('Extracted data updated');
+      setSelectedEmail(null);
+      fetchEmails(page);
+    } catch {
+      // handled by interceptor
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
@@ -54,6 +127,34 @@ export default function QueryManagement() {
         <h1>Query Management</h1>
         <p>View all email queries across claim cases</p>
       </div>
+
+      {filterClaimId && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            background: 'rgba(59, 130, 246, 0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.25)',
+            borderRadius: 8,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.875rem',
+            color: '#1e40af',
+          }}
+        >
+          <span>
+            Filtered by Claim Case: <strong>{filterClaimId}</strong>
+          </span>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={() => setSearchParams({})}
+            style={{ color: '#1e40af' }}
+          >
+            &times; Clear Filter
+          </button>
+        </div>
+      )}
 
       <div className="email-inbox">
         <div className="email-inbox__toolbar">
@@ -83,9 +184,10 @@ export default function QueryManagement() {
               {emails.map((email) => (
                 <div
                   key={email.id}
-                  className="email-inbox__item"
-                  onClick={() => navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } })}
+                  className={`email-inbox__item ${email.is_read ? 'email-inbox__item--read' : 'email-inbox__item--unread'}`}
+                  onClick={() => handleEmailClick(email)}
                 >
+                  {!email.is_read && <span className="email-inbox__unread-dot" />}
                   <div className="email-inbox__item-avatar">
                     {(email.from_email || email.to_email || '?')[0].toUpperCase()}
                   </div>
@@ -147,6 +249,128 @@ export default function QueryManagement() {
           </>
         )}
       </div>
+
+      {/* Unread email detail modal */}
+      {selectedEmail && (
+        <Modal title={selectedEmail.subject || 'Email'} onClose={() => setSelectedEmail(null)} size="lg">
+          <div className="email-detail">
+            <div className="email-detail__meta">
+              <div className="email-detail__row">
+                <span className="email-detail__label">From</span>
+                <span>{selectedEmail.from_email || selectedEmail.to_email}</span>
+              </div>
+              <div className="email-detail__row">
+                <span className="email-detail__label">Date</span>
+                <span>{formatDate(selectedEmail.email_date || selectedEmail.date)}</span>
+              </div>
+              <div className="email-detail__row">
+                <span className="email-detail__label">Subject</span>
+                <span>{selectedEmail.subject}</span>
+              </div>
+              <div className="email-detail__row">
+                <span className="email-detail__label">Email Type</span>
+                <span className="badge badge--info">{selectedEmail.email_type || '—'}</span>
+              </div>
+              <div className="email-detail__row">
+                <span className="email-detail__label">AI Status</span>
+                <span className="badge badge--warning">{selectedEmail.ai_suggested_status || '—'}</span>
+              </div>
+            </div>
+
+            <div className="email-detail__divider" />
+
+            <div
+              className="email-detail__body"
+              dangerouslySetInnerHTML={{ __html: selectedEmail.body || '<p>No content</p>' }}
+            />
+
+            {selectedEmail.attachments?.length > 0 && (
+              <>
+                <div className="email-detail__divider" />
+                <div className="claim-timeline__attachments">
+                  {selectedEmail.attachments.map((att) => (
+                    <button
+                      key={att.id}
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => handleViewAttachment(selectedEmail, att.id, att.original_filename)}
+                    >
+                      {att.original_filename} ({(att.file_size / 1024).toFixed(1)} KB)
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {viewUrl && (
+              <Modal title={viewFilename} onClose={closeAttachmentView} size="lg">
+                <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+                  {viewContentType.startsWith('image/') ? (
+                    <img src={viewUrl} alt={viewFilename} style={{ maxWidth: '100%', height: 'auto' }} />
+                  ) : viewContentType === 'application/pdf' ? (
+                    <iframe src={viewUrl} title={viewFilename} style={{ width: '100%', height: '70vh', border: 'none' }} />
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: 24 }}>
+                      <p>Preview not available for this file type.</p>
+                      <a href={viewUrl} download={viewFilename} className="btn btn--primary" style={{ marginTop: 12 }}>
+                        Download
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </Modal>
+            )}
+
+            <div className="email-detail__divider" />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-group">
+                <label>Email Type</label>
+                <select value={emailType} onChange={(e) => setEmailType(e.target.value)}>
+                  {EMAIL_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              {selectedEmail.is_latest && (
+                <>
+                  <div className="form-group">
+                    <label>Claim Status</label>
+                    <select value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)}>
+                      {CLAIM_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Claim Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CLM-2026-1234"
+                      value={claimNumber}
+                      onChange={(e) => setClaimNumber(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Approved Amount</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 50000"
+                      value={approvedAmount}
+                      onChange={(e) => setApprovedAmount(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
+                <button className="btn btn--ghost" onClick={() => setSelectedEmail(null)}>Cancel</button>
+                <button className="btn btn--primary" disabled={saving} onClick={handleSave}>
+                  {saving ? <Spinner size={16} /> : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

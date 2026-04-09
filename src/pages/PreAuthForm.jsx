@@ -248,6 +248,8 @@ export default function PreAuthForm() {
   const [loadingCase, setLoadingCase] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
   const [claimEmails, setClaimEmails] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showUnreadPopup, setShowUnreadPopup] = useState(false);
 
   // Timeline reply compose state
   const [showReplyCompose, setShowReplyCompose] = useState(false);
@@ -260,7 +262,7 @@ export default function PreAuthForm() {
     try {
       const [caseRes, emailsRes] = await Promise.all([
         claimCaseService.getById(routeClaimCaseId),
-        claimCaseService.getAllEmails(routeClaimCaseId).catch(() => ({ data: [] })),
+        claimCaseService.getAllEmails(routeClaimCaseId, { is_read: true }).catch(() => ({ data: [] })),
       ]);
       const cc = caseRes.data;
       const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
@@ -276,6 +278,9 @@ export default function PreAuthForm() {
         approved_amount: cc.approved_amount ?? '',
         query_logs: cc.query_logs || [],
       });
+      const count = cc.unread_count || 0;
+      setUnreadCount(count);
+      if (count > 0) setShowUnreadPopup(true);
       setClaimEmails(Array.isArray(emailsRes.data) ? emailsRes.data : []);
     } catch {
       // handled by interceptor
@@ -314,6 +319,27 @@ export default function PreAuthForm() {
         <p>Claim Case #{routeClaimCaseId}</p>
       </div>
 
+      {showUnreadPopup && (
+        <Modal title="Uncategorized Emails" onClose={() => setShowUnreadPopup(false)}>
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <p style={{ fontSize: '1rem', marginBottom: 24 }}>
+              You have <strong>{unreadCount}</strong> uncategorized email{unreadCount !== 1 ? 's' : ''} for this claim
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button className="btn btn--ghost" onClick={() => setShowUnreadPopup(false)}>
+                Dismiss
+              </button>
+              <button
+                className="btn btn--primary"
+                onClick={() => navigate(`/query-management?id=${routeClaimCaseId}`)}
+              >
+                View Emails
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {claimEmails.length === 0 && !loadingCase && (
         <button className="btn btn--ghost" style={{ marginBottom: 16 }} onClick={() => navigate(`/pre-auth/${routeClaimCaseId}`)}>
           Edit Form
@@ -337,9 +363,7 @@ export default function PreAuthForm() {
           <ClaimTimeline
             claimEmails={claimEmails}
             claimCaseId={submitResult?.claim_case_id}
-            claimData={submitResult}
             onReplyClick={handleTimelineReplyClick}
-            onDataSaved={handleRefresh}
           />
         </>
       )}

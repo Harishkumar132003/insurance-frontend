@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { IconSend } from './icons/Icons';
 import { claimCaseService } from '../services/api';
-import { useToast } from './Toast';
 import Modal from './Modal';
-import Spinner from './Spinner';
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -29,95 +27,12 @@ function getTypeModifier(emailType) {
   }
 }
 
-const CLAIM_STATUS_OPTIONS = ['APPROVED', 'REJECTED', 'QUERY', 'ADR'];
-const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'QUERY_RAISED', 'QUERY_RESPONSE', 'REJECTION', 'ADR'];
-
-function EditExtractedDataModal({ claimCaseId, emailId, emailType, claimData, onClose, onSaved }) {
-  const toast = useToast();
-  const [claimStatus, setClaimStatus] = useState(claimData?.claim_status || 'APPROVED');
-  const [claimNumber, setClaimNumber] = useState(claimData?.claim_number || '');
-  const [approvedAmount, setApprovedAmount] = useState(claimData?.approved_amount ?? '');
-  const [selectedEmailType, setSelectedEmailType] = useState(emailType || 'QUERY_RAISED');
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const payload = {
-        claim_status: claimStatus,
-        claim_number: claimNumber || undefined,
-        email_type: selectedEmailType,
-      };
-      if (claimStatus === 'APPROVED' && approvedAmount !== '') {
-        payload.approved_amount = Number(approvedAmount);
-      }
-      await claimCaseService.updateExtractedData(claimCaseId, emailId, payload);
-      toast.success('Extracted data updated');
-      onSaved();
-      onClose();
-    } catch {
-      // handled by interceptor
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal title="Edit Extracted Data" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div className="form-group">
-          <label>Email Type</label>
-          <select value={selectedEmailType} onChange={(e) => setSelectedEmailType(e.target.value)}>
-            {EMAIL_TYPE_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{opt.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label>Claim Status</label>
-          <select value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)}>
-            {CLAIM_STATUS_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label>Claim Number</label>
-          <input
-            type="text"
-            placeholder="e.g. CLM-2026-1234"
-            value={claimNumber}
-            onChange={(e) => setClaimNumber(e.target.value)}
-          />
-        </div>
-        {claimStatus === 'APPROVED' && (
-          <div className="form-group">
-            <label>Approved Amount</label>
-            <input
-              type="number"
-              placeholder="e.g. 50000"
-              value={approvedAmount}
-              onChange={(e) => setApprovedAmount(e.target.value)}
-            />
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button className="btn btn--ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn--primary" disabled={saving} onClick={handleSave}>
-            {saving ? <Spinner size={16} /> : 'Save'}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function TimelineEntry({ email, claimCaseId, claimData, onReplyClick, isLast, onDataSaved }) {
+function TimelineEntry({ email, claimCaseId, onReplyClick, isLast }) {
   const [expanded, setExpanded] = useState(false);
   const [viewUrl, setViewUrl] = useState(null);
   const [viewFilename, setViewFilename] = useState('');
   const [viewContentType, setViewContentType] = useState('');
-  const [showEditModal, setShowEditModal] = useState(false);
+
 
   const handleView = async (emailId, attId, filename) => {
     try {
@@ -218,23 +133,7 @@ function TimelineEntry({ email, claimCaseId, claimData, onReplyClick, isLast, on
             >
               <IconSend size={14} /> Reply
             </button>
-            <button
-              className="btn btn--ghost btn--sm"
-              onClick={() => setShowEditModal(true)}
-            >
-              Edit Data
-            </button>
           </div>
-        )}
-        {showEditModal && (
-          <EditExtractedDataModal
-            claimCaseId={claimCaseId}
-            emailId={email.id}
-            emailType={email.email_type}
-            claimData={claimData}
-            onClose={() => setShowEditModal(false)}
-            onSaved={onDataSaved}
-          />
         )}
           </div>
         </div>
@@ -243,7 +142,7 @@ function TimelineEntry({ email, claimCaseId, claimData, onReplyClick, isLast, on
   );
 }
 
-export default function ClaimTimeline({ claimEmails, claimCaseId, claimData, onReplyClick, onDataSaved }) {
+export default function ClaimTimeline({ claimEmails, claimCaseId, onReplyClick }) {
   const sorted = [...claimEmails].sort(
     (a, b) => new Date(b.email_date) - new Date(a.email_date)
   );
@@ -257,10 +156,8 @@ export default function ClaimTimeline({ claimEmails, claimCaseId, claimData, onR
           key={email.id}
           email={email}
           claimCaseId={claimCaseId}
-          claimData={claimData}
           onReplyClick={idx === 0 && showReplyOnLatest ? onReplyClick : undefined}
           isLast={idx === sorted.length - 1}
-          onDataSaved={onDataSaved}
         />
       ))}
     </div>
