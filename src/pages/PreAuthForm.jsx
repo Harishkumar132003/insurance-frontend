@@ -24,6 +24,12 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
   const [docViewUrl, setDocViewUrl] = useState(null);
   const [docViewName, setDocViewName] = useState('');
   const [docViewType, setDocViewType] = useState('');
+  const [toEmail, setToEmail] = useState(submitResult.policy_provider_email || '');
+  const [ccEmails, setCcEmails] = useState(submitResult.cc_emails || []);
+  const [editingTo, setEditingTo] = useState(false);
+  const [editingCcIdx, setEditingCcIdx] = useState(null);
+  const [showAddCc, setShowAddCc] = useState(false);
+  const [newCcValue, setNewCcValue] = useState('');
 
   useEffect(() => {
     const fetchDocs = async () => {
@@ -105,6 +111,10 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
 
     const fd = new FormData();
     fd.append('claim_case_id', submitResult.claim_case_id);
+    if (toEmail.trim()) {
+      fd.append('to_email', toEmail.trim());
+    }
+    ccEmails.filter((e) => e.trim()).forEach((cc) => fd.append('cc_emails', cc.trim()));
     fd.append('subject', subject.trim());
     fd.append('content', content);
     attachments.forEach((file) => fd.append('file', file));
@@ -164,6 +174,120 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
 
           {selectedTemplate && !loadingDetail && (
             <form onSubmit={handleSend} className="apply-step__compose-form">
+              {/* To field */}
+              <div className="apply-step__field">
+                <span className="apply-step__field-label">To</span>
+                <div className="apply-step__attach-area">
+                  {editingTo ? (
+                    <input
+                      type="email"
+                      value={toEmail}
+                      onChange={(e) => setToEmail(e.target.value)}
+                      onBlur={() => setEditingTo(false)}
+                      onKeyDown={(e) => e.key === 'Enter' && setEditingTo(false)}
+                      autoFocus
+                      style={{ flex: 1, fontSize: '0.8rem' }}
+                    />
+                  ) : (
+                    <div
+                      className="apply-step__attach-chip apply-step__attach-chip--editable"
+                      onClick={() => setEditingTo(true)}
+                      title="Click to edit"
+                    >
+                      <span>{toEmail || 'Add email...'}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* CC field */}
+              <div className="apply-step__field">
+                <span className="apply-step__field-label">CC</span>
+                <div className="apply-step__attach-area">
+                  {ccEmails.map((ccEmail, idx) => (
+                    editingCcIdx === idx ? (
+                      <input
+                        key={idx}
+                        type="email"
+                        value={ccEmail}
+                        onChange={(e) => {
+                          const updated = [...ccEmails];
+                          updated[idx] = e.target.value;
+                          setCcEmails(updated);
+                        }}
+                        onBlur={() => setEditingCcIdx(null)}
+                        onKeyDown={(e) => e.key === 'Enter' && setEditingCcIdx(null)}
+                        autoFocus
+                        style={{ fontSize: '0.8rem', width: 200 }}
+                      />
+                    ) : (
+                      <div
+                        key={idx}
+                        className="apply-step__attach-chip apply-step__attach-chip--editable"
+                        onClick={() => setEditingCcIdx(idx)}
+                        title="Click to edit"
+                      >
+                        <span>{ccEmail}</span>
+                        <button type="button" onClick={(e) => {
+                          e.stopPropagation();
+                          setCcEmails((prev) => prev.filter((_, i) => i !== idx));
+                        }}>&times;</button>
+                      </div>
+                    )
+                  ))}
+                  {showAddCc ? (
+                    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                      <input
+                        type="email"
+                        placeholder="email@example.com"
+                        value={newCcValue}
+                        onChange={(e) => setNewCcValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (newCcValue.trim()) {
+                              setCcEmails((prev) => [...prev, newCcValue.trim()]);
+                              setNewCcValue('');
+                              setShowAddCc(false);
+                            }
+                          }
+                          if (e.key === 'Escape') { setNewCcValue(''); setShowAddCc(false); }
+                        }}
+                        autoFocus
+                        style={{ fontSize: '0.8rem', width: 180 }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        style={{ padding: '2px 8px', fontSize: '0.7rem' }}
+                        onClick={() => {
+                          if (newCcValue.trim()) {
+                            setCcEmails((prev) => [...prev, newCcValue.trim()]);
+                            setNewCcValue('');
+                            setShowAddCc(false);
+                          }
+                        }}
+                      >Add</button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        style={{ padding: '2px 6px', fontSize: '0.7rem' }}
+                        onClick={() => { setNewCcValue(''); setShowAddCc(false); }}
+                      >&times;</button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="apply-step__attach-btn"
+                      onClick={() => setShowAddCc(true)}
+                      style={{ fontSize: '0.75rem' }}
+                    >
+                      + Add CC
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Subject field */}
               <div className="apply-step__field">
                 <span className="apply-step__field-label">Subject</span>
@@ -277,6 +401,8 @@ export default function PreAuthForm() {
         claim_number: cc.claim_number || '',
         approved_amount: cc.approved_amount ?? '',
         query_logs: cc.query_logs || [],
+        policy_provider_email: cc.policy_provider_email || '',
+        cc_emails: Array.isArray(cc.cc_emails) ? cc.cc_emails : [],
       });
       const count = cc.unread_count || 0;
       setUnreadCount(count);
@@ -357,7 +483,7 @@ export default function PreAuthForm() {
             <ApplyStep
               submitResult={submitResult}
               onSendSuccess={handleTimelineReplySuccess}
-              useQueryEndpoint={replyEmailType === 'QUERY' || replyEmailType === 'ADR'}
+              useQueryEndpoint
             />
           )}
           <ClaimTimeline

@@ -38,6 +38,9 @@
 
 .pp-name-card {
   @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
 
   input {
     font-size: $font-size-lg;

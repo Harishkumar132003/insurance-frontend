@@ -84,8 +84,17 @@ export const configService = {
   save: (hospitalId, data) => api.post(`/hospitals/${hospitalId}/config`, data),
 };
 
+// CC Emails
+export const ccEmailService = {
+  getByHospital: (hospitalId) => api.get(`/hospitals/${hospitalId}/cc-emails`),
+  create: (data) => api.post('/cc-emails', data),
+  update: (id, data) => api.put(`/cc-emails/${id}`, data),
+  delete: (id) => api.delete(`/cc-emails/${id}`),
+};
+
 // Form templates
 export const formTemplateService = {
+  getAll: () => api.get('/form-templates'),
   getById: (id) => api.get(`/form-templates/${id}`),
   getByProvider: () => api.get(`/form-templates/provider/first`),
 };

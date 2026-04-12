@@ -43,9 +43,14 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
-    const { access_token } = response.data;
+    const { access_token, hospital } = response.data;
 
     localStorage.setItem('access_token', access_token);
+
+    // Store hospital details if present
+    if (hospital) {
+      localStorage.setItem('hospital', JSON.stringify(hospital));
+    }
 
     const decoded = decodeToken(access_token);
     if (decoded) {
@@ -68,6 +73,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
+    localStorage.removeItem('hospital');
     setUser(null);
   };
 

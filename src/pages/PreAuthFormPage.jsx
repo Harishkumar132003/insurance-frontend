@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { formDataService, claimCaseService, policyProviderService, documentService } from '../services/api';
+import { formDataService, claimCaseService, policyProviderService, documentService, formTemplateService } from '../services/api';
 import { IconArrowLeft } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -29,8 +29,7 @@ const FORM_SECTIONS = [
     fields: [
       { key: 'patient_name', label: 'Patient Name', type: 'text' },
       { key: 'gender', label: 'Gender', type: 'radio', options: ['Male', 'Female', 'Third Gender'] },
-      { key: 'age_years', label: 'Age (Years)', type: 'number' },
-      { key: 'age_months', label: 'Age (Months)', type: 'number' },
+      { key: 'age_years', label: 'Age', type: 'number' },
       { key: 'date_of_birth', label: 'Date of Birth', type: 'date' },
       { key: 'contact_number', label: 'Contact Number', type: 'text' },
       { key: 'relative_contact_number', label: 'Relative Contact Number', type: 'text' },
@@ -154,71 +153,71 @@ const FORM_SECTIONS = [
       },
     ],
   },
-  {
-    name: 'declaration',
-    label: 'Declaration',
-    fields: [
-      { key: 'doctor_name', label: 'Doctor Name', type: 'text' },
-      { key: 'doctor_qualification', label: 'Doctor Qualification', type: 'text' },
-      { key: 'doctor_registration_number', label: 'Doctor Registration Number', type: 'text' },
-      { key: 'hospital_seal', label: 'Hospital Seal', type: 'file' },
-      { key: 'patient_signature', label: 'Patient Signature', type: 'file' },
-    ],
-  },
-  {
-    name: 'patient_declaration',
-    label: 'Patient Declaration',
-    fields: [
-      { key: 'patient_name', label: 'Patient Name', type: 'text' },
-      { key: 'contact_number', label: 'Contact Number', type: 'text' },
-      { key: 'email', label: 'Email', type: 'text' },
-      { key: 'signature', label: 'Signature', type: 'file' },
-      { key: 'date', label: 'Date', type: 'date' },
-      { key: 'time', label: 'Time', type: 'time' },
-    ],
-  },
-  {
-    name: 'cashless_authorization',
-    label: 'Cashless Authorization (Part D)',
-    fields: [
-      { key: 'claim_number', label: 'Claim Number', type: 'text' },
-      { key: 'authorization_valid_till', label: 'Authorization Valid Till', type: 'date' },
-      { key: 'insurance_company', label: 'Insurance Company', type: 'text' },
-      { key: 'tpa_name', label: 'TPA Name', type: 'text' },
-      { key: 'proposer_name', label: 'Proposer Name', type: 'text' },
-      { key: 'patient_member_id', label: 'Patient Member ID', type: 'text' },
-      { key: 'relation_with_proposer', label: 'Relation with Proposer', type: 'text' },
-    ],
-    subgroups: [
-      {
-        key: 'patient_details',
-        label: 'Patient Details',
-        fields: [
-          { key: 'name', label: 'Name', type: 'text' },
-          { key: 'age', label: 'Age', type: 'number' },
-          { key: 'gender', label: 'Gender', type: 'text' },
-        ],
-      },
-      {
-        key: 'policy_details',
-        label: 'Policy Details',
-        fields: [
-          { key: 'policy_number', label: 'Policy Number', type: 'text' },
-          { key: 'policy_period', label: 'Policy Period', type: 'text' },
-          { key: 'admission_date', label: 'Admission Date', type: 'date' },
-          { key: 'discharge_date', label: 'Discharge Date', type: 'date' },
-        ],
-      },
-    ],
-    fieldsAfterSubgroups: [
-      { key: 'room_category', label: 'Room Category', type: 'text' },
-      { key: 'estimated_stay', label: 'Estimated Stay (Days)', type: 'number' },
-      { key: 'diagnosis', label: 'Diagnosis', type: 'text' },
-      { key: 'treatment', label: 'Treatment', type: 'text' },
-      { key: 'authorization_amount', label: 'Authorization Amount', type: 'number' },
-      { key: 'remarks', label: 'Remarks', type: 'textarea' },
-    ],
-  },
+  // {
+  //   name: 'declaration',
+  //   label: 'Declaration',
+  //   fields: [
+  //     { key: 'doctor_name', label: 'Doctor Name', type: 'text' },
+  //     { key: 'doctor_qualification', label: 'Doctor Qualification', type: 'text' },
+  //     { key: 'doctor_registration_number', label: 'Doctor Registration Number', type: 'text' },
+  //     { key: 'hospital_seal', label: 'Hospital Seal', type: 'file' },
+  //     { key: 'patient_signature', label: 'Patient Signature', type: 'file' },
+  //   ],
+  // },
+  // {
+  //   name: 'patient_declaration',
+  //   label: 'Patient Declaration',
+  //   fields: [
+  //     { key: 'patient_name', label: 'Patient Name', type: 'text' },
+  //     { key: 'contact_number', label: 'Contact Number', type: 'text' },
+  //     { key: 'email', label: 'Email', type: 'text' },
+  //     { key: 'signature', label: 'Signature', type: 'file' },
+  //     { key: 'date', label: 'Date', type: 'date' },
+  //     { key: 'time', label: 'Time', type: 'time' },
+  //   ],
+  // },
+  // {
+  //   name: 'cashless_authorization',
+  //   label: 'Cashless Authorization (Part D)',
+  //   fields: [
+  //     { key: 'claim_number', label: 'Claim Number', type: 'text' },
+  //     { key: 'authorization_valid_till', label: 'Authorization Valid Till', type: 'date' },
+  //     { key: 'insurance_company', label: 'Insurance Company', type: 'text' },
+  //     { key: 'tpa_name', label: 'TPA Name', type: 'text' },
+  //     { key: 'proposer_name', label: 'Proposer Name', type: 'text' },
+  //     { key: 'patient_member_id', label: 'Patient Member ID', type: 'text' },
+  //     { key: 'relation_with_proposer', label: 'Relation with Proposer', type: 'text' },
+  //   ],
+  //   subgroups: [
+  //     {
+  //       key: 'patient_details',
+  //       label: 'Patient Details',
+  //       fields: [
+  //         { key: 'name', label: 'Name', type: 'text' },
+  //         { key: 'age', label: 'Age', type: 'number' },
+  //         { key: 'gender', label: 'Gender', type: 'text' },
+  //       ],
+  //     },
+  //     {
+  //       key: 'policy_details',
+  //       label: 'Policy Details',
+  //       fields: [
+  //         { key: 'policy_number', label: 'Policy Number', type: 'text' },
+  //         { key: 'policy_period', label: 'Policy Period', type: 'text' },
+  //         { key: 'admission_date', label: 'Admission Date', type: 'date' },
+  //         { key: 'discharge_date', label: 'Discharge Date', type: 'date' },
+  //       ],
+  //     },
+  //   ],
+  //   fieldsAfterSubgroups: [
+  //     { key: 'room_category', label: 'Room Category', type: 'text' },
+  //     { key: 'estimated_stay', label: 'Estimated Stay (Days)', type: 'number' },
+  //     { key: 'diagnosis', label: 'Diagnosis', type: 'text' },
+  //     { key: 'treatment', label: 'Treatment', type: 'text' },
+  //     { key: 'authorization_amount', label: 'Authorization Amount', type: 'number' },
+  //     { key: 'remarks', label: 'Remarks', type: 'textarea' },
+  //   ],
+  // },
 ];
 
 // ── Field renderer ──────────────────────────────────────────────────
@@ -293,6 +292,7 @@ function FieldInput({ field, value, onChange }) {
 export default function PreAuthFormPage() {
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const { claimCaseId: routeClaimCaseId } = useParams();
 
   const [uhid, setUhid] = useState('');
@@ -301,6 +301,7 @@ export default function PreAuthFormPage() {
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
+  const [customFields, setCustomFields] = useState([]);
   const [loadingCase, setLoadingCase] = useState(false);
   const [formDataId, setFormDataId] = useState(null);
   const [files, setFiles] = useState([]);
@@ -311,6 +312,8 @@ export default function PreAuthFormPage() {
   const [docViewUrl, setDocViewUrl] = useState(null);
   const [docViewName, setDocViewName] = useState('');
   const [docViewType, setDocViewType] = useState('');
+
+  const aiAppliedRef = useRef(false);
 
   // Accordion state — only first section open by default
   const [openSections, setOpenSections] = useState(() => {
@@ -332,7 +335,10 @@ export default function PreAuthFormPage() {
         const res = await policyProviderService.getAll();
         const list = Array.isArray(res.data) ? res.data : [];
         setProviders(list);
-        if (list.length > 0) setSelectedProviderId(list[0].id);
+        // Don't set default provider if AI data will handle it
+        if (!location.state?.aiData && list.length > 0) {
+          setSelectedProviderId(list[0].id);
+        }
       } catch {
         setProviders([]);
       } finally {
@@ -341,6 +347,33 @@ export default function PreAuthFormPage() {
     };
     fetchProviders();
   }, []);
+
+  // Auto-fill TPA fields when provider changes
+  useEffect(() => {
+    if (!selectedProviderId || providers.length === 0) return;
+    const provider = providers.find((p) => p.id === selectedProviderId);
+    if (!provider) return;
+
+    let hospital = {};
+    try { hospital = JSON.parse(localStorage.getItem('hospital')) || {}; } catch { /* ignore */ }
+
+    setFormData((prev) => {
+      const existing = prev.tpa_insurer_hospital || {};
+      return {
+        ...prev,
+        tpa_insurer_hospital: {
+          ...existing,
+          tpa_name: existing.tpa_name || provider.tpa_name || '',
+          tpa_toll_free_phone: existing.tpa_toll_free_phone || provider.tpa_toll_free_phone || '',
+          tpa_toll_free_fax: existing.tpa_toll_free_fax || provider.tpa_toll_free_fax || '',
+          hospital_name: existing.hospital_name || hospital.name || '',
+          hospital_address: existing.hospital_address || hospital.address || '',
+          hospital_rohini_id: existing.hospital_rohini_id || hospital.rohini_id || '',
+          hospital_email: existing.hospital_email || hospital.email || '',
+        },
+      };
+    });
+  }, [selectedProviderId, providers]);
 
   // Load claim case for editing
   useEffect(() => {
@@ -381,6 +414,100 @@ export default function PreAuthFormPage() {
     };
     loadClaimCase();
   }, [routeClaimCaseId]);
+
+  // Pre-fill from AI data passed via navigation state
+  // Waits for providers to load so we can match provider ID and avoid race conditions
+  useEffect(() => {
+    if (routeClaimCaseId || aiAppliedRef.current) return;
+    if (providers.length === 0) return; // wait for providers to load
+    const aiData = location.state?.aiData;
+    if (!aiData || typeof aiData !== 'object') return;
+    aiAppliedRef.current = true;
+
+    if (location.state?.aiUhid) setUhid(location.state.aiUhid);
+
+    // Match provider by id or provider_id
+    const aiPid = location.state?.aiProviderId;
+    if (aiPid) {
+      const match = providers.find((p) => p.id === aiPid || p.provider_id === aiPid);
+      if (match) setSelectedProviderId(match.id);
+    }
+    if (!selectedProviderId && providers.length > 0) {
+      setSelectedProviderId(providers[0].id);
+    }
+
+    // Build a lookup: field key → { section name, field type }
+    // Keep first match only (primary section) since some keys like patient_name appear in multiple sections
+    // Build a lookup: field key → { section, type, subgroup? }
+    const keyToSection = {};
+    for (const section of FORM_SECTIONS) {
+      for (const f of section.fields) {
+        if (!keyToSection[f.key]) keyToSection[f.key] = { section: section.name, type: f.type };
+      }
+      for (const sg of [...(section.subgroups || []), ...(section.additionalSubgroups || [])]) {
+        for (const f of sg.fields) {
+          if (!keyToSection[f.key]) keyToSection[f.key] = { section: section.name, type: f.type, subgroup: sg.key };
+        }
+      }
+      for (const f of (section.fieldsAfterSubgroups || [])) {
+        if (!keyToSection[f.key]) keyToSection[f.key] = { section: section.name, type: f.type };
+      }
+    }
+
+    const SKIP_KEYS = new Set(['token', 'baseurl', 'clientId', 'provider_id', 'uhid', 'summary']);
+    const prefilled = {};
+    const custom = [];
+    for (const [key, rawValue] of Object.entries(aiData)) {
+      if (rawValue === null || rawValue === undefined || rawValue === '' || SKIP_KEYS.has(key)) continue;
+      const mapping = keyToSection[key];
+
+      let value = rawValue;
+      if (typeof value === 'string') value = value.trim();
+      // Convert date strings to YYYY-MM-DD for date inputs
+      if (mapping?.type === 'date' && typeof value === 'string') {
+        if (value.includes('T')) {
+          value = value.split('T')[0];
+        } else if (/^\d{2}-\d{2}-\d{4}/.test(value)) {
+          const [dd, mm, yyyy] = value.split(/[-\s]/);
+          value = `${yyyy}-${mm}-${dd}`;
+        }
+      }
+
+      if (!mapping) {
+        custom.push({ key, value: String(value) });
+        continue;
+      }
+
+      prefilled[mapping.section] = prefilled[mapping.section] || {};
+      if (mapping.subgroup) {
+        prefilled[mapping.section][mapping.subgroup] = prefilled[mapping.section][mapping.subgroup] || {};
+        prefilled[mapping.section][mapping.subgroup][key] = value;
+      } else {
+        prefilled[mapping.section][key] = value;
+      }
+    }
+
+    if (custom.length > 0) setCustomFields(custom);
+
+    if (Object.keys(prefilled).length > 0) {
+      setFormData((prev) => {
+        const merged = { ...prev };
+        for (const [section, fields] of Object.entries(prefilled)) {
+          merged[section] = { ...(merged[section] || {}), ...fields };
+        }
+        return merged;
+      });
+      setOpenSections((prev) => {
+        const updated = { ...prev };
+        for (const sectionName of Object.keys(prefilled)) {
+          updated[sectionName] = true;
+        }
+        if (custom.length > 0) updated['custom_fields'] = true;
+        return updated;
+      });
+      toast.success('Form pre-filled with AI data');
+    }
+  }, [providers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Form helpers ──
 
@@ -475,7 +602,116 @@ export default function PreAuthFormPage() {
     }
   };
 
-  const handlePrint = () => window.print();
+  const [printing, setPrinting] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateList, setTemplateList] = useState([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState(null);
+  const [previewName, setPreviewName] = useState('');
+
+  const handlePrint = async () => {
+    setShowTemplateModal(true);
+    setLoadingTemplates(true);
+    try {
+      const res = await formTemplateService.getAll();
+      setTemplateList(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      toast.error('Failed to load templates');
+      setShowTemplateModal(false);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const getFlatFormData = () => {
+    const flat = {};
+    for (const [, sectionData] of Object.entries(formData)) {
+      for (const [key, val] of Object.entries(sectionData || {})) {
+        if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+          for (const [subKey, subVal] of Object.entries(val)) {
+            flat[subKey] = subVal;
+          }
+        } else {
+          flat[key] = val;
+        }
+      }
+    }
+    const declSection = formData.declaration || {};
+    if (declSection.doctor_name) flat.decl_doctor_name = declSection.doctor_name;
+    const pdSection = formData.patient_declaration || {};
+    if (pdSection.patient_name) flat.pd_patient_name = pdSection.patient_name;
+    if (pdSection.contact_number) flat.pd_contact_number = pdSection.contact_number;
+    if (pdSection.email) flat.pd_email = pdSection.email;
+    if (pdSection.date) flat.pd_date = pdSection.date;
+    if (pdSection.time) flat.pd_time = pdSection.time;
+    for (const cf of customFields) {
+      if (cf.key && cf.value) flat[cf.key] = cf.value;
+    }
+    return flat;
+  };
+
+  const populateAndPrint = (htmlContent) => {
+    const flat = getFlatFormData();
+    let iframe = document.getElementById('print-frame');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'print-frame';
+      iframe.style.cssText = 'position:fixed;width:0;height:0;border:none;left:-9999px;';
+      document.body.appendChild(iframe);
+    }
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(htmlContent);
+    iframeDoc.close();
+    iframe.onload = () => {
+      iframeDoc.querySelectorAll('[data-field]').forEach((el) => {
+        const field = el.getAttribute('data-field');
+        const value = flat[field];
+        if (value === undefined || value === null || value === '') return;
+        if (el.type === 'radio') {
+          if (el.value === String(value)) el.checked = true;
+        } else if (el.type === 'checkbox') {
+          el.checked = !!value;
+        } else {
+          el.value = value;
+        }
+      });
+      iframe.contentWindow.print();
+    };
+  };
+
+  const handleSelectTemplate = async (tpl) => {
+    setPrinting(true);
+    try {
+      const res = await formTemplateService.getById(tpl.id);
+      const htmlContent = res.data?.html_content;
+      if (!htmlContent) {
+        toast.error('Template has no content');
+        return;
+      }
+      setShowTemplateModal(false);
+      populateAndPrint(htmlContent);
+    } catch {
+      toast.error('Failed to load template');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const handlePreviewTemplate = async (tpl) => {
+    try {
+      const res = await formTemplateService.getById(tpl.id);
+      const htmlContent = res.data?.html_content;
+      if (!htmlContent) {
+        toast.error('Template has no content');
+        return;
+      }
+      setPreviewHtml(htmlContent);
+      setPreviewName(tpl.name || `Template #${tpl.id}`);
+    } catch {
+      toast.error('Failed to load template');
+    }
+  };
 
   const handleModalUpload = async () => {
     if (modalFiles.length === 0) return;
@@ -637,9 +873,41 @@ export default function PreAuthFormPage() {
               </div>
             ))}
 
+            {customFields.length > 0 && (
+              <div className={`preauth-section ${openSections['custom_fields'] ? '' : 'preauth-section--collapsed'}`}>
+                <h3 className="preauth-section__title" onClick={() => toggleSection('custom_fields')}>
+                  <span className="preauth-section__number">{FORM_SECTIONS.length + 1}</span>
+                  Additional Details
+                  <span className={`preauth-section__chevron ${openSections['custom_fields'] ? 'preauth-section__chevron--open' : ''}`}>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </span>
+                </h3>
+                {openSections['custom_fields'] && (
+                  <div className="preauth-section__fields">
+                    {customFields.map((cf) => (
+                      <div key={cf.key} className="form-group">
+                        <label>{cf.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</label>
+                        <input
+                          type="text"
+                          value={cf.value}
+                          onChange={(e) => {
+                            setCustomFields((prev) =>
+                              prev.map((f) => f.key === cf.key ? { ...f, value: e.target.value } : f)
+                            );
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className={`preauth-section ${openSections['documents'] ? '' : 'preauth-section--collapsed'}`}>
               <h3 className="preauth-section__title" onClick={() => toggleSection('documents')}>
-                <span className="preauth-section__number">{FORM_SECTIONS.length + 1}</span>
+                <span className="preauth-section__number">{FORM_SECTIONS.length + (customFields.length > 0 ? 2 : 1)}</span>
                 Documents
                 <span className={`preauth-section__chevron ${openSections['documents'] ? 'preauth-section__chevron--open' : ''}`}>
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -679,8 +947,8 @@ export default function PreAuthFormPage() {
             </div>
 
             <div className="preauth-form__actions">
-              <button type="button" className="btn btn--ghost" onClick={handlePrint}>
-                Print Form
+              <button type="button" className="btn btn--ghost" onClick={handlePrint} disabled={printing}>
+                {printing ? <Spinner size={18} /> : 'Print Form'}
               </button>
               <button type="submit" className="btn btn--primary" disabled={saving}>
                 {saving ? <Spinner size={18} /> : 'Save & Proceed'}
@@ -739,6 +1007,66 @@ export default function PreAuthFormPage() {
                 </a>
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Template Picker Modal */}
+      {showTemplateModal && (
+        <Modal title="Select Print Template" onClose={() => setShowTemplateModal(false)}>
+          {loadingTemplates ? (
+            <div className="page-loading"><Spinner /></div>
+          ) : templateList.length === 0 ? (
+            <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>No templates available.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {templateList.map((tpl) => (
+                <div
+                  key={tpl.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 8,
+                    background: '#fff',
+                  }}
+                >
+                  <span style={{ fontWeight: 500 }}>{tpl.name || `Template #${tpl.id}`}</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => handlePreviewTemplate(tpl)}
+                    >
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm"
+                      disabled={printing}
+                      onClick={() => handleSelectTemplate(tpl)}
+                    >
+                      {printing ? <Spinner size={14} /> : 'Select & Print'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* Template Preview Modal */}
+      {previewHtml && (
+        <Modal title={previewName} onClose={() => { setPreviewHtml(null); setPreviewName(''); }} size="lg">
+          <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+            <iframe
+              srcDoc={previewHtml}
+              title={previewName}
+              style={{ width: '100%', height: '70vh', border: 'none' }}
+            />
           </div>
         </Modal>
       )}

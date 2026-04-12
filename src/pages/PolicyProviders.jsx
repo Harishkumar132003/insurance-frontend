@@ -147,9 +147,6 @@ export default function PolicyProviders() {
               </div>
 
               <div className="pp-card__actions">
-                <button className="btn btn--ghost btn--sm" onClick={() => openEdit(p)}>
-                  <IconEdit size={14} /> Edit
-                </button>
                 <button className="btn btn--ghost btn--sm pp-card__delete-btn" onClick={() => setDeleteTarget(p)}>
                   <IconTrash size={14} />
                 </button>
