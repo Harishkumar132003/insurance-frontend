@@ -70,13 +70,17 @@ function parseProvider(rawProvider) {
   return {
     provider_id: provider.provider_id || '',
     name: provider.name || '',
+    email: provider.email || '',
+    tpa_name: provider.tpa_name || '',
+    tpa_toll_free_phone: provider.tpa_toll_free_phone || '',
+    tpa_toll_free_fax: provider.tpa_toll_free_fax || '',
     auth: parsedAuth,
     steps: parsedSteps,
     requiredFields: Array.isArray(provider.required_fields) ? provider.required_fields : [],
   };
 }
 
-function buildPayload(providerId, name, auth, steps, requiredFields) {
+function buildPayload(providerId, name, email, tpaName, tpaPhone, tpaFax, auth, steps, requiredFields) {
   const builtAuth = auth
     ? {
         type: auth.type,
@@ -91,6 +95,10 @@ function buildPayload(providerId, name, auth, steps, requiredFields) {
   return {
     provider_id: providerId,
     name,
+    email,
+    tpa_name: tpaName,
+    tpa_toll_free_phone: tpaPhone,
+    tpa_toll_free_fax: tpaFax,
     auth: builtAuth,
     steps: steps.map((s) => ({
       step: s.step,
@@ -108,6 +116,10 @@ export default function ProviderConfigForm({ provider, onSaved }) {
   const parsed = parseProvider(provider);
   const [providerId, setProviderId] = useState(parsed.provider_id);
   const [name, setName] = useState(parsed.name);
+  const [email, setEmail] = useState(parsed.email);
+  const [tpaName, setTpaName] = useState(parsed.tpa_name);
+  const [tpaPhone, setTpaPhone] = useState(parsed.tpa_toll_free_phone);
+  const [tpaFax, setTpaFax] = useState(parsed.tpa_toll_free_fax);
   const [auth, setAuth] = useState(parsed.auth);
   const [steps, setSteps] = useState(parsed.steps);
   const [requiredFields, setRequiredFields] = useState(parsed.requiredFields);
@@ -147,7 +159,7 @@ export default function ProviderConfigForm({ provider, onSaved }) {
     dragOverItem.current = null;
   };
 
-  const jsonOutput = buildPayload(providerId, name, auth, steps, requiredFields);
+  const jsonOutput = buildPayload(providerId, name, email, tpaName, tpaPhone, tpaFax, auth, steps, requiredFields);
 
   const validate = () => {
     if (!providerId.trim()) {
@@ -171,7 +183,7 @@ export default function ProviderConfigForm({ provider, onSaved }) {
 
   const handleSave = async () => {
     if (!validate()) return;
-    const payload = buildPayload(providerId, name, auth, steps, requiredFields);
+    const payload = buildPayload(providerId, name, email, tpaName, tpaPhone, tpaFax, auth, steps, requiredFields);
     setSaving(true);
     try {
       if (isEdit) {
@@ -193,6 +205,10 @@ export default function ProviderConfigForm({ provider, onSaved }) {
     const p = parseProvider(provider);
     setProviderId(p.provider_id);
     setName(p.name);
+    setEmail(p.email);
+    setTpaName(p.tpa_name);
+    setTpaPhone(p.tpa_toll_free_phone);
+    setTpaFax(p.tpa_toll_free_fax);
     setAuth(p.auth);
     setSteps(p.steps);
     setRequiredFields(p.requiredFields);
@@ -221,6 +237,46 @@ export default function ProviderConfigForm({ provider, onSaved }) {
                 placeholder="e.g. Star Health"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Email</label>
+              <input
+                type="email"
+                placeholder="e.g. admin@starhealth.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label>TPA Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Medi Assist"
+                value={tpaName}
+                onChange={(e) => setTpaName(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>TPA Toll Free Phone</label>
+              <input
+                type="text"
+                placeholder="e.g. 1-800-0042182"
+                value={tpaPhone}
+                onChange={(e) => setTpaPhone(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label>TPA Toll Free Fax</label>
+              <input
+                type="text"
+                placeholder="e.g. 1-800-7506452"
+                value={tpaFax}
+                onChange={(e) => setTpaFax(e.target.value)}
               />
             </div>
           </div>

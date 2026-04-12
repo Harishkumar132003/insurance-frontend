@@ -368,6 +368,79 @@
   }
 }
 
+// Pre-auth choice page
+.preauth-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $space-6;
+  max-width: 700px;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+
+  &__card {
+    @include card;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: $space-8 $space-6;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color $transition-base, box-shadow $transition-base, transform $transition-base;
+    background: $bg-card;
+
+    &:hover {
+      border-color: $primary;
+      box-shadow: $shadow-lg;
+      transform: translateY(-2px);
+    }
+  }
+
+  &__icon {
+    width: 64px;
+    height: 64px;
+    border-radius: $radius-lg;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: $space-5;
+
+    &--ai {
+      background: rgba($primary, 0.1);
+      color: $primary;
+    }
+
+    &--manual {
+      background: rgba($secondary, 0.1);
+      color: $secondary;
+    }
+  }
+
+  &__title {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: $space-2;
+  }
+
+  &__desc {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+}
+
+// AI fill proceed button
+.preauth-ai-proceed {
+  display: flex;
+  justify-content: center;
+  margin-top: $space-8;
+  padding-top: $space-6;
+  border-top: 1px solid $border-color;
+}
+
 // Step tracker
 .step-tracker {
   @include flex(row, center, center);
@@ -807,6 +880,22 @@
 
       &:hover {
         color: $danger;
+      }
+    }
+
+    &--readonly {
+      background: rgba($text-secondary, 0.1);
+      color: $text-primary;
+      cursor: default;
+    }
+
+    &--editable {
+      background: rgba($primary, 0.08);
+      color: $primary;
+      cursor: pointer;
+
+      &:hover {
+        background: rgba($primary, 0.15);
       }
     }
   }

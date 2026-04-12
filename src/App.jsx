@@ -13,6 +13,8 @@ import RunWorkflow from './pages/RunWorkflow';
 import ClaimList from './pages/ClaimList';
 import PreAuthForm from './pages/PreAuthForm';
 import PreAuthFormPage from './pages/PreAuthFormPage';
+import PreAuthChoicePage from './pages/PreAuthChoicePage';
+import PreAuthAIFillPage from './pages/PreAuthAIFillPage';
 import Email from './pages/Email';
 import Prompts from './pages/Prompts';
 import PolicyProviders from './pages/PolicyProviders';
@@ -112,6 +114,22 @@ export default function App() {
               />
               <Route
                 path="/pre-auth"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <PreAuthChoicePage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/pre-auth/ai"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <PreAuthAIFillPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/pre-auth/manual"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
                     <PreAuthFormPage key="new" />

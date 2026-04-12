@@ -1,12 +1,14 @@
 import { useState, useCallback, useRef } from 'react';
 import AuthSection from './AuthSection';
-import StepCard from './StepCard';
+import StepCard, { RESPONSE_MAPPING_KEYS } from './StepCard';
 import TagInput from './TagInput';
 import JSONPreview from './JSONPreview';
 import { IconPlus } from '../icons/Icons';
 import { objToKV, kvToObj } from './AuthSection';
 import { useToast } from '../Toast';
 import './ConfigComponents.scss';
+
+const PREDEFINED_KEYS = new Set(RESPONSE_MAPPING_KEYS.map((k) => k.value));
 
 const EMPTY_STEP = {
   step: '',
@@ -15,6 +17,7 @@ const EMPTY_STEP = {
   headers: [],
   body_template: '',
   response_mapping: [],
+  custom_mapping: [],
 };
 
 // Convert form state (KV arrays) → JSON output (objects)
@@ -38,7 +41,7 @@ function buildJSON(auth, steps, requiredFields) {
       method: s.method,
       headers: kvToObj(s.headers || []),
       body_template: (() => { try { return JSON.parse(s.body_template || '{}'); } catch { return {}; } })(),
-      response_mapping: kvToObj(s.response_mapping || []),
+      response_mapping: { ...kvToObj(s.response_mapping || []), ...kvToObj(s.custom_mapping || []) },
     })),
     required_fields: requiredFields || [],
   };
@@ -69,7 +72,8 @@ export function parseConfigToForm(config) {
           method: s.method || 'GET',
           headers: objToKV(s.headers),
           body_template: s.body_template ? JSON.stringify(s.body_template, null, 2) : '',
-          response_mapping: objToKV(s.response_mapping),
+          response_mapping: objToKV(s.response_mapping).filter((kv) => PREDEFINED_KEYS.has(kv.key)),
+          custom_mapping: objToKV(s.response_mapping).filter((kv) => kv.key && !PREDEFINED_KEYS.has(kv.key)),
         }))
       : [{ ...EMPTY_STEP }];
 

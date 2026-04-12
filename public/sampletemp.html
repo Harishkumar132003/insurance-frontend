@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Request for Cashless Hospitalisation – Part C &amp; Part D</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 11pt;
+    color: #111;
+    background: #e0e0e0;
+    padding: 20px 10px 60px;
+    line-height: 1.5;
+  }
+
+  .page {
+    background: #fff;
+    max-width: 780px;
+    margin: 0 auto 24px;
+    padding: 36px 48px 28px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.15);
+  }
+
+  h2.section-title {
+    text-align: center;
+    font-size: 12pt;
+    font-weight: 700;
+    text-decoration: underline;
+    text-transform: uppercase;
+    margin: 24px 0 14px;
+  }
+
+  h3.sub-title {
+    font-size: 11pt;
+    font-weight: 700;
+    text-decoration: underline;
+    text-transform: uppercase;
+    margin: 20px 0 10px;
+  }
+
+  .right-note {
+    text-align: right;
+    font-size: 10pt;
+    margin-bottom: 8px;
+  }
+
+  /* Field rows */
+  .fr {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 10px;
+    font-size: 11pt;
+  }
+  .fr .lbl { white-space: nowrap; flex-shrink: 0; }
+  .fr .val {
+    flex: 1;
+    border-bottom: 1px solid #333;
+    min-height: 20px;
+    padding: 0 4px;
+  }
+
+  /* Two/three column grids */
+  .col2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+  .col3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 20px; }
+
+  /* Indent */
+  .indent { padding-left: 28px; }
+
+  /* Checkbox / Radio inline */
+  .chk-inline {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-right: 16px; font-size: 11pt;
+  }
+  .chk-inline input { width: 14px; height: 14px; margin: 0; }
+
+  /* Numbered list items */
+  .num-item {
+    display: flex; gap: 8px; margin-bottom: 8px; font-size: 11pt;
+  }
+  .num-item .num { flex-shrink: 0; min-width: 28px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 11pt; margin-bottom: 12px; }
+  table th, table td {
+    border: 1px solid #333;
+    padding: 5px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table th { font-weight: 700; background: #ddd; }
+
+  /* Signature boxes */
+  .sig-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 20px 0; }
+  .sig-box {
+    border: 1px solid #333;
+    height: 80px;
+    display: flex; align-items: flex-end;
+    padding: 6px 10px;
+    font-size: 10pt; font-weight: 700;
+  }
+
+  /* Page footer */
+  .pg-foot {
+    text-align: right; font-size: 9pt; color: #666;
+    margin-top: 20px; padding-top: 8px; border-top: 1px solid #ccc;
+  }
+
+  /* Separator */
+  .separator { border: none; border-top: 3px solid #999; margin: 0; }
+
+  /* Inputs */
+  input[type=text], input[type=number], input[type=tel], input[type=email],
+  input[type=date], input[type=time], input[type=datetime-local] {
+    font-family: "Times New Roman", serif;
+    font-size: 11pt; color: #111;
+    border: none; border-bottom: 1px solid #333;
+    background: transparent; outline: none;
+    padding: 1px 4px; width: 100%;
+  }
+  input:focus { border-bottom: 2px solid #0d2d6b; background: #f0f4ff; }
+  textarea {
+    font-family: "Times New Roman", serif;
+    font-size: 11pt; color: #111;
+    border: 1px solid #333; background: transparent;
+    outline: none; padding: 4px 6px;
+    resize: vertical; width: 100%; min-height: 36px;
+  }
+
+  /* Declaration list */
+  .decl-list { padding-left: 20px; margin-bottom: 10px; }
+  .decl-list li { margin-bottom: 6px; font-size: 10.5pt; text-align: justify; }
+
+  /* Summary row */
+  .summary-item {
+    display: flex; gap: 12px; margin-bottom: 6px; font-size: 11pt;
+    padding: 4px 0;
+  }
+  .summary-item .s-lbl { min-width: 200px; }
+  .summary-item .s-note { font-size: 9pt; color: #666; font-style: italic; }
+  .summary-item .s-val { border-bottom: 1px solid #333; min-width: 140px; flex: 1; text-align: right; }
+
+  /* Print */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .page { box-shadow: none; margin: 0; padding: 24px 36px; }
+    @page { margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════
+     PART C (Revised) — Pages 3–8
+════════════════════════════════════════ -->
+<div class="page">
+
+  <h2 class="section-title">Request for Cashless Hospitalisation for Health Insurance<br>Policy Part – C (Revised)</h2>
+  <div class="right-note">(TO BE FILLED IN BLOCK LETTERS)</div>
+
+  <!-- ── TPA / Insurer / Hospital ── -->
+  <h3 class="sub-title">Details of the Third Party Administrator / Insurer / Hospital</h3>
+
+  <div class="fr"><span class="lbl">a.&ensp;Name of TPA / Insurance Company:</span><span class="val"><input type="text" data-field="tpa_name"></span></div>
+  <div class="fr"><span class="lbl">b.&ensp;Toll free phone number:</span><span class="val"><input type="tel" data-field="tpa_toll_free_phone"></span></div>
+  <div class="fr"><span class="lbl">c.&ensp;Toll free fax:</span><span class="val"><input type="tel" data-field="tpa_toll_free_fax"></span></div>
+  <div class="fr"><span class="lbl">d.&ensp;Name of Hospital:</span><span class="val"><input type="text" data-field="hospital_name"></span></div>
+  <div class="indent">
+    <div class="fr"><span class="lbl">i.&ensp;Address:</span><span class="val"><input type="text" data-field="hospital_address"></span></div>
+    <div class="col2">
+      <div class="fr"><span class="lbl">ii.&ensp;Rohini ID:</span><span class="val"><input type="text" data-field="hospital_rohini_id"></span></div>
+      <div class="fr"><span class="lbl">iii.&ensp;e-mail id:</span><span class="val"><input type="email" data-field="hospital_email"></span></div>
+    </div>
+  </div>
+
+  <!-- ── Insured / Patient ── -->
+  <h2 class="section-title">To Be Filled by Insured / Patient</h2>
+
+  <div class="fr"><span class="lbl">A.&ensp;Name of the Patient:</span><span class="val"><input type="text" data-field="patient_name"></span></div>
+
+  <div class="fr">
+    <span class="lbl">B.&ensp;Gender:</span>
+    <label class="chk-inline"><input type="checkbox" data-field="gender_male"> Male</label>
+    <label class="chk-inline"><input type="checkbox" data-field="gender_female"> Female</label>
+    <label class="chk-inline"><input type="checkbox" data-field="gender_third"> Third Gender</label>
+  </div>
+
+  <div class="fr"><span class="lbl">C.&ensp;Age:</span><span class="val" style="max-width:120px;"><input type="text" data-field="age_years" placeholder="(Years) / (Month)"></span></div>
+
+  <div class="fr"><span class="lbl">D.&ensp;Date of Birth:</span><span class="val" style="max-width:180px;"><input type="date" data-field="date_of_birth"></span></div>
+
+  <div class="fr"><span class="lbl">E.&ensp;Contact number:</span><span class="val"><input type="tel" data-field="contact_number"></span></div>
+
+  <div class="fr"><span class="lbl">F.&ensp;Contact number of attending Relative:</span><span class="val"><input type="tel" data-field="relative_contact_number"></span></div>
+
+  <div class="fr"><span class="lbl">G.&ensp;Insured Card ID number:</span><span class="val"><input type="text" data-field="insured_card_id"></span></div>
+
+  <div class="fr"><span class="lbl">H.&ensp;Policy number / Name of Corporate:</span><span class="val"><input type="text" data-field="policy_number"></span></div>
+
+  <div class="fr"><span class="lbl">I.&ensp;Employee ID:</span><span class="val"><input type="text" data-field="employee_id"></span></div>
+
+  <div class="fr">
+    <span class="lbl">J.&ensp;Currently do you have any other mediclaim / health insurance:</span>
+    <label class="chk-inline"><input type="checkbox" data-field="has_other_insurance_yes"> Yes</label>
+    <label class="chk-inline"><input type="checkbox" data-field="has_other_insurance_no"> No</label>
+  </div>
+  <div class="indent">
+    <div class="fr"><span class="lbl">i.&ensp;Company Name:</span><span class="val"><input type="text" data-field="other_insurance_company"></span></div>
+    <div class="fr"><span class="lbl">ii.&ensp;Give Details:</span><span class="val"><input type="text" data-field="other_insurance_details"></span></div>
+  </div>
+
+  <div class="fr">
+    <span class="lbl">K.&ensp;Do you have a family Physician:</span>
+    <label class="chk-inline"><input type="checkbox" data-field="has_family_physician_yes"> Yes</label>
+    <label class="chk-inline"><input type="checkbox" data-field="has_family_physician_no"> No</label>
+  </div>
+
+  <div class="fr"><span class="lbl">L.&ensp;Name of the Family Physician:</span><span class="val"><input type="text" data-field="family_physician_name"></span></div>
+
+  <div class="fr"><span class="lbl">M.&ensp;Contact number, if any:</span><span class="val"><input type="tel" data-field="family_physician_contact"></span></div>
+
+  <div class="fr"><span class="lbl">N.&ensp;Current Address of Insured Patient:</span><span class="val"><input type="text" data-field="address"></span></div>
+
+  <div class="fr"><span class="lbl">O.&ensp;Occupation of Insured Patient:</span><span class="val"><input type="text" data-field="occupation"></span></div>
+
+  <div style="text-align:center; font-size:10pt; margin:12px 0;">(PLEASE COMPLETE DECLARATION OF THIS FORM)</div>
+
+</div><!-- /page Part C page 3 -->
+
+
+<!-- Page 4 — Treating Doctor / Hospital -->
+<div class="page">
+
+  <h2 class="section-title">To Be Filled by Treating Doctor / Hospital</h2>
+
+  <div class="fr"><span class="lbl">A.&ensp;Name of the treating Doctor:</span><span class="val"><input type="text" data-field="doctor_name"></span></div>
+
+  <div class="fr"><span class="lbl">B.&ensp;Contact number:</span><span class="val"><input type="tel" data-field="doctor_contact"></span></div>
+
+  <div class="fr"><span class="lbl">C.&ensp;Nature of Illness / Disease with presenting complaint:</span><span class="val"><input type="text" data-field="illness_description"></span></div>
+
+  <div class="fr"><span class="lbl">D.&ensp;Relevant Critical Findings:</span><span class="val"><input type="text" data-field="critical_findings"></span></div>
+
+  <div class="fr">
+    <span class="lbl">E.&ensp;Duration of the present ailment:</span>
+    <span class="val" style="max-width:80px;"><input type="number" min="0" data-field="duration_days"></span>
+    <span>Days</span>
+  </div>
+  <div class="indent">
+    <div class="fr"><span class="lbl">i.&ensp;Date of First consultation:</span><span class="val" style="max-width:180px;"><input type="date" data-field="first_consultation_date"></span></div>
+    <div class="fr"><span class="lbl">ii.&ensp;Past history of present ailment, if any:</span><span class="val"><input type="text" data-field="past_history"></span></div>
+  </div>
+
+  <div class="fr"><span class="lbl">F.&ensp;Provisional diagnosis:</span><span class="val"><input type="text" data-field="provisional_diagnosis"></span></div>
+  <div class="indent">
+    <div class="fr"><span class="lbl">i.&ensp;ICD 10 code:</span><span class="val"><input type="text" data-field="icd10_code"></span></div>
+  </div>
+
+  <div style="margin-bottom:8px;"><strong>G.&ensp;Proposed line of treatment:</strong></div>
+  <div class="indent" style="margin-bottom:12px;">
+    <div class="num-item"><span class="num">i.</span> Medical Management <span style="margin-left:auto;"><label class="chk-inline"><input type="checkbox" data-field="medical_management"> ( ✓ )</label></span></div>
+    <div class="num-item"><span class="num">ii.</span> Surgical Management <span style="margin-left:auto;"><label class="chk-inline"><input type="checkbox" data-field="surgical_management"> ( ✓ )</label></span></div>
+    <div class="num-item"><span class="num">iii.</span> Intensive care <span style="margin-left:auto;"><label class="chk-inline"><input type="checkbox" data-field="intensive_care"> ( ✓ )</label></span></div>
+    <div class="num-item"><span class="num">iv.</span> Investigation <span style="margin-left:auto;"><label class="chk-inline"><input type="checkbox" data-field="investigation"> ( ✓ )</label></span></div>
+    <div class="num-item"><span class="num">v.</span> Non-allopathic treatment <span style="margin-left:auto;"><label class="chk-inline"><input type="checkbox" data-field="non_allopathic"> ( ✓ )</label></span></div>
+  </div>
+
+  <div class="fr"><span class="lbl">H.&ensp;If investigation and/or Medical Management, provide details:</span><span class="val"><input type="text" data-field="treatment_details"></span></div>
+  <div class="indent">
+    <div class="fr"><span class="lbl">i.&ensp;Route of Drug Administration:</span><span class="val"><input type="text" data-field="drug_route"></span></div>
+  </div>
+
+  <div class="fr"><span class="lbl">I.&ensp;If surgical, name of surgery:</span><span class="val"><input type="text" data-field="surgery_name"></span></div>
+  <div class="indent">
+    <div class="fr"><span class="lbl">i.&ensp;ICD 10 PCS code:</span><span class="val"><input type="text" data-field="surgery_icd_code"></span></div>
+  </div>
+
+  <div class="fr"><span class="lbl">J.&ensp;If other treatment, provide details:</span><span class="val"><input type="text" data-field="other_treatment"></span></div>
+
+  <div class="fr"><span class="lbl">K.&ensp;How did injury occur:</span><span class="val"><input type="text" data-field="injury_cause"></span></div>
+
+  <!-- Accident sub-section -->
+  <div style="margin-bottom:8px;"><strong>L.&ensp;In case of accident:</strong></div>
+  <div class="indent" style="margin-bottom:12px;">
+    <div class="fr">
+      <span class="lbl">i.&ensp;Is it RTA:</span>
+      <label class="chk-inline"><input type="checkbox" data-field="is_rta_yes"> Yes</label>
+      <label class="chk-inline"><input type="checkbox" data-field="is_rta_no"> No</label>
+    </div>
+    <div class="fr"><span class="lbl">ii.&ensp;Date of Injury:</span><span class="val" style="max-width:180px;"><input type="date" data-field="injury_date"></span></div>
+    <div class="fr">
+      <span class="lbl">iii.&ensp;Report to Police:</span>
+      <label class="chk-inline"><input type="checkbox" data-field="reported_to_police_yes"> Yes</label>
+      <label class="chk-inline"><input type="checkbox" data-field="reported_to_police_no"> No</label>
+    </div>
+    <div class="fr"><span class="lbl">iv.&ensp;FIR NO:</span><span class="val"><input type="text" data-field="fir_number"></span></div>
+    <div class="fr">
+      <span class="lbl">v.&ensp;Injury / Disease caused due to substance abuse / alcohol consumption:</span>
+      <label class="chk-inline"><input type="checkbox" data-field="substance_abuse_yes"> Yes</label>
+      <label class="chk-inline"><input type="checkbox" data-field="substance_abuse_no"> No</label>
+    </div>
+    <div class="fr">
+      <span class="lbl">vi.&ensp;Test conducted to establish this (if yes, attach report):</span>
+      <label class="chk-inline"><input type="checkbox" data-field="test_conducted_yes"> Yes</label>
+      <label class="chk-inline"><input type="checkbox" data-field="test_conducted_no"> No</label>
+    </div>
+  </div>
+
+  <!-- Maternity -->
+  <div class="fr">
+    <span class="lbl">m.&ensp;In case of Maternity:</span>
+    <label class="chk-inline"><input type="checkbox"> G</label>
+    <label class="chk-inline"><input type="checkbox"> P</label>
+    <label class="chk-inline"><input type="checkbox"> L</label>
+    <label class="chk-inline"><input type="checkbox"> A</label>
+  </div>
+  <div class="indent">
+    <div class="fr"><span class="lbl">i.&ensp;Expected date of Delivery:</span><span class="val" style="max-width:180px;"><input type="date" data-field="expected_delivery_date"></span></div>
+  </div>
+
+</div><!-- /page 4 -->
+
+
+<!-- Page 5 — Details of Patient Admitted -->
+<div class="page">
+
+  <h2 class="section-title">Details of Patient Admitted</h2>
+
+  <div class="fr"><span class="lbl">A.&ensp;Date of admission:</span><span class="val" style="max-width:180px;"><input type="date" data-field="admission_date"></span></div>
+
+  <div class="fr"><span class="lbl">B.&ensp;Time of admission:</span><span class="val" style="max-width:140px;"><input type="time" data-field="admission_time"></span></div>
+
+  <div class="fr">
+    <span class="lbl">C.&ensp;Is this an emergency / planned hospitalization event:</span>
+    <label class="chk-inline"><input type="checkbox" data-field="is_emergency_yes"> Emergency</label>
+    <label class="chk-inline"><input type="checkbox" data-field="is_emergency_no"> Planned</label>
+  </div>
+
+  <!-- Chronic illness -->
+  <div style="margin-bottom:6px;"><strong>D.&ensp;Mandatory Past History of any chronic illness:</strong> <span style="font-size:10pt;">If yes (Since month/year)</span></div>
+  <div class="indent" style="margin-bottom:14px;">
+    <div class="fr"><span class="lbl">i.&ensp;Diabetes</span><span class="val"><input type="text" data-field="diabetes"></span></div>
+    <div class="fr"><span class="lbl">ii.&ensp;Heart disease</span><span class="val"><input type="text" data-field="heart_disease"></span></div>
+    <div class="fr"><span class="lbl">iii.&ensp;Hypertension</span><span class="val"><input type="text" data-field="hypertension"></span></div>
+    <div class="fr"><span class="lbl">iv.&ensp;Hyperlipidemias</span><span class="val"><input type="text" data-field="hyperlipidemia"></span></div>
+    <div class="fr"><span class="lbl">v.&ensp;Osteoarthritis</span><span class="val"><input type="text" data-field="osteoarthritis"></span></div>
+    <div class="fr"><span class="lbl">vi.&ensp;Asthma / COPD / Bronchitis</span><span class="val"><input type="text" data-field="asthma_copd"></span></div>
+    <div class="fr"><span class="lbl">vii.&ensp;Cancer</span><span class="val"><input type="text" data-field="cancer"></span></div>
+    <div class="fr"><span class="lbl">viii.&ensp;Alcohol / Drug abuse</span><span class="val"><input type="text" data-field="alcohol_drug_abuse"></span></div>
+    <div class="fr"><span class="lbl">ix.&ensp;Any HIV / or STD Related ailment</span><span class="val"><input type="text" data-field="hiv_std"></span></div>
+    <div class="fr"><span class="lbl">x.&ensp;Any other ailment, give details</span><span class="val"><input type="text" data-field="other"></span></div>
+  </div>
+
+  <div class="fr">
+    <span class="lbl">E.&ensp;Expected number of Days / stay in hospital:</span>
+    <span class="val" style="max-width:80px;"><input type="number" min="0" data-field="expected_days"></span>
+    <span>Days</span>
+  </div>
+
+  <div class="fr">
+    <span class="lbl">F.&ensp;Days in ICU:</span>
+    <span class="val" style="max-width:80px;"><input type="number" min="0" data-field="icu_days"></span>
+    <span>Days</span>
+  </div>
+
+  <div class="fr"><span class="lbl">G.&ensp;Room Type:</span><span class="val"><input type="text" data-field="room_type"></span></div>
+
+  <!-- Cost estimates -->
+  <div class="fr"><span class="lbl">H.&ensp;Per day room rent + nursing and service charges + patients diet:</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="room_rent"></span></div>
+  <div class="fr"><span class="lbl">I.&ensp;Expected cost of investigation + diagnostic:</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="investigation_cost"></span></div>
+  <div class="fr"><span class="lbl">J.&ensp;ICU charges:</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="icu_charges"></span></div>
+  <div class="fr"><span class="lbl">K.&ensp;OT charges:</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="ot_charges"></span></div>
+  <div class="fr"><span class="lbl">L.&ensp;Professional fees Surgeon + Anesthetist Fees + consultation Charges:</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="professional_fees"></span></div>
+  <div class="fr"><span class="lbl">M.&ensp;Medicines + Consumables + Cost of Implants (if applicable please specify):</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="medicines_cost"></span></div>
+  <div class="fr"><span class="lbl">N.&ensp;Other hospital expenses if any:</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="other_expenses"></span></div>
+  <div class="fr"><span class="lbl">O.&ensp;All-inclusive package charges if any applicable:</span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="package_charges"></span></div>
+  <div class="fr"><span class="lbl"><strong>P.&ensp;Sum Total expected cost of hospitalization:</strong></span><span class="val" style="max-width:160px;"><input type="number" min="0" data-field="total_cost" style="font-weight:700;"></span></div>
+
+</div><!-- /page 5 -->
+
+
+<!-- Page 6 — Declaration -->
+<div class="page">
+
+  <h2 class="section-title">Declaration</h2>
+  <div style="text-align:center; font-size:10pt; margin-bottom:14px;">(Please read very carefully)</div>
+
+  <p style="margin-bottom:12px;">We confirm having read understood and agreed to the Declarations of this form</p>
+
+  <div class="fr"><span class="lbl">a.&ensp;Name of the treating doctor:</span><span class="val"><input type="text" data-field="decl_doctor_name"></span></div>
+  <div class="fr"><span class="lbl">b.&ensp;Qualification:</span><span class="val"><input type="text" data-field="doctor_qualification"></span></div>
+  <div class="fr"><span class="lbl">c.&ensp;Registration number with State code:</span><span class="val"><input type="text" data-field="doctor_registration_number"></span></div>
+
+  <div class="sig-row">
+    <div class="sig-box">Hospital Seal<br><small style="font-weight:400;">(Must include Hospital ID)</small></div>
+    <div class="sig-box">Patient / Insured Name and Sign</div>
+  </div>
+
+</div><!-- /page 6 -->
+
+
+<!-- Page 7 — Declaration by Patient / Representative -->
+<div class="page">
+
+  <h3 class="sub-title">Declaration by the Patient / Representative</h3>
+
+  <ol class="decl-list" type="a">
+    <li>I agree to allow the hospital to submit all original documents pertaining to hospitalization to the Insurer/T.P.A after the discharge. I agree to sign on the Final Bill &amp; the Discharge Summary, before my discharge.</li>
+    <li>Payment to hospital is governed by the terms and conditions of the policy. In case the Insurer / TPA is not liable to settle the hospital bill, I undertake to settle the bill as per the terms and conditions of the policy.</li>
+    <li>All non-medical expenses and expenses not relevant to current hospitalization and the amounts over &amp; above the limit authorized by the Insurer/T.P.A not governed by the terms and conditions of the policy will be paid by me.</li>
+    <li>I hereby declare to abide by the terms and conditions of the policy and if at any time the facts disclosed by me are found to be false or incorrect I forfeit my claim and agree to indemnify the Insurer / T.P.A</li>
+    <li>I agree and understand that T.P.A is in no way warranting the service of the hospital &amp; that the Insurer / TPA is in no way guaranteeing that the services provided by the hospital will be of a particular quality or standard.</li>
+    <li>I hereby warrant the truth of the forgoing particulars in every respect and I agree that if I have made or shall make any false or untrue statement, suppression or concealment with respect to the claim, my right to claim reimbursement of the said expenses shall be absolutely forfeited.</li>
+    <li>I agree to indemnify the hospital against all expenses incurred on my behalf, which are not reimbursed by the Insurer / TPA.</li>
+    <li>"I/We authorize Insurance Company/TPA to contact me/us through mobile/email for any update on this claim".</li>
+  </ol>
+
+  <div class="fr"><span class="lbl">a)&ensp;Patient's / Insured's Name:</span><span class="val"><input type="text" data-field="pd_patient_name"></span></div>
+  <div class="col2">
+    <div class="fr"><span class="lbl">b)&ensp;Contact number:</span><span class="val"><input type="tel" data-field="pd_contact_number"></span></div>
+    <div class="fr"><span class="lbl">e-mail Id (optional):</span><span class="val"><input type="email" data-field="pd_email"></span></div>
+  </div>
+  <div class="fr"><span class="lbl">d)&ensp;Patient's / Insured's Signature:</span><span class="val">&nbsp;</span></div>
+  <div class="col2">
+    <div class="fr"><span class="lbl">Date:</span><span class="val"><input type="date" data-field="pd_date"></span></div>
+    <div class="fr"><span class="lbl">Time:</span><span class="val"><input type="time" data-field="pd_time"></span></div>
+  </div>
+
+  <!-- Hospital Declaration -->
+  <h3 class="sub-title">Hospital Declaration</h3>
+  <ol class="decl-list" type="a">
+    <li>We have no objection to any authorized TPA / Insurance Company official verifying documents pertaining to hospitalization.</li>
+    <li>All valid original documents duly countersigned by the insured / patient as per the checklist below will be sent to TPA / Insurance Company within 7 days of the patient's discharge.</li>
+    <li>We agree that TPA / Insurance Company will not be liable to make the payment in the event of any discrepancy between the facts in this form and discharge summary or other documents.</li>
+    <li>The patient declaration has been signed by the patient or by his representative in our presence.</li>
+    <li>We agree to provide clarifications for the queries raised regarding this hospitalization and we take the sole responsibility for any delay in offering clarifications.</li>
+    <li>We will abide by the terms and conditions agreed in the MOU.</li>
+    <li>We confirm that no additional amount would be collected from the insured in excess of Agreed Package Rates except costs towards non-admissible amounts (including additional charges due to opting higher room rent than eligibility / choosing separate line of treatment which is not envisaged/considered in package).</li>
+    <li>We confirm that no recoveries would be made from the deposit amount collected from the Insured except for costs towards non-admissible amounts (including additional charges due to opting higher room rent than eligibility / choosing separate line of treatment which is not envisaged/considered in package).</li>
+    <li>In the event of unauthorized recovery of any additional amount from the Insured in excess of Agreed Package Rates, the authorized TPA / Insurance Company reserves the right to recover the same from us (the Network Provider) and/or take necessary action, as provided under the MOU or applicable laws.</li>
+  </ol>
+
+  <div class="col2" style="margin-top:16px;">
+    <div>
+      <div style="font-weight:700;">Hospital Seal</div>
+      <div style="height:60px;"></div>
+      <div class="col2">
+        <div class="fr"><span class="lbl">Date:</span><span class="val">&nbsp;</span></div>
+        <div class="fr"><span class="lbl">Time:</span><span class="val">&nbsp;</span></div>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-weight:700;">Doctor's Signature</div>
+    </div>
+  </div>
+
+</div><!-- /page 7-8 -->
+
+
+<hr class="separator">
+
+
+<!-- ════════════════════════════════════════
+     PART D — Cashless Authorization Letter (Pages 9–11)
+════════════════════════════════════════ -->
+<div class="page">
+
+  <h2 class="section-title">Cashless Authorization Letter</h2>
+  <div style="text-align:center; font-weight:700; margin-bottom:14px;">(Part-D)</div>
+
+  <div class="col2" style="margin-bottom:10px;">
+    <div class="fr"><span class="lbl"><strong>Claim Number:</strong></span><span class="val"><input type="text" placeholder="(Please quote for all correspondence)"></span></div>
+    <div class="fr"><span class="lbl">Date:</span><span class="val"><input type="date"></span></div>
+  </div>
+
+  <div class="fr"><span class="lbl">Authorization is valid for admission up to:</span><span class="val" style="max-width:180px;"><input type="date"></span><span>(date)</span></div>
+
+  <!-- Info grid table -->
+  <table style="margin:14px 0;">
+    <tbody>
+      <tr>
+        <td rowspan="4" style="width:40%; vertical-align:top;">
+          <div class="fr"><span class="lbl">ABC Hospital</span></div>
+          <div class="fr"><span class="lbl">Address:</span><span class="val"><input type="text"></span></div>
+          <div class="fr"><span class="lbl">Rohini Id:</span><span class="val"><input type="text"></span></div>
+        </td>
+        <td><span style="font-size:10pt; color:#666;">Name of Insurance Company</span><br><input type="text" style="width:100%;"></td>
+      </tr>
+      <tr><td><span style="font-size:10pt; color:#666;">Name of TPA</span><br><input type="text" style="width:100%;"></td></tr>
+      <tr><td><span style="font-size:10pt; color:#666;">Proposer Name</span><br><input type="text" style="width:100%;"></td></tr>
+      <tr><td><span style="font-size:10pt; color:#666;">Patient's Member ID/TPA/Insurer Id of the Patient</span><br><input type="text" style="width:100%;"></td></tr>
+      <tr>
+        <td><span style="font-size:10pt; color:#666;">Relation with Proposer</span><br><input type="text" style="width:100%;"></td>
+        <td><span style="font-size:10pt; color:#666;">Date of Letter</span><br><input type="date" style="width:100%;"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="margin-bottom:12px;">Dear Sir / Madam,<br>
+  This has reference to the pre-authorization request submitted on <input type="date" style="width:140px;border-bottom:1px solid #333;">. We hereby authorize cashless facility as per details mentioned below:</p>
+
+  <!-- Patient & Policy table -->
+  <table style="margin-bottom:12px;">
+    <tbody>
+      <tr>
+        <td><strong>Patient Name:</strong><br><input type="text" style="width:100%;"></td>
+        <td><strong>Age:</strong><br><input type="text" style="width:80px;"></td>
+        <td><strong>Gender:</strong><br><input type="text" style="width:80px;"></td>
+      </tr>
+      <tr>
+        <td><strong>Policy Number:</strong><br><input type="text" style="width:100%;"></td>
+        <td colspan="2"><strong>Expected Date of Admission:</strong><br><input type="date" style="width:100%;"></td>
+      </tr>
+      <tr>
+        <td><strong>Policy Period:</strong><br><input type="text" style="width:100%;" placeholder="DD/MM/YYYY – DD/MM/YYYY"></td>
+        <td colspan="2"><strong>Expected Date of Discharge:</strong><br><input type="date" style="width:100%;"></td>
+      </tr>
+      <tr>
+        <td><strong>Room category:</strong><br><input type="text" style="width:100%;"><br><strong>Eligible Room Category as per T&amp;C of Policy Contract:</strong><br><input type="text" style="width:100%;"></td>
+        <td colspan="2"><strong>Estimated length of stay:</strong><br><input type="text" style="width:80px;"> days</td>
+      </tr>
+      <tr>
+        <td><strong>Provisional Diagnosis:</strong><br><input type="text" style="width:100%;"></td>
+        <td colspan="2"><strong>Proposed line of treatment:</strong><br><input type="text" style="width:100%;"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Authorization Details -->
+  <div style="font-weight:700; margin-bottom:6px;">Authorization Details:</div>
+  <table style="margin-bottom:12px;">
+    <thead>
+      <tr><th>Date &amp; Time</th><th>Reference number</th><th>Amount</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><input type="text" placeholder="dd/mm/yyyy – hh:mm" style="width:100%;"></td>
+        <td><input type="text" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="text" style="width:100%;"></td>
+      </tr>
+      <tr>
+        <td><input type="text" placeholder="dd/mm/yyyy – hh:mm" style="width:100%;"></td>
+        <td><input type="text" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="text" style="width:100%;"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="fr"><span class="lbl"><strong>Total Authorized amount:- Rs</strong></span><span class="val"><input type="number" min="0"></span><span><strong>( In words )</strong></span></div>
+  <div class="fr"><span class="lbl"><strong>Authorization Remarks:</strong></span><span class="val"><input type="text"></span></div>
+
+  <!-- Hospital Agreed Tariff -->
+  <h3 class="sub-title">Hospital Agreed Tariff</h3>
+  <div class="col2">
+    <div>
+      <div style="font-weight:700; margin-bottom:6px;">I.&ensp;Package case</div>
+      <div class="fr"><span class="lbl">Agreed Package Rate:</span><span class="val"><input type="number" min="0"></span></div>
+    </div>
+    <div>
+      <div style="font-weight:700; margin-bottom:6px;">II.&ensp;Non-package Case:</div>
+      <div class="fr"><span class="lbl">i.&ensp;Room Rent/day:</span><span class="val"><input type="number" min="0"></span></div>
+      <div class="fr"><span class="lbl">ii.&ensp;ICU Rent/day:</span><span class="val"><input type="number" min="0"></span></div>
+      <div class="fr"><span class="lbl">iii.&ensp;Nursing Charges/day:</span><span class="val"><input type="number" min="0"></span></div>
+      <div class="fr"><span class="lbl">iv.&ensp;Consultant Visit Charges/day:</span><span class="val"><input type="number" min="0"></span></div>
+      <div class="fr"><span class="lbl">v.&ensp;Surgeon's fee/OT/Anaesthetist:</span><span class="val"><input type="number" min="0"></span></div>
+      <div class="fr"><span class="lbl">vi.&ensp;Others (specify):</span><span class="val"><input type="text"></span></div>
+    </div>
+  </div>
+
+  <!-- Authorization Summary -->
+  <h3 class="sub-title">Authorization Summary</h3>
+  <div style="margin-bottom:14px;">
+    <div class="summary-item"><span class="s-lbl">Total Bill Amount</span><span>: (INR)</span><span class="s-val"><input type="number" min="0" style="border:none;width:100%;text-align:right;font-family:Times New Roman,serif;font-size:11pt;outline:none;"></span></div>
+    <div class="summary-item"><span class="s-lbl">*Other Deductions</span><span class="s-note">(At the time of Final Authorization)</span><span>: (INR)</span><span class="s-val"><input type="number" min="0" style="border:none;width:100%;text-align:right;font-family:Times New Roman,serif;font-size:11pt;outline:none;"></span></div>
+    <div class="summary-item"><span class="s-lbl">Discount</span><span class="s-note">(At the time of Final Authorization)</span><span>: (INR)</span><span class="s-val"><input type="number" min="0" style="border:none;width:100%;text-align:right;font-family:Times New Roman,serif;font-size:11pt;outline:none;"></span></div>
+    <div class="summary-item"><span class="s-lbl">Co-Pay</span><span>: (INR)</span><span class="s-val"><input type="number" min="0" style="border:none;width:100%;text-align:right;font-family:Times New Roman,serif;font-size:11pt;outline:none;"></span></div>
+    <div class="summary-item"><span class="s-lbl">Deductibles</span><span>: (INR)</span><span class="s-val"><input type="number" min="0" style="border:none;width:100%;text-align:right;font-family:Times New Roman,serif;font-size:11pt;outline:none;"></span></div>
+    <div class="summary-item"><span class="s-lbl">Total Authorised Amount:</span><span>: (INR)</span><span class="s-val"><input type="number" min="0" style="border:none;width:100%;text-align:right;font-family:Times New Roman,serif;font-size:11pt;outline:none;"></span></div>
+    <div class="summary-item"><span class="s-lbl">Amount to be paid by Insured</span><span class="s-note">(At the time of Final Authorization)</span><span>: (INR)</span><span class="s-val"><input type="number" min="0" style="border:none;width:100%;text-align:right;font-family:Times New Roman,serif;font-size:11pt;outline:none;"></span></div>
+  </div>
+
+  <!-- Other Deduction Details -->
+  <div style="font-weight:700; margin-bottom:6px;">*Other Deduction Details:</div>
+  <table style="margin-bottom:14px;">
+    <thead>
+      <tr><th style="width:36px;">S.no</th><th>Description</th><th>Bill Amount</th><th>Deducted Amount</th><th>Admissible Amount</th><th>Deduction Reason</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td><input type="text" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="text" style="width:100%;"></td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><input type="text" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="number" min="0" style="width:100%;"></td>
+        <td><input type="text" style="width:100%;"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Terms & Conditions -->
+  <h3 class="sub-title">Terms and Conditions of Authorization</h3>
+  <ol class="decl-list">
+    <li>Cashless Authorization letter issued on the basis of information provided in Pre-Authorization form. In case of misrepresentation/concealment of the facts, any material difference/deviation/discrepancy in information is observed in discharge summary/IPD records then cashless authorization shall stand null &amp; void. At any point of claim processing Insurer or TPA reserves right to raise queries for any other document to ascertain admissibility of claim.</li>
+    <li>KYC (Know your customer) details of proposer/employee/Beneficiary are mandatory for claim payout above Rs 1 lakh.</li>
+    <li>Network provider shall not collect any additional amount from the individual in excess of Agreed Package Rates except costs towards non-admissible amounts (including additional charges due to opting higher room rent than eligibility / choosing separate line of treatment which is not envisaged/considered in package).</li>
+    <li>Network Provider shall not make any recovery from the deposit amount collected from the Insured except for costs towards non-admissible amounts (including additional charges due to opting higher room rent than eligibility / choosing separate line of treatment which is not envisaged/considered in package).</li>
+    <li>In the event of unauthorized recovery of any additional amount from the Insured in excess of Agreed Package Rates, the authorized TPA / Insurance Company reserves the right to recover the same or get the same refunded to the policyholder from the Network Provider and/or take necessary action, as provided under the MoU.</li>
+    <li>Where a treatment/procedure is to be carried out by a doctor/surgeon of insured's choice (not empaneled with the hospital), Network Provider may give treatment after obtaining specific consent of policyholder.</li>
+    <li>Differential Costs borne by policyholder may be reimbursed by insurers subject to the terms and conditions of the policy.</li>
+  </ol>
+
+  <!-- Documents -->
+  <div style="font-weight:700; margin:14px 0 8px;">DOCUMENTS TO BE PROVIDED BY THE HOSPITAL IN SUPPORT OF THE CLAIM</div>
+  <ol class="decl-list">
+    <li>Detailed Discharge Summary and all Bills from the hospital.</li>
+    <li>Cash Memos from the Hospitals / Chemists supported by proper prescription.</li>
+    <li>Diagnostic Test Reports and Receipts supported by note from the attending Medical Practitioner / Surgeon recommending such Diagnostic supported by note from the attending Medical Practitioner / Surgeon recommending such diagnostic tests.</li>
+    <li>Surgeon's Certificate stating nature of operation performed and Surgeon's Bill and Receipt.</li>
+    <li>Certificates from attending Medical Practitioner / Surgeon giving patient's condition and advice on discharge.</li>
+  </ol>
+
+  <!-- Product & Signatory -->
+  <div class="fr" style="margin-top:14px;"><span class="lbl"><strong><u>Name of the Product</u></strong></span><span class="val"><input type="text"></span><span><strong><u>and UIN No</u></strong></span><span class="val"><input type="text"></span><span><strong>: – <u>Important Policy terms &amp; conditions (sub-limits/co-pay/deductible etc)</u></strong></span></div>
+
+  <div class="col2" style="margin-top:20px;">
+    <div>
+      <div style="font-weight:700; margin-bottom:4px;">Authorized signatory :<br>(Insurer/TPA)</div>
+      <div style="height:80px; border:1px solid #333; margin-bottom:10px;"></div>
+    </div>
+    <div>
+      <div style="font-weight:700; margin-bottom:4px;">Address:</div>
+      <div style="height:80px; border:1px solid #333;"></div>
+    </div>
+  </div>
+
+</div><!-- /page Part D -->
+
+</body>
+</html>
