@@ -50,6 +50,7 @@ export const authService = {
 export const hospitalService = {
   getAll: () => api.get('/hospitals'),
   create: (data) => api.post('/hospitals', data),
+  update: (id, data) => api.put(`/hospitals/${id}`, data),
 };
 
 export const userService = {
@@ -59,6 +60,7 @@ export const userService = {
 
 export const workflowService = {
   run: (hospitalId, input) => api.post(`/run/${hospitalId}`, { input }),
+  summarizeContext: (data) => api.post('/summarize-context', data),
 };
 
 export const promptService = {
@@ -69,13 +71,28 @@ export const promptService = {
   delete: (hospitalId, promptId) => api.delete(`/hospitals/${hospitalId}/prompts/${promptId}`),
 };
 
+export const summaryPromptService = {
+  getAll: () => api.get('/summary-prompts'),
+  getByKey: (key) => api.get(`/summary-prompts/${encodeURIComponent(key)}`),
+  updateByKey: (key, data) => api.put(`/summary-prompts/${encodeURIComponent(key)}`, data),
+};
+
 export const policyProviderService = {
   getAll: () => api.get('/policy-providers'),
   getById: (id) => api.get(`/policy-providers/${id}`),
   create: (data) => api.post('/policy-providers', data),
   update: (id, data) => api.put(`/policy-providers/${id}`, data),
   delete: (id) => api.delete(`/policy-providers/${id}`),
-  runPolicy: (providerId, policyId) => api.post(`/run-policy/${providerId}/${policyId}`),
+  runPolicy: (providerId, policyId, file) => {
+    if (file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api.post(`/run-policy/${providerId}/${policyId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
+    return api.post(`/run-policy/${providerId}/${policyId}`);
+  },
 };
 
 // GET & POST /hospitals/{hospital_id}/config

@@ -435,10 +435,40 @@
 // AI fill proceed button
 .preauth-ai-proceed {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: $space-3;
   margin-top: $space-8;
   padding-top: $space-6;
   border-top: 1px solid $border-color;
+
+  &__summary {
+    margin-bottom: 0;
+  }
+
+  &__summary-text {
+    white-space: pre-wrap;
+    line-height: 1.7;
+    font-size: $font-size-sm;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+
+    @include mobile {
+      justify-content: stretch;
+    }
+  }
+
+  &__check-btn {
+    min-width: 240px;
+    white-space: nowrap;
+
+    @include mobile {
+      width: 100%;
+      min-width: 0;
+    }
+  }
 }
 
 // Step tracker

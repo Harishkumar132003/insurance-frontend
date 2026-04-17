@@ -328,6 +328,17 @@ export default function PreAuthFormPage() {
   };
 
   const isEdit = !!routeClaimCaseId;
+  const fromPath = location.state?.from;
+  const backPath = fromPath || (isEdit ? `/claim-list/${routeClaimCaseId}` : '/pre-auth');
+  const backLabel = backPath === '/pre-auth/ai'
+    ? 'Back to AI Fill'
+    : backPath === '/pre-auth'
+      ? 'Back to Options'
+      : backPath === '/query-management'
+        ? 'Back to Query Management'
+        : isEdit
+          ? 'Back to Claim Detail'
+          : 'Back';
 
   useEffect(() => {
     const fetchProviders = async () => {
@@ -795,12 +806,10 @@ export default function PreAuthFormPage() {
 
   return (
     <div>
-      {isEdit && (
-        <button className="gv-page__back" onClick={() => navigate(`/claim-list/${routeClaimCaseId}`)}>
-          <IconArrowLeft size={18} />
-          <span>Back to Claim Detail</span>
-        </button>
-      )}
+      <button className="gv-page__back" onClick={() => navigate(backPath)}>
+        <IconArrowLeft size={18} />
+        <span>{backLabel}</span>
+      </button>
       <div className="page-header">
         <h1>{isEdit ? 'Edit Pre Auth Form' : 'Pre Auth Form'}</h1>
         <p>{isEdit ? `Editing Claim Case #${routeClaimCaseId}` : 'Fill and submit insurance pre-authorization form'}</p>

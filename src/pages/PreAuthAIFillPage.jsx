@@ -8,13 +8,21 @@ import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import './Pages.scss';
 
-function PatientSummaryForm({ onResult }) {
+function extractSummary(result) {
+  if (!result) return '';
+  if (typeof result.summary === 'string') return result.summary;
+  if (typeof result.data?.summary === 'string') return result.data.summary;
+  return '';
+}
+
+function PatientSummaryForm({ onResult, canProceed, onProceed }) {
   const { user } = useAuth();
   const toast = useToast();
   const [uhid, setUhid] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [showSummary, setShowSummary] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const summary = extractSummary(result);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -67,21 +75,39 @@ function PatientSummaryForm({ onResult }) {
         </form>
       </div>
 
-      {result?.summary && (
-        <button
-          type="button"
-          className="btn btn--ghost btn--full"
-          style={{ marginTop: 12 }}
-          onClick={() => setShowSummary(true)}
-        >
-          View Summary
-        </button>
+      {summary && (
+        <div className="workflow__section" style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <h3 style={{ marginBottom: 0 }}>Summary</h3>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setShowSummaryModal(true)}
+            >
+              View in Popup
+            </button>
+          </div>
+          <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
+            {summary}
+          </div>
+
+          {canProceed && (
+            <button
+              type="button"
+              className="btn btn--primary btn--full"
+              style={{ marginTop: 16 }}
+              onClick={onProceed}
+            >
+              Proceed to Pre-Auth Form
+            </button>
+          )}
+        </div>
       )}
 
-      {showSummary && result?.summary && (
-        <Modal title="Patient Summary" onClose={() => setShowSummary(false)} size="lg">
+      {showSummaryModal && summary && (
+        <Modal title="Patient Summary" onClose={() => setShowSummaryModal(false)} size="lg">
           <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
-            {result.summary}
+            {summary}
           </div>
         </Modal>
       )}
@@ -95,8 +121,11 @@ function PolicyDetailForm({ onResult }) {
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [providerId, setProviderId] = useState('');
   const [policyId, setPolicyId] = useState('');
+  const [policyFile, setPolicyFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const summary = extractSummary(result);
 
   useEffect(() => {
     const fetchProviders = async () => {
@@ -130,9 +159,9 @@ function PolicyDetailForm({ onResult }) {
     setLoading(true);
     setResult(null);
     try {
-      const res = await policyProviderService.runPolicy(providerId, policyId.trim());
+      const res = await policyProviderService.runPolicy(providerId, policyId.trim(), policyFile);
       setResult(res.data);
-      onResult({ providerId, policyId: policyId.trim(), data: res.data });
+      onResult({ providerId, policyId: policyId.trim(), file: policyFile, data: res.data });
       toast.success('Policy details fetched');
     } catch {
       // handled by interceptor
@@ -180,6 +209,17 @@ function PolicyDetailForm({ onResult }) {
               />
             </div>
           </div>
+          <div className="form-group">
+            <label>Policy Document</label>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
+              onChange={(e) => setPolicyFile(e.target.files?.[0] || null)}
+            />
+            {policyFile && (
+              <small className="workflow__provider-hint">Selected: {policyFile.name}</small>
+            )}
+          </div>
           <button
             type="submit"
             className="btn btn--primary btn--full"
@@ -189,16 +229,49 @@ function PolicyDetailForm({ onResult }) {
           </button>
         </form>
       </div>
+
+      {summary && (
+        <div className="workflow__section" style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <h3 style={{ marginBottom: 0 }}>Summary</h3>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setShowSummaryModal(true)}
+            >
+              View in Popup
+            </button>
+          </div>
+          <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
+            {summary}
+          </div>
+        </div>
+      )}
+
+      {showSummaryModal && summary && (
+        <Modal title="Policy Summary" onClose={() => setShowSummaryModal(false)} size="lg">
+          <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
+            {summary}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 export default function PreAuthAIFillPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [patientResult, setPatientResult] = useState(null);
   const [policyResult, setPolicyResult] = useState(null);
+  const [claimCheckLoading, setClaimCheckLoading] = useState(false);
+  const [claimCheckResult, setClaimCheckResult] = useState(null);
 
-  const hasSomeData = patientResult || policyResult;
+  const patientSummary = extractSummary(patientResult?.data);
+  const policySummary = extractSummary(policyResult?.data);
+  const hasPatientSummary = Boolean(patientSummary);
+  const hasBothSummaries = Boolean(patientSummary && policySummary);
+  const claimCheckSummary = extractSummary(claimCheckResult);
 
   const handleProceed = () => {
     // Merge extracted data from both results into a flat key-value map
@@ -208,11 +281,52 @@ export default function PreAuthAIFillPage() {
     };
     navigate('/pre-auth/manual', {
       state: {
+        from: '/pre-auth/ai',
         aiData: merged,
         aiUhid: patientResult?.uhid || '',
         aiProviderId: policyResult?.data?.provider_id || policyResult?.providerId || '',
       },
     });
+  };
+
+  const handleCheckClaimApplicability = async () => {
+    if (!hasBothSummaries) return;
+
+    const patientData = {
+      ...(patientResult?.data?.data || patientResult?.data || {}),
+      summary: patientSummary,
+    };
+
+    if (patientResult?.uhid) {
+      patientData.uhid = patientResult.uhid;
+    }
+
+    const policyData = {
+      ...(policyResult?.data?.data || policyResult?.data || {}),
+      summary: policySummary,
+    };
+
+    if (policyResult?.providerId) {
+      policyData.provider_id = policyResult.providerId;
+    }
+    if (policyResult?.policyId) {
+      policyData.policy_id = policyResult.policyId;
+    }
+
+    setClaimCheckLoading(true);
+    setClaimCheckResult(null);
+    try {
+      const res = await workflowService.summarizeContext({
+        patient: patientData,
+        policy: policyData,
+      });
+      setClaimCheckResult(res.data);
+      toast.success('Claim applicability checked');
+    } catch {
+      // handled by interceptor
+    } finally {
+      setClaimCheckLoading(false);
+    }
   };
 
   return (
@@ -228,15 +342,33 @@ export default function PreAuthAIFillPage() {
       </div>
 
       <div className="workflow workflow--split">
-        <PatientSummaryForm onResult={setPatientResult} />
+        <PatientSummaryForm
+          onResult={setPatientResult}
+          canProceed={hasPatientSummary}
+          onProceed={handleProceed}
+        />
         <PolicyDetailForm onResult={setPolicyResult} />
       </div>
 
-      {hasSomeData && (
+      {hasBothSummaries && (
         <div className="preauth-ai-proceed">
-          <button className="btn btn--primary btn--lg" onClick={handleProceed}>
-            Proceed to Pre-Auth Form
-          </button>
+          {claimCheckSummary && (
+            <div className="workflow__section preauth-ai-proceed__summary">
+              <h3>Claim Applicability Summary</h3>
+              <div className="workflow__summary preauth-ai-proceed__summary-text">
+                {claimCheckSummary}
+              </div>
+            </div>
+          )}
+          <div className="preauth-ai-proceed__actions">
+            <button
+              className="btn btn--primary btn--lg preauth-ai-proceed__check-btn"
+              onClick={handleCheckClaimApplicability}
+              disabled={claimCheckLoading}
+            >
+              {claimCheckLoading ? <Spinner size={18} /> : 'Check Claim Applicability'}
+            </button>
+          </div>
         </div>
       )}
     </div>
