@@ -399,6 +399,10 @@
   gap: $space-6;
   align-items: start;
 
+  &--no-preview {
+    grid-template-columns: 1fr;
+  }
+
   @include tablet {
     grid-template-columns: 1fr;
   }
@@ -480,6 +484,28 @@
     @include tablet {
       order: -1;
     }
+  }
+
+  &__preview-toggle {
+    @include flex(row, flex-end, center);
+  }
+}
+
+.config-preview-switch {
+  @include flex(row, flex-start, center, $space-2);
+  font-size: $font-size-sm;
+  color: $text-secondary;
+  user-select: none;
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    accent-color: $primary;
+    cursor: pointer;
+  }
+
+  span {
+    cursor: pointer;
   }
 }
 

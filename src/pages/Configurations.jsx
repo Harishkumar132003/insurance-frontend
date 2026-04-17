@@ -17,6 +17,7 @@ export default function Configurations() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState('form'); // 'form' | 'raw'
+  const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [hospitals, setHospitals] = useState([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState('');
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -178,22 +179,24 @@ export default function Configurations() {
           )}
         </div>
 
-        <div className="view-toggle">
-          <button
-            type="button"
-            className={`view-toggle__btn ${view === 'form' ? 'view-toggle__btn--active' : ''}`}
-            onClick={() => setView('form')}
-          >
-            Form View
-          </button>
-          <button
-            type="button"
-            className={`view-toggle__btn ${view === 'raw' ? 'view-toggle__btn--active' : ''}`}
-            onClick={() => setView('raw')}
-          >
-            Raw JSON
-          </button>
-        </div>
+        {showJsonPreview && (
+          <div className="view-toggle">
+            <button
+              type="button"
+              className={`view-toggle__btn ${view === 'form' ? 'view-toggle__btn--active' : ''}`}
+              onClick={() => setView('form')}
+            >
+              Form View
+            </button>
+            <button
+              type="button"
+              className={`view-toggle__btn ${view === 'raw' ? 'view-toggle__btn--active' : ''}`}
+              onClick={() => setView('raw')}
+            >
+              Raw JSON
+            </button>
+          </div>
+        )}
       </div>
 
       {/* {!loading && Object.keys(globalVariables).length > 0 && (
@@ -228,6 +231,11 @@ export default function Configurations() {
           initialConfig={configData}
           onSave={handleFormSave}
           saving={saving}
+          showJsonPreview={showJsonPreview}
+          onShowJsonPreviewChange={(next) => {
+            setShowJsonPreview(next);
+            if (!next) setView('form');
+          }}
         />
       ) : (
         <div className="config-editor">
