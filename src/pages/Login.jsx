@@ -38,7 +38,7 @@ export default function Login() {
       if (userData.role === ROLES.SUPER_ADMIN) {
         navigate('/', { replace: true });
       } else {
-        navigate('/run-workflow', { replace: true });
+        navigate('/pre-auth', { replace: true });
       }
     } catch {
       // Error handled by API interceptor
