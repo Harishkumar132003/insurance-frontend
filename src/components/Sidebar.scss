@@ -54,6 +54,18 @@
     }
   }
 
+  &__logo-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+
+    &--collapsed {
+      width: auto;
+      height: 22px;
+    }
+  }
+
   &__nav {
     flex: 1;
     padding: $space-4 $space-3;
@@ -163,5 +175,13 @@
       color: $text-white;
       border-color: $primary;
     }
+  }
+}
+
+.sidebar:not(.sidebar--collapsed) {
+  .sidebar__brand {
+    background: linear-gradient(135deg, rgba(108, 92, 231, 0.22), rgba(108, 92, 231, 0.08));
+    padding: $space-3 $space-5;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   }
 }

@@ -17,6 +17,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from './icons/Icons';
+import oasysLogo from '../assets/oasys.svg';
 import './Sidebar.scss';
 
 const { SUPER_ADMIN, HOSPITAL_ADMIN } = ROLES;
@@ -46,8 +47,11 @@ export default function Sidebar({ collapsed, onToggle }) {
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
       <div className="sidebar__brand">
-        {!collapsed && <span className="sidebar__logo">OASYS</span>}
-        {collapsed && <span className="sidebar__logo sidebar__logo--sm">O</span>}
+        <img
+          src={oasysLogo}
+          alt="OASYS"
+          className={`sidebar__logo-image ${collapsed ? 'sidebar__logo-image--collapsed' : ''}`}
+        />
       </div>
 
       <nav className="sidebar__nav">

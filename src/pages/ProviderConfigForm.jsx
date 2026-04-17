@@ -123,6 +123,7 @@ export default function ProviderConfigForm({ provider, onSaved }) {
   const [auth, setAuth] = useState(parsed.auth);
   const [steps, setSteps] = useState(parsed.steps);
   const [requiredFields, setRequiredFields] = useState(parsed.requiredFields);
+  const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -215,8 +216,19 @@ export default function ProviderConfigForm({ provider, onSaved }) {
   }, [provider]);
 
   return (
-    <div className="config-builder">
+    <div className={`config-builder ${showJsonPreview ? '' : 'config-builder--no-preview'}`}>
       <div className="config-builder__form">
+        <div className="config-builder__preview-toggle">
+          <label className="config-preview-switch">
+            <input
+              type="checkbox"
+              checked={showJsonPreview}
+              onChange={(e) => setShowJsonPreview(e.target.checked)}
+            />
+            <span>Show JSON Preview</span>
+          </label>
+        </div>
+
         {/* Provider ID & Name */}
         <div className="pp-name-card">
           <div className="form-row">
@@ -343,9 +355,11 @@ export default function ProviderConfigForm({ provider, onSaved }) {
       </div>
 
       {/* JSON Preview */}
-      <div className="config-builder__preview">
-        <JSONPreview data={jsonOutput} />
-      </div>
+      {showJsonPreview && (
+        <div className="config-builder__preview">
+          <JSONPreview data={jsonOutput} />
+        </div>
+      )}
     </div>
   );
 }

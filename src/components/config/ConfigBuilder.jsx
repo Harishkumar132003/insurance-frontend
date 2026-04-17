@@ -84,12 +84,31 @@ export function parseConfigToForm(config) {
   };
 }
 
-export default function ConfigBuilder({ initialConfig, onSave, saving }) {
+export default function ConfigBuilder({
+  initialConfig,
+  onSave,
+  saving,
+  showJsonPreview: showJsonPreviewProp,
+  onShowJsonPreviewChange,
+}) {
   const parsed = parseConfigToForm(initialConfig);
   const [auth, setAuth] = useState(parsed.auth);
   const [steps, setSteps] = useState(parsed.steps);
   const [requiredFields, setRequiredFields] = useState(parsed.requiredFields);
+  const [internalShowJsonPreview, setInternalShowJsonPreview] = useState(true);
   const toast = useToast();
+  const showJsonPreview = typeof showJsonPreviewProp === 'boolean'
+    ? showJsonPreviewProp
+    : internalShowJsonPreview;
+
+  const handleTogglePreview = (checked) => {
+    if (typeof showJsonPreviewProp !== 'boolean') {
+      setInternalShowJsonPreview(checked);
+    }
+    if (onShowJsonPreviewChange) {
+      onShowJsonPreviewChange(checked);
+    }
+  };
 
   // Drag state
   const dragItem = useRef(null);
@@ -171,8 +190,19 @@ export default function ConfigBuilder({ initialConfig, onSave, saving }) {
   }, [initialConfig]);
 
   return (
-    <div className="config-builder">
+    <div className={`config-builder ${showJsonPreview ? '' : 'config-builder--no-preview'}`}>
       <div className="config-builder__form">
+        <div className="config-builder__preview-toggle">
+          <label className="config-preview-switch">
+            <input
+              type="checkbox"
+              checked={showJsonPreview}
+              onChange={(e) => handleTogglePreview(e.target.checked)}
+            />
+            <span>Show JSON Preview</span>
+          </label>
+        </div>
+
         {/* Steps */}
         <div className="config-builder__section">
           <div className="config-builder__section-header">
@@ -244,9 +274,11 @@ export default function ConfigBuilder({ initialConfig, onSave, saving }) {
       </div>
 
       {/* JSON Preview */}
-      <div className="config-builder__preview">
-        <JSONPreview data={jsonOutput} />
-      </div>
+      {showJsonPreview && (
+        <div className="config-builder__preview">
+          <JSONPreview data={jsonOutput} />
+        </div>
+      )}
     </div>
   );
 }

@@ -10,19 +10,19 @@ import './Pages.scss';
 // ── Static form schema ──────────────────────────────────────────────
 
 const FORM_SECTIONS = [
-  {
-    name: 'tpa_insurer_hospital',
-    label: 'TPA / Insurer / Hospital Details',
-    fields: [
-      { key: 'tpa_name', label: 'TPA Name', type: 'text' },
-      { key: 'tpa_toll_free_phone', label: 'TPA Toll Free Phone', type: 'text' },
-      { key: 'tpa_toll_free_fax', label: 'TPA Toll Free Fax', type: 'text' },
-      { key: 'hospital_name', label: 'Hospital Name', type: 'text' },
-      { key: 'hospital_address', label: 'Hospital Address', type: 'text' },
-      { key: 'hospital_rohini_id', label: 'Hospital Rohini ID', type: 'text' },
-      { key: 'hospital_email', label: 'Hospital Email', type: 'text' },
-    ],
-  },
+  // {
+  //   name: 'tpa_insurer_hospital',
+  //   label: 'TPA / Insurer / Hospital Details',
+  //   fields: [
+  //     { key: 'tpa_name', label: 'TPA Name', type: 'text' },
+  //     { key: 'tpa_toll_free_phone', label: 'TPA Toll Free Phone', type: 'text' },
+  //     { key: 'tpa_toll_free_fax', label: 'TPA Toll Free Fax', type: 'text' },
+  //     { key: 'hospital_name', label: 'Hospital Name', type: 'text' },
+  //     { key: 'hospital_address', label: 'Hospital Address', type: 'text' },
+  //     { key: 'hospital_rohini_id', label: 'Hospital Rohini ID', type: 'text' },
+  //     { key: 'hospital_email', label: 'Hospital Email', type: 'text' },
+  //   ],
+  // },
   {
     name: 'patient_insured',
     label: 'Patient / Insured Details',

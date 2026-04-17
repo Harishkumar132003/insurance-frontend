@@ -15,6 +15,7 @@ export default function GlobalVariablesPage() {
   const toast = useToast();
 
   const [hospitalName, setHospitalName] = useState('');
+  const [hospitals, setHospitals] = useState([]);
   const [variables, setVariables] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +51,7 @@ export default function GlobalVariablesPage() {
       setVariables(typeof data === 'object' && !Array.isArray(data) ? data : {});
 
       const hospitals = Array.isArray(hospRes.data) ? hospRes.data : [];
+      setHospitals(hospitals);
       const match = hospitals.find((h) => h.id === hospitalId);
       setHospitalName(match?.name || hospitalId);
     } catch {
@@ -159,9 +161,31 @@ export default function GlobalVariablesPage() {
             <div className="gv-page__count">
               {sortedEntries.length} variable{sortedEntries.length !== 1 ? 's' : ''}
             </div>
-            <button className="btn btn--primary" onClick={() => setShowAddModal(true)}>
-              <IconPlus size={18} /> Add Variable
-            </button>
+            <div className="gv-page__toolbar-right">
+              <div className="gv-page__hospital-picker">
+                <label>Hospital</label>
+                <select
+                  value={hospitalId}
+                  onChange={(e) => {
+                    const nextHospitalId = e.target.value;
+                    if (nextHospitalId && nextHospitalId !== hospitalId) {
+                      navigate(`/configurations/${nextHospitalId}`);
+                    }
+                  }}
+                  disabled={saving || hospitals.length === 0}
+                >
+                  {hospitals.length === 0 && (
+                    <option value={hospitalId}>No hospitals</option>
+                  )}
+                  {hospitals.map((h) => (
+                    <option key={h.id} value={h.id}>{h.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button className="btn btn--primary" onClick={() => setShowAddModal(true)}>
+                <IconPlus size={18} /> Add Variable
+              </button>
+            </div>
           </div>
 
           {sortedEntries.length === 0 ? (
