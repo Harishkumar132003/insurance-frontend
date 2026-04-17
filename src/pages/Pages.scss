@@ -334,6 +334,68 @@
     line-height: 1.7;
   }
 
+  &__summary-md {
+    p {
+      margin: 0 0 $space-3;
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      color: $text-primary;
+      margin: $space-2 0 $space-2;
+      line-height: 1.4;
+    }
+
+    ul, ol {
+      margin: 0 0 $space-3;
+      padding-left: $space-5;
+    }
+
+    li {
+      margin-bottom: $space-1;
+    }
+
+    code {
+      font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      background: rgba($primary, 0.08);
+      color: $text-primary;
+      padding: 1px 6px;
+      border-radius: $radius-sm;
+    }
+
+    pre {
+      margin: 0 0 $space-3;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: $radius-md;
+      padding: $space-4;
+      overflow-x: auto;
+
+      code {
+        background: transparent;
+        color: inherit;
+        padding: 0;
+        border-radius: 0;
+      }
+    }
+
+    blockquote {
+      margin: 0 0 $space-3;
+      padding: $space-2 $space-3;
+      border-left: 3px solid rgba($primary, 0.4);
+      background: rgba($primary, 0.04);
+      color: $text-secondary;
+    }
+
+    a {
+      color: $primary;
+      text-decoration: underline;
+    }
+  }
+
   &__json {
     background: #1e1e2e;
     color: #cdd6f4;
@@ -465,6 +527,34 @@
     white-space: nowrap;
 
     @include mobile {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+
+  &__proceed-btn {
+    min-width: 260px;
+    white-space: nowrap;
+
+    @include mobile {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+}
+
+.preauth-ai-check {
+  display: flex;
+  justify-content: center;
+  margin-top: $space-6;
+
+  .btn {
+    min-width: 260px;
+    white-space: nowrap;
+  }
+
+  @include mobile {
+    .btn {
       width: 100%;
       min-width: 0;
     }

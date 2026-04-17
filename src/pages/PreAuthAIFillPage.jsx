@@ -8,6 +8,163 @@ import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import './Pages.scss';
 
+function renderInlineMarkdown(text, keyPrefix = 'md') {
+  const parts = [];
+  const pattern = /(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match;
+  let index = 0;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**')) {
+      parts.push(<strong key={`${keyPrefix}-b-${index}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      parts.push(<em key={`${keyPrefix}-i-${index}`}>{token.slice(1, -1)}</em>);
+    } else if (token.startsWith('`') && token.endsWith('`')) {
+      parts.push(<code key={`${keyPrefix}-c-${index}`}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith('[')) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        parts.push(
+          <a key={`${keyPrefix}-a-${index}`} href={linkMatch[2]} target="_blank" rel="noreferrer">
+            {linkMatch[1]}
+          </a>
+        );
+      } else {
+        parts.push(token);
+      }
+    } else {
+      parts.push(token);
+    }
+    lastIndex = pattern.lastIndex;
+    index += 1;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
+function MarkdownSummary({ text, className = '' }) {
+  if (!text) return null;
+
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const blocks = [];
+  let i = 0;
+  let key = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      i += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith('```')) {
+      const codeLines = [];
+      i += 1;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i += 1;
+      }
+      i += 1;
+      blocks.push(
+        <pre key={`block-${key}`}><code>{codeLines.join('\n')}</code></pre>
+      );
+      key += 1;
+      continue;
+    }
+
+    if (/^#{1,6}\s+/.test(trimmed)) {
+      const level = Math.min(6, trimmed.match(/^#+/)[0].length);
+      const content = trimmed.replace(/^#{1,6}\s+/, '');
+      const Tag = `h${level}`;
+      blocks.push(<Tag key={`block-${key}`}>{renderInlineMarkdown(content, `h-${key}`)}</Tag>);
+      key += 1;
+      i += 1;
+      continue;
+    }
+
+    if (/^>\s+/.test(trimmed)) {
+      blocks.push(
+        <blockquote key={`block-${key}`}>
+          {renderInlineMarkdown(trimmed.replace(/^>\s+/, ''), `q-${key}`)}
+        </blockquote>
+      );
+      key += 1;
+      i += 1;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      const items = [];
+      while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^[-*]\s+/, ''));
+        i += 1;
+      }
+      blocks.push(
+        <ul key={`block-${key}`}>
+          {items.map((item, idx) => (
+            <li key={`li-${key}-${idx}`}>{renderInlineMarkdown(item, `li-${key}-${idx}`)}</li>
+          ))}
+        </ul>
+      );
+      key += 1;
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(trimmed)) {
+      const items = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^\d+\.\s+/, ''));
+        i += 1;
+      }
+      blocks.push(
+        <ol key={`block-${key}`}>
+          {items.map((item, idx) => (
+            <li key={`ol-${key}-${idx}`}>{renderInlineMarkdown(item, `ol-${key}-${idx}`)}</li>
+          ))}
+        </ol>
+      );
+      key += 1;
+      continue;
+    }
+
+    const paragraphLines = [trimmed];
+    i += 1;
+    while (i < lines.length) {
+      const next = lines[i].trim();
+      if (
+        !next ||
+        /^#{1,6}\s+/.test(next) ||
+        /^>\s+/.test(next) ||
+        /^[-*]\s+/.test(next) ||
+        /^\d+\.\s+/.test(next) ||
+        next.startsWith('```')
+      ) {
+        break;
+      }
+      paragraphLines.push(next);
+      i += 1;
+    }
+    blocks.push(
+      <p key={`block-${key}`}>
+        {renderInlineMarkdown(paragraphLines.join(' '), `p-${key}`)}
+      </p>
+    );
+    key += 1;
+  }
+
+  return <div className={`workflow__summary workflow__summary-md ${className}`.trim()}>{blocks}</div>;
+}
+
 function extractSummary(result) {
   if (!result) return '';
   if (typeof result.summary === 'string') return result.summary;
@@ -15,7 +172,7 @@ function extractSummary(result) {
   return '';
 }
 
-function PatientSummaryForm({ onResult, canProceed, onProceed }) {
+function PatientSummaryForm({ onResult }) {
   const { user } = useAuth();
   const toast = useToast();
   const [uhid, setUhid] = useState('');
@@ -87,28 +244,14 @@ function PatientSummaryForm({ onResult, canProceed, onProceed }) {
               View in Popup
             </button>
           </div>
-          <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
-            {summary}
-          </div>
+          <MarkdownSummary text={summary} />
 
-          {canProceed && (
-            <button
-              type="button"
-              className="btn btn--primary btn--full"
-              style={{ marginTop: 16 }}
-              onClick={onProceed}
-            >
-              Proceed to Pre-Auth Form
-            </button>
-          )}
         </div>
       )}
 
       {showSummaryModal && summary && (
         <Modal title="Patient Summary" onClose={() => setShowSummaryModal(false)} size="lg">
-          <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
-            {summary}
-          </div>
+          <MarkdownSummary text={summary} />
         </Modal>
       )}
     </div>
@@ -242,17 +385,13 @@ function PolicyDetailForm({ onResult }) {
               View in Popup
             </button>
           </div>
-          <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
-            {summary}
-          </div>
+          <MarkdownSummary text={summary} />
         </div>
       )}
 
       {showSummaryModal && summary && (
         <Modal title="Policy Summary" onClose={() => setShowSummaryModal(false)} size="lg">
-          <div className="workflow__summary" style={{ lineHeight: 1.7, fontSize: '0.875rem' }}>
-            {summary}
-          </div>
+          <MarkdownSummary text={summary} />
         </Modal>
       )}
     </div>
@@ -342,31 +481,36 @@ export default function PreAuthAIFillPage() {
       </div>
 
       <div className="workflow workflow--split">
-        <PatientSummaryForm
-          onResult={setPatientResult}
-          canProceed={hasPatientSummary}
-          onProceed={handleProceed}
-        />
+        <PatientSummaryForm onResult={setPatientResult} />
         <PolicyDetailForm onResult={setPolicyResult} />
       </div>
 
       {hasBothSummaries && (
+        <div className="preauth-ai-check">
+          <button
+            className="btn btn--primary btn--lg preauth-ai-proceed__check-btn"
+            onClick={handleCheckClaimApplicability}
+            disabled={claimCheckLoading}
+          >
+            {claimCheckLoading ? <Spinner size={18} /> : 'Check Claim Applicability'}
+          </button>
+        </div>
+      )}
+
+      {hasPatientSummary && (
         <div className="preauth-ai-proceed">
           {claimCheckSummary && (
             <div className="workflow__section preauth-ai-proceed__summary">
               <h3>Claim Applicability Summary</h3>
-              <div className="workflow__summary preauth-ai-proceed__summary-text">
-                {claimCheckSummary}
-              </div>
+              <MarkdownSummary text={claimCheckSummary} className="preauth-ai-proceed__summary-text" />
             </div>
           )}
           <div className="preauth-ai-proceed__actions">
             <button
-              className="btn btn--primary btn--lg preauth-ai-proceed__check-btn"
-              onClick={handleCheckClaimApplicability}
-              disabled={claimCheckLoading}
+              className="btn btn--primary btn--lg preauth-ai-proceed__proceed-btn"
+              onClick={handleProceed}
             >
-              {claimCheckLoading ? <Spinner size={18} /> : 'Check Claim Applicability'}
+              Proceed to Pre-Auth Form
             </button>
           </div>
         </div>
