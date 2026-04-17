@@ -11,6 +11,7 @@ export default function Hospitals() {
   const [hospitals, setHospitals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [rohiniId, setRohiniId] = useState('');
@@ -46,14 +47,39 @@ export default function Hospitals() {
     }
   };
 
-  const handleCreate = async (e) => {
+  const openCreate = () => {
+    setEditTarget(null);
+    setName('');
+    setAddress('');
+    setRohiniId('');
+    setEmail('');
+    setShowModal(true);
+  };
+
+  const openEdit = (h) => {
+    setEditTarget(h);
+    setName(h.name || '');
+    setAddress(h.address || '');
+    setRohiniId(h.rohini_id || '');
+    setEmail(h.email || '');
+    setShowModal(true);
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await hospitalService.create({ name, address, rohini_id: rohiniId, email });
-      toast.success('Hospital created');
+      const payload = { name, address, rohini_id: rohiniId, email };
+      if (editTarget) {
+        await hospitalService.update(editTarget.id, payload);
+        toast.success('Hospital updated');
+      } else {
+        await hospitalService.create(payload);
+        toast.success('Hospital created');
+      }
       setShowModal(false);
+      setEditTarget(null);
       setName('');
       setAddress('');
       setRohiniId('');
@@ -165,7 +191,7 @@ export default function Hospitals() {
       </div>
 
       <div className="page-toolbar">
-        <button className="btn btn--primary" onClick={() => setShowModal(true)}>
+        <button className="btn btn--primary" onClick={openCreate}>
           <IconPlus size={18} /> Create Hospital
         </button>
       </div>
@@ -200,9 +226,14 @@ export default function Hospitals() {
                   <td>{h.email || '—'}</td>
                   <td>{h.created_at ? new Date(h.created_at).toLocaleDateString() : '—'}</td>
                   <td>
-                    <button className="btn btn--ghost btn--sm" onClick={() => openManageMail(h)}>
-                      <IconMail size={14} /> Manage Mail
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn--ghost btn--sm" onClick={() => openEdit(h)}>
+                        <IconEdit size={14} /> Edit
+                      </button>
+                      <button className="btn btn--ghost btn--sm" onClick={() => openManageMail(h)}>
+                        <IconMail size={14} /> Manage Mail
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -213,8 +244,8 @@ export default function Hospitals() {
 
       {/* Create Hospital Modal */}
       {showModal && (
-        <Modal title="Create Hospital" onClose={() => setShowModal(false)}>
-          <form onSubmit={handleCreate}>
+        <Modal title={editTarget ? 'Edit Hospital' : 'Create Hospital'} onClose={() => { setShowModal(false); setEditTarget(null); }}>
+          <form onSubmit={handleSave}>
             <div className="form-group">
               <label>Hospital Name</label>
               <input
@@ -253,11 +284,11 @@ export default function Hospitals() {
               />
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setShowModal(false)}>
+              <button type="button" className="btn btn--ghost" onClick={() => { setShowModal(false); setEditTarget(null); }}>
                 Cancel
               </button>
               <button type="submit" className="btn btn--primary" disabled={saving}>
-                {saving ? <Spinner size={18} /> : 'Create'}
+                {saving ? <Spinner size={18} /> : editTarget ? 'Update' : 'Create'}
               </button>
             </div>
           </form>

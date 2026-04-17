@@ -32,7 +32,7 @@ export default function PreAuthChoicePage() {
 
         <button
           className="preauth-choice__card"
-          onClick={() => navigate('/pre-auth/manual')}
+          onClick={() => navigate('/pre-auth/manual', { state: { from: '/pre-auth' } })}
         >
           <div className="preauth-choice__icon preauth-choice__icon--manual">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

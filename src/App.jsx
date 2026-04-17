@@ -17,6 +17,7 @@ import PreAuthChoicePage from './pages/PreAuthChoicePage';
 import PreAuthAIFillPage from './pages/PreAuthAIFillPage';
 import Email from './pages/Email';
 import Prompts from './pages/Prompts';
+import SummaryPrompts from './pages/SummaryPrompts';
 import PolicyProviders from './pages/PolicyProviders';
 import Logs from './pages/Logs';
 import GlobalVariablesPage from './pages/GlobalVariablesPage';
@@ -75,6 +76,14 @@ export default function App() {
                 element={
                   <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
                     <Prompts />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/summary-prompts"
+                element={
+                  <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
+                    <SummaryPrompts />
                   </PrivateRoute>
                 }
               />
