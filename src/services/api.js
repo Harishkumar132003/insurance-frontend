@@ -84,14 +84,19 @@ export const policyProviderService = {
   update: (id, data) => api.put(`/policy-providers/${id}`, data),
   delete: (id) => api.delete(`/policy-providers/${id}`),
   runPolicy: (providerId, policyId, file) => {
+    const trimmedPolicyId = policyId?.trim();
+    const endpoint = trimmedPolicyId
+      ? `/run-policy/${providerId}/${trimmedPolicyId}`
+      : `/run-policy/${providerId}`;
+
     if (file) {
       const formData = new FormData();
       formData.append('file', file);
-      return api.post(`/run-policy/${providerId}/${policyId}`, formData, {
+      return api.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     }
-    return api.post(`/run-policy/${providerId}/${policyId}`);
+    return api.post(endpoint);
   },
 };
 

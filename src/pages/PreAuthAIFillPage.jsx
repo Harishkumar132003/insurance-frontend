@@ -290,21 +290,26 @@ function PolicyDetailForm({ onResult }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const trimmedPolicyId = policyId.trim();
     if (!providerId) {
       toast.error('Please select a policy provider');
       return;
     }
-    if (!policyId.trim()) {
-      toast.error('Please enter a Policy ID');
+    if (!trimmedPolicyId && !policyFile) {
+      toast.error('Please enter a Policy ID or upload a Policy Document');
+      return;
+    }
+    if (trimmedPolicyId && policyFile) {
+      toast.error('Please provide either Policy ID or Policy Document, not both');
       return;
     }
 
     setLoading(true);
     setResult(null);
     try {
-      const res = await policyProviderService.runPolicy(providerId, policyId.trim(), policyFile);
+      const res = await policyProviderService.runPolicy(providerId, trimmedPolicyId, policyFile);
       setResult(res.data);
-      onResult({ providerId, policyId: policyId.trim(), file: policyFile, data: res.data });
+      onResult({ providerId, policyId: trimmedPolicyId, file: policyFile, data: res.data });
       toast.success('Policy details fetched');
     } catch {
       // handled by interceptor
@@ -317,7 +322,7 @@ function PolicyDetailForm({ onResult }) {
     <div className="workflow__panel">
       <div className="workflow__form-card">
         <h2 className="workflow__card-title">Policy Details</h2>
-        <p className="workflow__card-desc">Look up policy information by provider and policy ID</p>
+        <p className="workflow__card-desc">Provide Policy ID or upload Policy Document to fetch policy details</p>
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'flex', gap: 12 }}>
             <div className="form-group" style={{ flex: 1 }}>

@@ -30,7 +30,7 @@ const menuItems = [
   { path: '/prompts', label: 'Prompts', icon: IconPrompt, roles: [SUPER_ADMIN] },
   { path: '/summary-prompts', label: 'Summary Prompts', icon: IconPrompt, roles: [SUPER_ADMIN] },
   { path: '/policy-providers', label: 'Policy Providers', icon: IconShield, roles: [SUPER_ADMIN] },
-  { path: '/claim-list', label: 'Claim List', icon: IconClaimList, roles: [HOSPITAL_ADMIN] },
+  { path: '/claim-list', label: 'PreAuth List', icon: IconClaimList, roles: [HOSPITAL_ADMIN] },
   { path: '/query-management', label: 'Query Management', icon: IconQuery, roles: [HOSPITAL_ADMIN] },
   { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, roles: [HOSPITAL_ADMIN] },
   // { path: '/run-workflow', label: 'Patient Lookup', icon: IconPlay, roles: [HOSPITAL_ADMIN] },
