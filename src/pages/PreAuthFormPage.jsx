@@ -116,18 +116,24 @@ const FORM_SECTIONS = [
       {
         key: 'chronic_conditions',
         label: 'Chronic Conditions',
-        fields: [
-          { key: 'diabetes', label: 'Diabetes', type: 'text' },
-          { key: 'heart_disease', label: 'Heart Disease', type: 'text' },
-          { key: 'hypertension', label: 'Hypertension', type: 'text' },
-          { key: 'hyperlipidemia', label: 'Hyperlipidemia', type: 'text' },
-          { key: 'osteoarthritis', label: 'Osteoarthritis', type: 'text' },
-          { key: 'asthma_copd', label: 'Asthma / COPD', type: 'text' },
-          { key: 'cancer', label: 'Cancer', type: 'text' },
-          { key: 'alcohol_drug_abuse', label: 'Alcohol / Drug Abuse', type: 'text' },
-          { key: 'hiv_std', label: 'HIV / STD', type: 'text' },
-          { key: 'other', label: 'Other', type: 'text' },
-        ],
+        fields: (() => {
+          const BOOL_OPTIONS = [
+            { value: true, label: 'True' },
+            { value: false, label: 'False' },
+          ];
+          return [
+            { key: 'diabetes', label: 'Diabetes', type: 'select', options: BOOL_OPTIONS },
+            { key: 'heart_disease', label: 'Heart Disease', type: 'select', options: BOOL_OPTIONS },
+            { key: 'hypertension', label: 'Hypertension', type: 'select', options: BOOL_OPTIONS },
+            { key: 'hyperlipidemia', label: 'Hyperlipidemia', type: 'select', options: BOOL_OPTIONS },
+            { key: 'osteoarthritis', label: 'Osteoarthritis', type: 'select', options: BOOL_OPTIONS },
+            { key: 'asthma_copd', label: 'Asthma / COPD', type: 'select', options: BOOL_OPTIONS },
+            { key: 'cancer', label: 'Cancer', type: 'select', options: BOOL_OPTIONS },
+            { key: 'alcohol_drug_abuse', label: 'Alcohol / Drug Abuse', type: 'select', options: BOOL_OPTIONS },
+            { key: 'hiv_std', label: 'HIV / STD', type: 'select', options: BOOL_OPTIONS },
+            { key: 'other', label: 'Other', type: 'text' },
+          ];
+        })(),
       },
     ],
     fieldsAfterSubgroups: [
@@ -236,6 +242,24 @@ function FieldInput({ field, value, onChange }) {
         <span className="preauth-toggle__slider" />
         <span className="preauth-toggle__label">{value ? 'Yes' : 'No'}</span>
       </label>
+    );
+  }
+
+  if (type === 'select') {
+    const selected = value === true ? 'true' : value === false ? 'false' : '';
+    return (
+      <select
+        value={selected}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(key, v === 'true' ? true : v === 'false' ? false : null);
+        }}
+      >
+        <option value="">Select…</option>
+        {(options || []).map((opt) => (
+          <option key={String(opt.value)} value={String(opt.value)}>{opt.label}</option>
+        ))}
+      </select>
     );
   }
 
@@ -782,17 +806,36 @@ export default function PreAuthFormPage() {
 
   // ── Render helpers ──
 
+  const policyChronicConditions = location.state?.policyChronicConditions || null;
+  const policyCostEstimates = location.state?.policyCostEstimates || null;
+
+  const getPolicySuggestion = (subgroupKey, fieldKey) => {
+    if (subgroupKey === 'chronic_conditions' && policyChronicConditions) {
+      return policyChronicConditions[fieldKey];
+    }
+    if (subgroupKey === 'costs' && policyCostEstimates) {
+      return policyCostEstimates[fieldKey];
+    }
+    return undefined;
+  };
+
   const renderFields = (fields, sectionName, subgroupKey) =>
-    fields.filter((f) => shouldShow(f, sectionName)).map((field) => (
-      <div key={field.key} className={`form-group ${field.type === 'textarea' ? 'form-group--wide' : ''}`}>
-        <label>{field.label}</label>
-        <FieldInput
-          field={field}
-          value={getValue(sectionName, field.key, subgroupKey)}
-          onChange={(key, val) => setValue(sectionName, key, val, subgroupKey)}
-        />
-      </div>
-    ));
+    fields.filter((f) => shouldShow(f, sectionName)).map((field) => {
+      const suggestion = getPolicySuggestion(subgroupKey, field.key);
+      return (
+        <div key={field.key} className={`form-group ${field.type === 'textarea' ? 'form-group--wide' : ''}`}>
+          <label>{field.label}</label>
+          <FieldInput
+            field={field}
+            value={getValue(sectionName, field.key, subgroupKey)}
+            onChange={(key, val) => setValue(sectionName, key, val, subgroupKey)}
+          />
+          {typeof suggestion === 'string' && suggestion.trim() && (
+            <small className="policy-suggestion">{suggestion}</small>
+          )}
+        </div>
+      );
+    });
 
   const renderSubgroups = (subgroups, sectionName) =>
     (subgroups || []).map((sg) => (

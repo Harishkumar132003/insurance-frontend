@@ -49,6 +49,7 @@ export const authService = {
 
 export const hospitalService = {
   getAll: () => api.get('/hospitals'),
+  getById: (id) => api.get(`/hospitals/${id}`),
   create: (data) => api.post('/hospitals', data),
   update: (id, data) => api.put(`/hospitals/${id}`, data),
 };
@@ -56,6 +57,8 @@ export const hospitalService = {
 export const userService = {
   getAll: (params) => api.get('/users', { params }),
   create: (data) => api.post('/users', data),
+  getFeatures: () => api.get('/users/features'),
+  updateAccess: (userId, access) => api.patch(`/users/${userId}/access`, { access }),
 };
 
 export const workflowService = {

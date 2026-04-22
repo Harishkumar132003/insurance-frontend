@@ -23,25 +23,27 @@ import './Sidebar.scss';
 const { SUPER_ADMIN, HOSPITAL_ADMIN } = ROLES;
 
 const menuItems = [
-  { path: '/', label: 'Dashboard', icon: IconDashboard, roles: [SUPER_ADMIN, HOSPITAL_ADMIN] },
-  { path: '/hospitals', label: 'Hospitals', icon: IconHospital, roles: [SUPER_ADMIN] },
-  { path: '/users', label: 'Users', icon: IconUsers, roles: [SUPER_ADMIN] },
-  { path: '/configurations', label: 'Configurations', icon: IconConfig, roles: [SUPER_ADMIN] },
-  { path: '/prompts', label: 'Prompts', icon: IconPrompt, roles: [SUPER_ADMIN] },
-  { path: '/summary-prompts', label: 'Summary Prompts', icon: IconPrompt, roles: [SUPER_ADMIN] },
-  { path: '/policy-providers', label: 'Policy Providers', icon: IconShield, roles: [SUPER_ADMIN] },
-  { path: '/claim-list', label: 'PreAuth List', icon: IconClaimList, roles: [HOSPITAL_ADMIN] },
-  { path: '/query-management', label: 'Query Management', icon: IconQuery, roles: [HOSPITAL_ADMIN] },
-  { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, roles: [HOSPITAL_ADMIN] },
-  // { path: '/run-workflow', label: 'Patient Lookup', icon: IconPlay, roles: [HOSPITAL_ADMIN] },
-  // { path: '/logs', label: 'Logs', icon: IconLogs, roles: [SUPER_ADMIN] },
+  { path: '/', label: 'Dashboard', icon: IconDashboard, feature: 'dashboard', roles: [SUPER_ADMIN, HOSPITAL_ADMIN] },
+  { path: '/hospitals', label: 'Hospitals', icon: IconHospital, feature: 'hospitals', roles: [SUPER_ADMIN] },
+  { path: '/users', label: 'Users', icon: IconUsers, feature: 'users', roles: [SUPER_ADMIN] },
+  { path: '/configurations', label: 'Configurations', icon: IconConfig, feature: 'configurations', roles: [SUPER_ADMIN] },
+  { path: '/prompts', label: 'Prompts', icon: IconPrompt, feature: 'prompts', roles: [SUPER_ADMIN] },
+  { path: '/summary-prompts', label: 'Summary Prompts', icon: IconPrompt, feature: 'summary_prompts', roles: [SUPER_ADMIN] },
+  { path: '/policy-providers', label: 'Policy Providers', icon: IconShield, feature: 'policy_providers', roles: [SUPER_ADMIN] },
+  { path: '/claim-list', label: 'PreAuth List', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN] },
+  { path: '/query-management', label: 'Query Management', icon: IconQuery, feature: 'query_management', roles: [HOSPITAL_ADMIN] },
+  { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, feature: 'preauth_form', roles: [HOSPITAL_ADMIN] },
+  { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
+  { path: '/hospital-info', label: 'Hospital Info', icon: IconHospital, feature: 'hospital_info', roles: [HOSPITAL_ADMIN] },
+  // { path: '/run-workflow', label: 'Patient Lookup', icon: IconPlay, feature: 'run_workflow', roles: [HOSPITAL_ADMIN] },
+  // { path: '/logs', label: 'Logs', icon: IconLogs, feature: 'logs', roles: [SUPER_ADMIN] },
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {
-  const { user, logout } = useAuth();
+  const { user, logout, hasFeature } = useAuth();
 
   const filteredItems = menuItems.filter(
-    (item) => item.roles.includes(user?.role)
+    (item) => item.roles.includes(user?.role) && hasFeature(item.feature)
   );
 
   return (

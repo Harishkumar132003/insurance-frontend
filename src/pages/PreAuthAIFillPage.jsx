@@ -172,6 +172,16 @@ function extractSummary(result) {
   return '';
 }
 
+function extractChronicConditions(result) {
+  if (!result) return null;
+  return result.chronic_conditions || result.data?.chronic_conditions || null;
+}
+
+function extractCostEstimates(result) {
+  if (!result) return null;
+  return result.cost_estimates || result.data?.cost_estimates || null;
+}
+
 function PatientSummaryForm({ onResult }) {
   const { user } = useAuth();
   const toast = useToast();
@@ -429,6 +439,8 @@ export default function PreAuthAIFillPage() {
         aiData: merged,
         aiUhid: patientResult?.uhid || '',
         aiProviderId: policyResult?.data?.provider_id || policyResult?.providerId || '',
+        policyChronicConditions: extractChronicConditions(policyResult?.data),
+        policyCostEstimates: extractCostEstimates(policyResult?.data),
       },
     });
   };

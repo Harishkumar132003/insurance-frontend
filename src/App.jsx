@@ -3,11 +3,14 @@ import { ToastProvider } from './components/Toast';
 import ToastBridge from './components/ToastBridge';
 import { AuthProvider, ROLES } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
+import FeatureGate from './components/FeatureGate';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Hospitals from './pages/Hospitals';
 import Users from './pages/Users';
+import ManageUsers from './pages/ManageUsers';
+import HospitalInfo from './pages/HospitalInfo';
 import Configurations from './pages/Configurations';
 import RunWorkflow from './pages/RunWorkflow';
 import ClaimList from './pages/ClaimList';
@@ -42,13 +45,23 @@ export default function App() {
               }
             >
               {/* Both roles */}
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/configurations" element={<Configurations />} />
+              <Route
+                path="/"
+                element={
+                  <FeatureGate feature="dashboard"><Dashboard /></FeatureGate>
+                }
+              />
+              <Route
+                path="/configurations"
+                element={
+                  <FeatureGate feature="configurations"><Configurations /></FeatureGate>
+                }
+              />
               <Route
                 path="/configurations/:hospitalId"
                 element={
                   <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
-                    <GlobalVariablesPage />
+                    <FeatureGate feature="configurations"><GlobalVariablesPage /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -59,7 +72,7 @@ export default function App() {
                 path="/hospitals"
                 element={
                   <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
-                    <Hospitals />
+                    <FeatureGate feature="hospitals"><Hospitals /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -67,7 +80,7 @@ export default function App() {
                 path="/users"
                 element={
                   <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
-                    <Users />
+                    <FeatureGate feature="users"><Users /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -75,7 +88,7 @@ export default function App() {
                 path="/prompts"
                 element={
                   <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
-                    <Prompts />
+                    <FeatureGate feature="prompts"><Prompts /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -83,7 +96,7 @@ export default function App() {
                 path="/summary-prompts"
                 element={
                   <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
-                    <SummaryPrompts />
+                    <FeatureGate feature="summary_prompts"><SummaryPrompts /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -91,7 +104,7 @@ export default function App() {
                 path="/policy-providers"
                 element={
                   <PrivateRoute allowedRoles={[SUPER_ADMIN]}>
-                    <PolicyProviders />
+                    <FeatureGate feature="policy_providers"><PolicyProviders /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -101,7 +114,7 @@ export default function App() {
                 path="/claim-list"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <ClaimList />
+                    <FeatureGate feature="preauth_list"><ClaimList /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -109,7 +122,7 @@ export default function App() {
                 path="/claim-list/:claimCaseId"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <PreAuthForm />
+                    <FeatureGate feature="preauth_list"><PreAuthForm /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -117,7 +130,7 @@ export default function App() {
                 path="/query-management"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <QueryManagement />
+                    <FeatureGate feature="query_management"><QueryManagement /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -125,7 +138,7 @@ export default function App() {
                 path="/pre-auth"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <PreAuthChoicePage />
+                    <FeatureGate feature="preauth_form"><PreAuthChoicePage /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -133,7 +146,7 @@ export default function App() {
                 path="/pre-auth/ai"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <PreAuthAIFillPage />
+                    <FeatureGate feature="preauth_form"><PreAuthAIFillPage /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -141,7 +154,7 @@ export default function App() {
                 path="/pre-auth/manual"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <PreAuthFormPage key="new" />
+                    <FeatureGate feature="preauth_form"><PreAuthFormPage key="new" /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -149,7 +162,7 @@ export default function App() {
                 path="/pre-auth/:claimCaseId"
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <PreAuthFormPage key="edit" />
+                    <FeatureGate feature="preauth_form"><PreAuthFormPage key="edit" /></FeatureGate>
                   </PrivateRoute>
                 }
               />
@@ -166,6 +179,22 @@ export default function App() {
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
                     <RunWorkflow />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/manage-users"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <FeatureGate feature="manage_users"><ManageUsers /></FeatureGate>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/hospital-info"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <FeatureGate feature="hospital_info"><HospitalInfo /></FeatureGate>
                   </PrivateRoute>
                 }
               />
