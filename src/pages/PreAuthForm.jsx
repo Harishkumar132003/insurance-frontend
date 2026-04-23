@@ -503,7 +503,14 @@ export default function PreAuthForm() {
     ? statusHistory[statusHistory.length - 1]?.status
     : null;
   const alreadyRaised = SUBMITTED_STAGE_STATUSES.includes(latestStageStatus);
-  const showRaiseBtn = Boolean(raiseActionByStatus[submitResult?.claim_status]) && !alreadyRaised;
+  // Claim is still a draft (initial pre-auth email hasn't been sent).
+  const isDraft = latestStageStatus === 'DRAFT' || statusHistory.length === 0;
+  const showRaiseBtn = !isDraft && Boolean(raiseActionByStatus[submitResult?.claim_status]) && !alreadyRaised;
+
+  const handleSubmitPreAuth = () => {
+    setShowReplyCompose(true);
+    setReplyEmailType('APPLIED');
+  };
 
   // Build status-timeline events from the full status_history if available,
   // otherwise fall back to a minimal derivation from claim state + emails.
@@ -612,6 +619,13 @@ export default function PreAuthForm() {
         </div>
       </div>
 
+      {/* Submit Pre-Auth (claim still in draft) */}
+      {!showReplyCompose && isDraft && (
+        <button className="claim-detail__enhance-btn" onClick={handleSubmitPreAuth}>
+          <IconPlus size={16} /> Submit Pre-Auth
+        </button>
+      )}
+
       {/* Raise Enhance / Reconsider / ADR Submit (label varies by claim_status) */}
       {!showReplyCompose && showRaiseBtn && (
         <button className="claim-detail__enhance-btn" onClick={handleRaiseEnhance}>
@@ -624,7 +638,8 @@ export default function PreAuthForm() {
         <div className="claim-detail__compose-wrap">
           <div className="claim-detail__compose-header">
             <h3>
-              {replyEmailType === 'ENHANCE_SUBMITTED' ? 'Enhance Submit'
+              {replyEmailType === 'APPLIED' ? 'Submit Pre-Auth'
+                : replyEmailType === 'ENHANCE_SUBMITTED' ? 'Enhance Submit'
                 : replyEmailType === 'RECONSIDER' ? 'Reconsider'
                 : replyEmailType === 'ADR_SUBMITTED' ? 'ADR Submit'
                 : 'Reply'}
@@ -636,7 +651,7 @@ export default function PreAuthForm() {
           <ApplyStep
             submitResult={submitResult}
             onSendSuccess={handleTimelineReplySuccess}
-            useQueryEndpoint
+            useQueryEndpoint={replyEmailType !== 'APPLIED'}
           />
         </div>
       )}
