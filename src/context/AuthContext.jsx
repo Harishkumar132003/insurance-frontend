@@ -31,6 +31,15 @@ export function AuthProvider({ children }) {
     if (token) {
       const decoded = decodeToken(token);
       if (decoded) {
+        // Merge any persisted access list from the prior login
+        try {
+          const stored = JSON.parse(localStorage.getItem('user') || 'null');
+          if (stored && Array.isArray(stored.access)) {
+            decoded.access = stored.access;
+          }
+        } catch {
+          // ignore malformed user blob
+        }
         setUser(decoded);
       } else {
         // Token invalid, clear it
@@ -43,7 +52,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
-    const { access_token, hospital } = response.data;
+    const { access_token, hospital, access } = response.data;
 
     localStorage.setItem('access_token', access_token);
 
@@ -53,17 +62,14 @@ export function AuthProvider({ children }) {
     }
 
     const decoded = decodeToken(access_token);
-    if (decoded) {
-      localStorage.setItem('user', JSON.stringify(decoded));
-      setUser(decoded);
-      return decoded;
-    }
-
-    // Fallback: if token doesn't contain role info, use response data
-    const userData = {
+    const base = decoded || {
       email: response.data.email || email,
       role: response.data.role || ROLES.HOSPITAL_ADMIN,
       hospital_id: response.data.hospital_id || null,
+    };
+    const userData = {
+      ...base,
+      access: Array.isArray(access) ? access : null,
     };
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
@@ -80,6 +86,15 @@ export function AuthProvider({ children }) {
   const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
   const isHospitalAdmin = user?.role === ROLES.HOSPITAL_ADMIN;
 
+  const hasFeature = (key) => {
+    if (!key) return true;
+    if (isSuperAdmin) return true;
+    if (!user) return false;
+    // Backend expands NULL → full access server-side; null on the client also means unrestricted.
+    if (user.access == null) return true;
+    return Array.isArray(user.access) && user.access.includes(key);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -90,6 +105,7 @@ export function AuthProvider({ children }) {
         isAuthenticated: !!user,
         isSuperAdmin,
         isHospitalAdmin,
+        hasFeature,
       }}
     >
       {children}

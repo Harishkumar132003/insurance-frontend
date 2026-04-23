@@ -1762,3 +1762,583 @@
     }
   }
 }
+
+// ── Claim Detail (redesigned) ──────────────────────────────────────
+.claim-detail {
+  display: flex;
+  flex-direction: column;
+  gap: $space-5;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: $space-4;
+    flex-wrap: wrap;
+  }
+
+  &__back {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: $space-2 $space-3;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover { background: #f9fafb; }
+  }
+
+  &__title-block {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: $font-size-2xl;
+    font-weight: 700;
+    color: $text-primary;
+  }
+
+  &__subtitle {
+    margin: 2px 0 0 0;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  &__status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: 6px 14px;
+    background: #dcfce7;
+    border-radius: $radius-full;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: #16a34a;
+
+    &--info    { background: #dbeafe; color: #2563eb; }
+    &--warning { background: #fef3c7; color: #b45309; }
+    &--danger  { background: #fee2e2; color: #b91c1c; }
+    &--default { background: #f3f4f6; color: $text-secondary; }
+  }
+
+  &__status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  // Stat cards
+  &__stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: $space-4;
+    @media (max-width: 900px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  &__stat {
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    padding: $space-4 $space-5;
+  }
+
+  &__stat-label {
+    font-size: $font-size-xs;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    color: $text-light;
+    text-transform: uppercase;
+    margin-bottom: $space-2;
+  }
+
+  &__stat-value {
+    font-size: $font-size-lg;
+    font-weight: 700;
+    color: $text-primary;
+
+    &--approved { color: #16a34a; }
+    &--icd      { color: $primary; }
+  }
+
+  // Raise Enhance button
+  &__enhance-btn {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: 10px 18px;
+    background: $primary;
+    color: $text-white;
+    border: none;
+    border-radius: $radius-md;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover { background: $primary-dark; }
+  }
+
+  // Inline compose wrapper
+  &__compose-wrap {
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    padding: $space-4;
+  }
+
+  &__compose-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: $space-3;
+
+    h3 { margin: 0; font-size: $font-size-lg; color: $text-primary; }
+  }
+
+  &__accordions {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+  }
+}
+
+// ── Accordion ──────────────────────────────────────────────────────
+.claim-accordion {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-lg;
+  overflow: hidden;
+
+  &__head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    padding: $space-4 $space-5;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+
+    &:hover { background: #f9fafb; }
+  }
+
+  &__num {
+    flex-shrink: 0;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: $primary;
+    color: $text-white;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: $font-size-sm;
+    font-weight: 600;
+  }
+
+  &__title {
+    flex: 1;
+    font-size: $font-size-base;
+    font-weight: 600;
+    color: $text-primary;
+  }
+
+  &__chev {
+    color: $text-light;
+    transition: transform 0.2s;
+    transform: rotate(90deg);
+    display: inline-flex;
+  }
+
+  &--open &__chev {
+    transform: rotate(-90deg);
+  }
+
+  &__body {
+    padding: $space-4 $space-5 $space-5;
+    border-top: 1px solid $border-color;
+  }
+}
+
+// ── Claim status timeline ─────────────────────────────────────────
+.claim-status-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+
+  &__empty {
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    text-align: center;
+    padding: $space-4;
+  }
+
+  &__row {
+    display: flex;
+    gap: $space-4;
+  }
+
+  &__track {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 4px;
+  }
+
+  &__dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: $bg-card;
+    border: 3px solid $primary;
+    box-shadow: 0 0 0 2px rgba($primary, 0.15);
+    flex-shrink: 0;
+  }
+
+  &__row--success &__dot { border-color: #16a34a; box-shadow: 0 0 0 2px rgba(#16a34a, 0.15); }
+  &__row--warning &__dot { border-color: $warning; box-shadow: 0 0 0 2px rgba($warning, 0.15); }
+  &__row--danger  &__dot { border-color: $danger;  box-shadow: 0 0 0 2px rgba($danger, 0.15); }
+  &__row--info    &__dot { border-color: $info;    box-shadow: 0 0 0 2px rgba($info, 0.15); }
+
+  &__line {
+    flex: 1;
+    width: 2px;
+    background: $border-color;
+    margin-top: 6px;
+    min-height: 28px;
+  }
+
+  &__content {
+    flex: 1;
+    padding-bottom: $space-3;
+  }
+
+  &__row-head {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    margin-bottom: $space-2;
+    flex-wrap: wrap;
+  }
+
+  &__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: rgba($primary, 0.1);
+    color: $primary;
+    border-radius: $radius-full;
+    font-size: $font-size-xs;
+    font-weight: 600;
+
+    &--success { background: #dcfce7; color: #16a34a; }
+    &--info    { background: #dbeafe; color: #2563eb; }
+    &--warning { background: #fef3c7; color: #b45309; }
+    &--danger  { background: #fee2e2; color: #b91c1c; }
+  }
+
+  &__pill-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  &__amount {
+    font-size: $font-size-sm;
+    font-weight: 700;
+    color: #16a34a;
+  }
+
+  &__desc {
+    font-size: $font-size-sm;
+    color: $text-primary;
+    margin-bottom: 4px;
+  }
+
+  &__time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: $font-size-xs;
+    color: $text-light;
+  }
+
+  &__time-ico {
+    font-size: 11px;
+  }
+}
+
+// ── Category empty state ──────────────────────────────────────────
+.claim-category__empty {
+  color: $text-secondary;
+  font-size: $font-size-sm;
+  text-align: center;
+  padding: $space-4;
+}
+
+// ── Pre-Auth Tracker (/claim-list) ────────────────────────────────
+.preauth-tracker {
+  display: flex;
+  flex-direction: column;
+  gap: $space-5;
+
+  &__header {
+    display: flex;
+    flex-direction: column;
+    gap: $space-1;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: $font-size-2xl;
+    font-weight: 700;
+    color: $text-primary;
+  }
+
+  &__subtitle {
+    margin: 0;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  &__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+  }
+
+  &__filter {
+    padding: 6px 16px;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-full;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    color: $text-primary;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+
+    &:hover { border-color: $primary; color: $primary; }
+
+    &--active {
+      background: $primary;
+      border-color: $primary;
+      color: $text-white;
+
+      &:hover { color: $text-white; background: $primary-dark; border-color: $primary-dark; }
+    }
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    max-width: 960px;
+    width: 100%;
+    margin: 0 auto;
+    max-height: calc(100vh - 240px);
+    overflow-y: auto;
+    padding-right: $space-2;
+  }
+}
+
+.preauth-card {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-lg;
+  padding: $space-4 $space-5;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+
+  &:hover {
+    border-color: $primary;
+    box-shadow: 0 2px 8px rgba($primary, 0.08);
+  }
+
+  &--overdue {
+    border-color: #fecaca;
+    &:hover { border-color: $danger; }
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    flex-wrap: wrap;
+
+    &--head {
+      justify-content: space-between;
+    }
+  }
+
+  &__title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-3;
+  }
+
+  &__pa {
+    font-size: $font-size-lg;
+    font-weight: 700;
+    color: $text-primary;
+  }
+
+  &__overdue {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #fee2e2;
+    color: #b91c1c;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border-radius: $radius-sm;
+    text-transform: uppercase;
+  }
+
+  &__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: $radius-full;
+    font-size: $font-size-xs;
+    font-weight: 600;
+
+    &--success { background: #dcfce7; color: #16a34a; }
+    &--info    { background: #dbeafe; color: #2563eb; }
+    &--warning { background: #fef3c7; color: #b45309; }
+    &--danger  { background: #fee2e2; color: #b91c1c; }
+    &--default { background: #f3f4f6; color: $text-secondary; }
+  }
+
+  &__status-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  &__patient {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  &__meta {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+    gap: $space-4;
+  }
+
+  &__insurer {
+    font-weight: 600;
+    color: $text-primary;
+  }
+
+  &__tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: $radius-sm;
+    font-size: $font-size-xs;
+    font-weight: 600;
+
+    &--enhance    { background: rgba($primary, 0.1); color: $primary; }
+    &--adr        { background: #fee2e2; color: #b91c1c; }
+    &--reconsider { background: #fef3c7; color: #b45309; }
+  }
+}
+
+// ── Hospital Info page ────────────────────────────────────────────
+.hospital-info {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-lg;
+  padding: $space-5;
+  max-width: 820px;
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $space-4 $space-5;
+
+    @media (max-width: 700px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &__label {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: $text-light;
+  }
+
+  &__value {
+    font-size: $font-size-sm;
+    color: $text-primary;
+    padding: 8px 10px;
+    background: #f9fafb;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    min-height: 36px;
+    word-break: break-word;
+  }
+
+  &__field--editable input {
+    font-size: $font-size-sm;
+    padding: 8px 10px;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    outline: none;
+    transition: border-color 0.15s;
+
+    &:focus { border-color: $primary; }
+  }
+
+  &__actions {
+    margin-top: $space-5;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  &__pw-status {
+    display: inline-block;
+    margin-left: $space-2;
+    padding: 1px 8px;
+    border-radius: $radius-full;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+
+    &--set { background: #dcfce7; color: #16a34a; }
+    &--missing { background: #fee2e2; color: #b91c1c; }
+  }
+}
+
+// ── Policy suggestion (chronic conditions + cost estimates) ───────
+.policy-suggestion {
+  display: block;
+  margin-top: 4px;
+  font-size: $font-size-xs;
+  color: $primary;
+  line-height: 1.35;
+}

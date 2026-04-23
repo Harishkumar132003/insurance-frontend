@@ -22,6 +22,11 @@ export default function Users() {
     role: 'HOSPITAL_ADMIN',
     hospital_id: '',
   });
+  const [formAccess, setFormAccess] = useState(null); // null = full access
+  const [featureList, setFeatureList] = useState([]);
+  const [accessEditUser, setAccessEditUser] = useState(null);
+  const [accessDraft, setAccessDraft] = useState(null); // null = full access, [] = restricted
+  const [accessSaving, setAccessSaving] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -36,6 +41,20 @@ export default function Users() {
         const hRes = await hospitalService.getAll();
         hospitalList = Array.isArray(hRes.data) ? hRes.data : [];
         setHospitals(hospitalList);
+      }
+      // Load canonical feature list (used by the access modal)
+      try {
+        const fRes = await userService.getFeatures();
+        const raw = Array.isArray(fRes.data?.features) ? fRes.data.features : Array.isArray(fRes.data) ? fRes.data : [];
+        // Normalize to { key, label } — backend may return strings or objects
+        const list = raw.map((f) => (
+          typeof f === 'string'
+            ? { key: f, label: f.replace(/_/g, ' ') }
+            : { key: f.key, label: f.label || f.key?.replace(/_/g, ' ') }
+        )).filter((f) => f.key);
+        setFeatureList(list);
+      } catch {
+        setFeatureList([]);
       }
       await fetchUsers();
     } catch {
@@ -72,11 +91,18 @@ export default function Users() {
     e.preventDefault();
     if (!form.email || !form.password) return;
 
+    // Collapse fully-checked access list to null (= full access) to match backend NULL semantics.
+    const accessForPayload =
+      Array.isArray(formAccess) && featureList.length > 0 && featureList.every((f) => formAccess.includes(f.key))
+        ? null
+        : formAccess;
+
     const payload = {
       email: form.email,
       password: form.password,
       role: form.role,
       hospital_id: form.hospital_id || null,
+      access: accessForPayload,
     };
 
     setSaving(true);
@@ -85,12 +111,70 @@ export default function Users() {
       toast.success('User created');
       setShowModal(false);
       setForm({ email: '', password: '', role: 'HOSPITAL_ADMIN', hospital_id: '' });
+      setFormAccess(null);
       fetchUsers(filterHospitalId || undefined);
     } catch {
       // handled
     } finally {
       setSaving(false);
     }
+  };
+
+  const toggleFormAccess = (key) => {
+    setFormAccess((prev) => {
+      const current = Array.isArray(prev) ? prev : featureList.map((f) => f.key);
+      return current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+    });
+  };
+
+  const openAccessEditor = (user) => {
+    setAccessEditUser(user);
+    setAccessDraft(Array.isArray(user.access) ? [...user.access] : null);
+  };
+
+  const closeAccessEditor = () => {
+    setAccessEditUser(null);
+    setAccessDraft(null);
+  };
+
+  const toggleFeature = (key) => {
+    setAccessDraft((prev) => {
+      const current = Array.isArray(prev) ? prev : featureList.map((f) => f.key);
+      return current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+    });
+  };
+
+  const restoreFullAccess = () => setAccessDraft(null);
+
+  const saveAccess = async () => {
+    if (!accessEditUser) return;
+    // If every known feature is selected, collapse to null (= full access) to match backend semantics.
+    const payload = Array.isArray(accessDraft) && featureList.length > 0 && featureList.every((f) => accessDraft.includes(f.key))
+      ? null
+      : accessDraft;
+    setAccessSaving(true);
+    try {
+      await userService.updateAccess(accessEditUser.id, payload);
+      toast.success('Access updated');
+      closeAccessEditor();
+      fetchUsers(filterHospitalId || undefined);
+    } catch {
+      // handled
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
+  const isFullAccess = (user) => {
+    if (!Array.isArray(user.access)) return true;
+    const total = featureList.length;
+    return total > 0 && user.access.length >= total;
+  };
+
+  const accessSummary = (user) => {
+    if (isFullAccess(user)) return 'Full access';
+    const total = featureList.length || user.access.length;
+    return `${user.access.length}/${total} features`;
   };
 
   // Hospital id → name lookup
@@ -136,6 +220,8 @@ export default function Users() {
                 <th>Email</th>
                 <th>Role</th>
                 <th>Hospital</th>
+                <th>Access</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -145,11 +231,66 @@ export default function Users() {
                   <td>{u.email}</td>
                   <td><span className={`badge badge--${u.role?.toLowerCase()}`}>{u.role?.replace('_', ' ')}</span></td>
                   <td>{hospitalMap[u.hospital_id] || u.hospital_id || '—'}</td>
+                  <td>
+                    <span className={`badge badge--${isFullAccess(u) ? 'success' : 'warning'}`}>
+                      {accessSummary(u)}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="btn btn--ghost btn--sm" onClick={() => openAccessEditor(u)}>
+                      Edit Access
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {accessEditUser && (
+        <Modal title={`Access for ${accessEditUser.email}`} onClose={closeAccessEditor}>
+          <div className="modal-form">
+            <p style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: 12 }}>
+              {accessDraft === null
+                ? 'This user currently has full access. Uncheck features to restrict.'
+                : 'Toggle the features this user can access.'}
+            </p>
+            {featureList.length === 0 ? (
+              <p style={{ fontSize: '0.85rem', color: '#b91c1c' }}>
+                No feature list loaded from backend.
+              </p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {featureList.map((feat) => {
+                  const enabled = accessDraft === null || accessDraft.includes(feat.key);
+                  return (
+                    <label key={feat.key} style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={() => toggleFeature(feat.key)}
+                      />
+                      <span>{feat.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button type="button" className="btn btn--ghost" onClick={restoreFullAccess}>
+                Restore Full Access
+              </button>
+              <div style={{ flex: 1 }} />
+              <button type="button" className="btn btn--ghost" onClick={closeAccessEditor}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn--primary" disabled={accessSaving} onClick={saveAccess}>
+                {accessSaving ? <Spinner size={18} /> : 'Save'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {showModal && (
@@ -191,6 +332,33 @@ export default function Users() {
                   <option key={h.id} value={h.id}>{h.name}</option>
                 ))}
               </select>
+            </div>
+            <div className="form-group">
+              <label>Access</label>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 8px' }}>
+                {formAccess === null
+                  ? 'Full access will be granted. Uncheck features to restrict.'
+                  : 'Only the checked features will be accessible.'}
+              </p>
+              {featureList.length === 0 ? (
+                <small style={{ color: '#b91c1c' }}>No feature list loaded.</small>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {featureList.map((feat) => {
+                    const enabled = formAccess === null || formAccess.includes(feat.key);
+                    return (
+                      <label key={feat.key} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '0.85rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={() => toggleFormAccess(feat.key)}
+                        />
+                        <span>{feat.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn--ghost" onClick={() => setShowModal(false)}>

@@ -8,8 +8,8 @@ import { IconRefresh } from '../components/icons/Icons';
 import { useToast } from '../components/Toast';
 import './Pages.scss';
 
-const CLAIM_STATUS_OPTIONS = ['APPROVED', 'REJECTED', 'QUERY', 'ADR'];
-const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'QUERY_RAISED', 'QUERY_RESPONSE', 'REJECTION', 'ADR'];
+const CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ADR_NMI'];
+const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'ADR_NMI'];
 
 export default function QueryManagement() {
   const navigate = useNavigate();
@@ -96,7 +96,7 @@ export default function QueryManagement() {
       if (selectedEmail.is_latest) {
         payload.claim_status = claimStatus;
         payload.claim_number = claimNumber || undefined;
-        payload.approved_amount = claimStatus === 'APPROVED' && approvedAmount !== '' ? Number(approvedAmount) : null;
+        payload.approved_amount = (claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED') && approvedAmount !== '' ? Number(approvedAmount) : null;
       }
       await claimCaseService.updateExtractedData(selectedEmail.claim_case_id, selectedEmail.id, payload);
       toast.success('Extracted data updated');
@@ -350,15 +350,17 @@ export default function QueryManagement() {
                       onChange={(e) => setClaimNumber(e.target.value)}
                     />
                   </div>
-                  <div className="form-group">
-                    <label>Approved Amount</label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 50000"
-                      value={approvedAmount}
-                      onChange={(e) => setApprovedAmount(e.target.value)}
-                    />
-                  </div>
+                  {(claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED') && (
+                    <div className="form-group">
+                      <label>Approved Amount</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 50000"
+                        value={approvedAmount}
+                        onChange={(e) => setApprovedAmount(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </>
               )}
               <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
