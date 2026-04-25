@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { claimCaseService } from '../services/api';
+import { useAuth, ROLES } from '../context/AuthContext';
 import EmptyState from '../components/EmptyState';
 import Spinner from '../components/Spinner';
 import './Pages.scss';
@@ -35,6 +36,8 @@ function formatDate(str) {
 
 export default function ClaimList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
   const [activeFilter, setActiveFilter] = useState('all');
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +104,10 @@ export default function ClaimList() {
               <div
                 key={id}
                 className={`preauth-card ${adrOverdue ? 'preauth-card--overdue' : ''}`}
-                onClick={() => navigate(`/claim-list/${id}`)}
+                onClick={() => navigate(
+                  isInsuranceProvider ? `/provider-queue/${id}` : `/claim-list/${id}`,
+                  { state: { from: '/claim-list' } }
+                )}
               >
                 <div className="preauth-card__row preauth-card__row--head">
                   <div className="preauth-card__title-wrap">

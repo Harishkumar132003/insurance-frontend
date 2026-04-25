@@ -207,6 +207,8 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
 
           {selectedTemplate && !loadingDetail && (
             <form onSubmit={handleSend} className="apply-step__compose-form">
+              {!submitResult.is_onboarded && (
+                <>
               {/* To field */}
               <div className="apply-step__field">
                 <span className="apply-step__field-label">To</span>
@@ -320,6 +322,8 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
                   )}
                 </div>
               </div>
+                </>
+              )}
 
               {/* Subject field */}
               <div className="apply-step__field">
@@ -437,6 +441,7 @@ export default function PreAuthForm() {
         query_logs: cc.query_logs || [],
         policy_provider_email: cc.policy_provider_email || '',
         cc_emails: Array.isArray(cc.cc_emails) ? cc.cc_emails : [],
+        is_onboarded: cc.is_onboarded === true,
         status_history: cc.status_history || [],
         // from cc.summary
         pa_number: cc.pa_number || cc.claim_number,

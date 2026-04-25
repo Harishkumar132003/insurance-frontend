@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth, ROLES } from '../context/AuthContext';
 import {
   IconDashboard,
@@ -20,7 +20,7 @@ import {
 import oasysLogo from '../assets/oasys.svg';
 import './Sidebar.scss';
 
-const { SUPER_ADMIN, HOSPITAL_ADMIN } = ROLES;
+const { SUPER_ADMIN, HOSPITAL_ADMIN, INSURANCE_PROVIDER } = ROLES;
 
 const menuItems = [
   { path: '/', label: 'Dashboard', icon: IconDashboard, feature: 'dashboard', roles: [SUPER_ADMIN, HOSPITAL_ADMIN] },
@@ -35,16 +35,25 @@ const menuItems = [
   { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, feature: 'preauth_form', roles: [HOSPITAL_ADMIN] },
   { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
   { path: '/hospital-info', label: 'Hospital Info', icon: IconHospital, feature: 'hospital_info', roles: [HOSPITAL_ADMIN] },
+  { path: '/claim-list', label: 'Pre Auth', icon: IconClaimList, roles: [INSURANCE_PROVIDER], activePaths: ['/claim-list', '/provider-queue'] },
+  { path: '/query-management', label: 'Query Management', icon: IconQuery, roles: [INSURANCE_PROVIDER] },
   // { path: '/run-workflow', label: 'Patient Lookup', icon: IconPlay, feature: 'run_workflow', roles: [HOSPITAL_ADMIN] },
   // { path: '/logs', label: 'Logs', icon: IconLogs, feature: 'logs', roles: [SUPER_ADMIN] },
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { user, logout, hasFeature } = useAuth();
+  const location = useLocation();
 
   const filteredItems = menuItems.filter(
     (item) => item.roles.includes(user?.role) && hasFeature(item.feature)
   );
+
+  const isItemActive = (item) => {
+    const paths = item.activePaths;
+    if (!paths) return null; // let NavLink handle it
+    return paths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`));
+  };
 
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
@@ -57,20 +66,24 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="sidebar__nav">
-        {filteredItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === '/'}
-            className={({ isActive }) =>
-              `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
-            }
-            title={collapsed ? item.label : undefined}
-          >
-            <item.icon className="sidebar__icon" />
-            {!collapsed && <span>{item.label}</span>}
-          </NavLink>
-        ))}
+        {filteredItems.map((item) => {
+          const override = isItemActive(item);
+          return (
+            <NavLink
+              key={`${item.path}-${item.label}`}
+              to={item.path}
+              end={item.path === '/'}
+              className={({ isActive }) => {
+                const active = override !== null ? override : isActive;
+                return `sidebar__link ${active ? 'sidebar__link--active' : ''}`;
+              }}
+              title={collapsed ? item.label : undefined}
+            >
+              <item.icon className="sidebar__icon" />
+              {!collapsed && <span>{item.label}</span>}
+            </NavLink>
+          );
+        })}
       </nav>
 
       <div className="sidebar__footer">

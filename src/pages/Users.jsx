@@ -16,6 +16,7 @@ export default function Users() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filterHospitalId, setFilterHospitalId] = useState('');
+  const [filterRole, setFilterRole] = useState('');
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -64,11 +65,13 @@ export default function Users() {
     }
   };
 
-  const fetchUsers = async (hospitalId) => {
+  const fetchUsers = async (hospitalId, role) => {
     setLoading(true);
     try {
-      const params = hospitalId ? { hospital_id: hospitalId } : undefined;
-      const res = await userService.getAll(params);
+      const params = {};
+      if (hospitalId) params.hospital_id = hospitalId;
+      if (role) params.role = role;
+      const res = await userService.getAll(Object.keys(params).length ? params : undefined);
       setUsers(Array.isArray(res.data) ? res.data : []);
     } catch {
       setUsers([]);
@@ -80,7 +83,13 @@ export default function Users() {
   const handleFilterChange = (e) => {
     const id = e.target.value;
     setFilterHospitalId(id);
-    fetchUsers(id || undefined);
+    fetchUsers(id || undefined, filterRole || undefined);
+  };
+
+  const handleRoleFilterChange = (e) => {
+    const role = e.target.value;
+    setFilterRole(role);
+    fetchUsers(filterHospitalId || undefined, role || undefined);
   };
 
   const handleChange = (e) => {
@@ -112,7 +121,7 @@ export default function Users() {
       setShowModal(false);
       setForm({ email: '', password: '', role: 'HOSPITAL_ADMIN', hospital_id: '' });
       setFormAccess(null);
-      fetchUsers(filterHospitalId || undefined);
+      fetchUsers(filterHospitalId || undefined, filterRole || undefined);
     } catch {
       // handled
     } finally {
@@ -157,7 +166,7 @@ export default function Users() {
       await userService.updateAccess(accessEditUser.id, payload);
       toast.success('Access updated');
       closeAccessEditor();
-      fetchUsers(filterHospitalId || undefined);
+      fetchUsers(filterHospitalId || undefined, filterRole || undefined);
     } catch {
       // handled
     } finally {
@@ -200,6 +209,16 @@ export default function Users() {
             </select>
           </div>
         )}
+        {isSuperAdmin && (
+          <div className="page-toolbar__filter">
+            <select value={filterRole} onChange={handleRoleFilterChange}>
+              <option value="">All Roles</option>
+              <option value="SUPER_ADMIN">Super Admin</option>
+              <option value="HOSPITAL_ADMIN">Hospital Admin</option>
+              <option value="INSURANCE_PROVIDER">Insurance Provider</option>
+            </select>
+          </div>
+        )}
         <button className="btn btn--primary" onClick={() => setShowModal(true)}>
           <IconPlus size={18} /> Create User
         </button>
@@ -220,6 +239,7 @@ export default function Users() {
                 <th>Email</th>
                 <th>Role</th>
                 <th>Hospital</th>
+                <th>Provider</th>
                 <th>Access</th>
                 <th></th>
               </tr>
@@ -231,15 +251,18 @@ export default function Users() {
                   <td>{u.email}</td>
                   <td><span className={`badge badge--${u.role?.toLowerCase()}`}>{u.role?.replace('_', ' ')}</span></td>
                   <td>{hospitalMap[u.hospital_id] || u.hospital_id || '—'}</td>
+                  <td>{u.policy_provider?.name || '—'}</td>
                   <td>
                     <span className={`badge badge--${isFullAccess(u) ? 'success' : 'warning'}`}>
                       {accessSummary(u)}
                     </span>
                   </td>
                   <td>
-                    <button className="btn btn--ghost btn--sm" onClick={() => openAccessEditor(u)}>
-                      Edit Access
-                    </button>
+                    {u.role !== 'INSURANCE_PROVIDER' && (
+                      <button className="btn btn--ghost btn--sm" onClick={() => openAccessEditor(u)}>
+                        Edit Access
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
