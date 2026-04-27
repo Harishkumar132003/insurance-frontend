@@ -37,6 +37,8 @@ export default function Login() {
       // Role-based redirect
       if (userData.role === ROLES.SUPER_ADMIN) {
         navigate('/', { replace: true });
+      } else if (userData.role === ROLES.INSURANCE_PROVIDER) {
+        navigate('/claim-list', { replace: true });
       } else {
         navigate('/pre-auth', { replace: true });
       }
