@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '../components/Toast';
-import { policyProviderService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { policyProviderService, userService } from '../services/api';
 import { IconPlus, IconEdit, IconTrash, IconArrowLeft, IconShield } from '../components/icons/Icons';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
@@ -26,8 +27,12 @@ export default function PolicyProviders() {
   const [loading, setLoading] = useState(true);
   const [activeProvider, setActiveProvider] = useState(null); // null = list view
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [userTarget, setUserTarget] = useState(null); // provider to create user for
+  const [userForm, setUserForm] = useState({ email: '', password: '' });
+  const [userSaving, setUserSaving] = useState(false);
 
   const toast = useToast();
+  const { isSuperAdmin } = useAuth();
 
   useEffect(() => {
     fetchProviders();
@@ -64,6 +69,37 @@ export default function PolicyProviders() {
   const handleBack = () => {
     setActiveProvider(null);
     fetchProviders();
+  };
+
+  const openCreateUser = (provider) => {
+    setUserTarget(provider);
+    setUserForm({ email: '', password: '' });
+  };
+
+  const closeCreateUser = () => {
+    setUserTarget(null);
+    setUserForm({ email: '', password: '' });
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (!userTarget || !userForm.email || !userForm.password) return;
+    setUserSaving(true);
+    try {
+      await userService.create({
+        email: userForm.email,
+        password: userForm.password,
+        role: 'INSURANCE_PROVIDER',
+        policy_provider_id: userTarget.id,
+        access: null,
+      });
+      toast.success('Insurance provider user created');
+      closeCreateUser();
+    } catch {
+      // handled by interceptor
+    } finally {
+      setUserSaving(false);
+    }
   };
 
   // Delete
@@ -150,6 +186,11 @@ export default function PolicyProviders() {
                 <button className="btn btn--ghost btn--sm" onClick={() => openEdit(p)}>
                   <IconEdit size={14} /> Edit
                 </button>
+                {isSuperAdmin && (
+                  <button className="btn btn--ghost btn--sm" onClick={() => openCreateUser(p)}>
+                    <IconPlus size={14} /> User
+                  </button>
+                )}
                 <button className="btn btn--ghost btn--sm pp-card__delete-btn" onClick={() => setDeleteTarget(p)}>
                   <IconTrash size={14} />
                 </button>
@@ -157,6 +198,46 @@ export default function PolicyProviders() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Create Insurance Provider User */}
+      {userTarget && (
+        <Modal title={`New User for ${userTarget.name}`} onClose={closeCreateUser}>
+          <form onSubmit={handleCreateUser} className="modal-form">
+            <p style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: 12 }}>
+              Creates an <strong>INSURANCE_PROVIDER</strong> user scoped to this provider.
+            </p>
+            <div className="form-group">
+              <label>Email</label>
+              <input
+                type="email"
+                placeholder="user@example.com"
+                value={userForm.email}
+                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                autoFocus
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Password</label>
+              <input
+                type="password"
+                placeholder="Min. 6 characters"
+                value={userForm.password}
+                onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                required
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn--ghost" onClick={closeCreateUser}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn--primary" disabled={userSaving}>
+                {userSaving ? <Spinner size={18} /> : 'Create'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Delete Confirm */}

@@ -25,9 +25,11 @@ import PolicyProviders from './pages/PolicyProviders';
 import Logs from './pages/Logs';
 import GlobalVariablesPage from './pages/GlobalVariablesPage';
 import QueryManagement from './pages/QueryManagement';
+import ProviderQueue from './pages/ProviderQueue';
+import ProviderClaimDetail from './pages/ProviderClaimDetail';
 import './styles/global.scss';
 
-const { SUPER_ADMIN, HOSPITAL_ADMIN } = ROLES;
+const { SUPER_ADMIN, HOSPITAL_ADMIN, INSURANCE_PROVIDER } = ROLES;
 
 export default function App() {
   return (
@@ -109,11 +111,11 @@ export default function App() {
                 }
               />
 
-              {/* Hospital Admin only */}
+              {/* Hospital Admin + Insurance Provider */}
               <Route
                 path="/claim-list"
                 element={
-                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN, INSURANCE_PROVIDER]}>
                     <FeatureGate feature="preauth_list"><ClaimList /></FeatureGate>
                   </PrivateRoute>
                 }
@@ -121,7 +123,7 @@ export default function App() {
               <Route
                 path="/claim-list/:claimCaseId"
                 element={
-                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN, INSURANCE_PROVIDER]}>
                     <FeatureGate feature="preauth_list"><PreAuthForm /></FeatureGate>
                   </PrivateRoute>
                 }
@@ -129,8 +131,26 @@ export default function App() {
               <Route
                 path="/query-management"
                 element={
-                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN, INSURANCE_PROVIDER]}>
                     <FeatureGate feature="query_management"><QueryManagement /></FeatureGate>
+                  </PrivateRoute>
+                }
+              />
+
+              {/* Insurance Provider only */}
+              <Route
+                path="/provider-queue"
+                element={
+                  <PrivateRoute allowedRoles={[INSURANCE_PROVIDER]}>
+                    <ProviderQueue />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/provider-queue/:claimCaseId"
+                element={
+                  <PrivateRoute allowedRoles={[INSURANCE_PROVIDER]}>
+                    <ProviderClaimDetail />
                   </PrivateRoute>
                 }
               />

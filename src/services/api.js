@@ -128,6 +128,8 @@ export const formTemplateService = {
 export const claimCaseService = {
   getAll: (params) => api.get('/claim-cases', { params }),
   getById: (id) => api.get(`/claim-cases/${id}`),
+  getProviderQueue: (params) => api.get('/claim-cases/provider-queue', { params }),
+  providerAction: (id, data) => api.patch(`/claim-cases/${id}/provider-action`, data),
   getAllEmails: (id, params) => api.get(`/claim-cases/${id}/emails/all`, { params }),
   getAllEmailsPaginated: (params) => api.get('/claim-cases/emails/all', { params }),
   getEmails: (id, direction) =>
@@ -144,6 +146,8 @@ export const claimCaseService = {
     }),
   updateExtractedData: (claimCaseId, emailId, data) =>
     api.patch(`/claim-cases/${claimCaseId}/emails/${emailId}/extracted-data`, data),
+  markEmailRead: (claimCaseId, emailId) =>
+    api.patch(`/claim-cases/${claimCaseId}/emails/${emailId}/read`),
 };
 
 // Documents

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { claimCaseService } from '../services/api';
+import { useAuth, ROLES } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
@@ -14,6 +15,8 @@ const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'ADR_NMI']
 export default function QueryManagement() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
   const [searchParams, setSearchParams] = useSearchParams();
   const filterClaimId = searchParams.get('id');
   const [emails, setEmails] = useState([]);
@@ -55,7 +58,32 @@ export default function QueryManagement() {
     fetchEmails(page);
   }, [page, pageSize, filterClaimId]);
 
-  const handleEmailClick = (email) => {
+  const isEmailRead = (email) =>
+    isInsuranceProvider ? !!email.provider_read : !!email.is_read;
+
+  const handleEmailClick = async (email) => {
+    if (isInsuranceProvider) {
+      if (!email.provider_read) {
+        try {
+          await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+        } catch {
+          // non-blocking — still navigate
+        }
+      }
+      navigate(`/provider-queue/${email.claim_case_id}`, { state: { from: '/query-management' } });
+      return;
+    }
+    if (email.is_onboard_claim) {
+      if (!email.is_read) {
+        try {
+          await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+        } catch {
+          // non-blocking — still navigate
+        }
+      }
+      navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } });
+      return;
+    }
     if (!email.is_read) {
       setSelectedEmail(email);
       setEmailType(email.email_type || EMAIL_TYPE_OPTIONS[0]);
@@ -181,13 +209,15 @@ export default function QueryManagement() {
         ) : (
           <>
             <div className="email-inbox__list">
-              {emails.map((email) => (
+              {emails.map((email) => {
+                const read = isEmailRead(email);
+                return (
                 <div
                   key={email.id}
-                  className={`email-inbox__item ${email.is_read ? 'email-inbox__item--read' : 'email-inbox__item--unread'}`}
+                  className={`email-inbox__item ${read ? 'email-inbox__item--read' : 'email-inbox__item--unread'}`}
                   onClick={() => handleEmailClick(email)}
                 >
-                  {!email.is_read && <span className="email-inbox__unread-dot" />}
+                  {!read && <span className="email-inbox__unread-dot" />}
                   <div className="email-inbox__item-avatar">
                     {(email.from_email || email.to_email || '?')[0].toUpperCase()}
                   </div>
@@ -211,7 +241,8 @@ export default function QueryManagement() {
                     </span>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Pagination */}

@@ -7,6 +7,7 @@ const AuthContext = createContext(null);
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   HOSPITAL_ADMIN: 'HOSPITAL_ADMIN',
+  INSURANCE_PROVIDER: 'INSURANCE_PROVIDER',
 };
 
 function decodeToken(token) {
@@ -52,13 +53,18 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
-    const { access_token, hospital, access } = response.data;
+    const { access_token, hospital, provider, access } = response.data;
 
     localStorage.setItem('access_token', access_token);
 
     // Store hospital details if present
     if (hospital) {
       localStorage.setItem('hospital', JSON.stringify(hospital));
+    }
+
+    // Store provider details if present (INSURANCE_PROVIDER role)
+    if (provider) {
+      localStorage.setItem('provider', JSON.stringify(provider));
     }
 
     const decoded = decodeToken(access_token);
@@ -80,6 +86,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
     localStorage.removeItem('hospital');
+    localStorage.removeItem('provider');
     setUser(null);
   };
 
