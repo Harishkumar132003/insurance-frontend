@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService, emailTemplateService, emailService, documentService } from '../services/api';
-import { IconSend, IconArrowLeft, IconChevronRight, IconPlus } from '../components/icons/Icons';
+import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
@@ -399,11 +399,713 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
   );
 }
 
+// ── Portal-style structured form primitives ─────────────────────────
+
+function PortalShell({ title, subtitle, accent = 'info', onClose, children, footer }) {
+  return (
+    <div className="portal-form">
+      <div className={`portal-form__head portal-form__head--${accent}`}>
+        <div className="portal-form__head-text">
+          <div className="portal-form__head-title">{title}</div>
+          {subtitle && <div className="portal-form__head-sub">{subtitle}</div>}
+        </div>
+        <button type="button" className="portal-form__close" onClick={onClose} title="Cancel">
+          <IconX size={16} />
+        </button>
+      </div>
+      <div className="portal-form__body">{children}</div>
+      {footer && <div className="portal-form__footer">{footer}</div>}
+    </div>
+  );
+}
+
+function PortalSection({ title, hint, cols = 2, children }) {
+  return (
+    <div className="portal-form__section">
+      <div className="portal-form__section-head">
+        <h4>{title}</h4>
+        {hint && <span className="portal-form__section-hint">{hint}</span>}
+      </div>
+      <div
+        className="portal-form__section-body"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, required, hint, span = 1, children }) {
+  return (
+    <div className="portal-form__field" style={{ gridColumn: `span ${span}` }}>
+      {label && (
+        <label className="portal-form__field-label">
+          {label}
+          {required && <span className="portal-form__req"> *</span>}
+        </label>
+      )}
+      {children}
+      {hint && <div className="portal-form__field-hint">{hint}</div>}
+    </div>
+  );
+}
+
+function ReadField({ label, value, span = 1 }) {
+  return (
+    <div className="portal-form__field" style={{ gridColumn: `span ${span}` }}>
+      <label className="portal-form__field-label">{label}</label>
+      <div className="portal-form__read-field">{value}</div>
+    </div>
+  );
+}
+
+function FilesList({ files, onAdd, onRemove, addLabel = 'Add file' }) {
+  return (
+    <div>
+      <div className="portal-form__files">
+        {files.map((f, i) => (
+          <span key={i} className="apply-step__attach-chip">
+            <span>{f.name}</span>
+            <button type="button" onClick={() => onRemove(i)}>&times;</button>
+          </span>
+        ))}
+        {files.length === 0 && (
+          <span className="portal-form__files-empty">No files attached yet.</span>
+        )}
+      </div>
+      <label className="apply-step__attach-btn portal-form__add-file">
+        + {addLabel}
+        <input
+          type="file"
+          hidden
+          multiple
+          onChange={(e) => {
+            const picked = Array.from(e.target.files || []);
+            picked.forEach((file) => onAdd(file));
+            e.target.value = '';
+          }}
+        />
+      </label>
+    </div>
+  );
+}
+
+function EmailPreview({ subject, to, cc, body }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="portal-form__preview">
+      <button
+        type="button"
+        className="portal-form__preview-toggle"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span>{open ? 'Hide' : 'Preview'} email that will be sent</span>
+        <span className={`portal-form__preview-chev ${open ? 'portal-form__preview-chev--open' : ''}`}>
+          <IconChevronRight size={14} />
+        </span>
+      </button>
+      {open && (
+        <div className="portal-form__preview-body">
+          <div className="portal-form__preview-row"><span>To</span><code>{to || '—'}</code></div>
+          {cc && cc.length > 0 && (
+            <div className="portal-form__preview-row"><span>Cc</span><code>{cc.join(', ')}</code></div>
+          )}
+          <div className="portal-form__preview-row"><span>Subject</span><code>{subject}</code></div>
+          <pre className="portal-form__preview-text">{body}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Enhancement form (PARTIALLY_APPROVED) ───────────────────────────
+
+function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
+  const [reasonCat, setReasonCat] = useState('Extended ICU stay');
+  const [reasonDetail, setReasonDetail] = useState('');
+  const [additional, setAdditional] = useState('');
+  const [neededBy, setNeededBy] = useState('');
+  const [files, setFiles] = useState([]);
+
+  const additionalNum = Number(additional) || 0;
+  const approvedSoFar = Number(submitResult.approved_amount) || 0;
+  const revisedTotal = approvedSoFar + additionalNum;
+
+  const canSubmit = additionalNum > 0 && reasonDetail.trim().length > 0 && !sending;
+
+  const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
+  const subject = `[${paId}] Enhancement Request — ${submitResult.patient_name || ''}`.trim();
+  const body =
+    `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
+    `With reference to the approval received against ${paId} for ${submitResult.patient_name || '—'} ` +
+    `(UHID: ${submitResult.uhid || '—'}), we request an enhancement of cover.\n\n` +
+    `Reason: ${reasonCat}\n` +
+    `Details: ${reasonDetail || '—'}\n` +
+    `Approved so far: ${formatINR(submitResult.approved_amount)}\n` +
+    `Additional amount requested: ${formatINR(additionalNum)}\n` +
+    `Revised total: ${formatINR(revisedTotal)}\n` +
+    (neededBy ? `Decision required by: ${neededBy}\n` : '') +
+    `\nRevised invoices and clinical notes are attached.\n\n` +
+    `Regards,\nHospital Insurance Desk`;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({ subject, body, files });
+  };
+
+  return (
+    <PortalShell
+      title="Enhancement Request"
+      subtitle={`Additional cover from ${submitResult.insurer_name || 'insurer'}`}
+      accent="info"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+          >
+            {sending ? <Spinner size={16} /> : <><IconSend size={16} /> Submit enhancement</>}
+          </button>
+        </>
+      }
+    >
+      <PortalSection title="Patient & current authorisation" cols={3}>
+        <ReadField
+          label="Patient"
+          value={`${submitResult.patient_name || '—'} · ${submitResult.uhid || '—'}`}
+          span={2}
+        />
+        <ReadField label="Insurer" value={submitResult.insurer_name || '—'} />
+        <ReadField label="Originally requested" value={formatINR(submitResult.requested_amount)} />
+        <ReadField
+          label="Approved so far"
+          value={
+            <span style={{ color: '#16a34a', fontWeight: 700 }}>
+              {formatINR(submitResult.approved_amount)}
+            </span>
+          }
+        />
+        <ReadField
+          label="Diagnosis"
+          value={`${submitResult.diagnosis || '—'}${submitResult.icd10_code ? ` (${submitResult.icd10_code})` : ''}`}
+        />
+      </PortalSection>
+
+      <PortalSection title="Reason for enhancement" cols={2}>
+        <Field label="Category" required>
+          <select value={reasonCat} onChange={(e) => setReasonCat(e.target.value)}>
+            <option>Extended ICU stay</option>
+            <option>Additional procedure performed</option>
+            <option>Higher-end implant / consumable used</option>
+            <option>Treatment escalation (e.g. surgical from medical)</option>
+            <option>Length of stay extended</option>
+            <option>Complication / new diagnosis</option>
+            <option>Other</option>
+          </select>
+        </Field>
+        <Field label="Decision required by" hint="Insurer SLA reminder">
+          <input type="date" value={neededBy} onChange={(e) => setNeededBy(e.target.value)} />
+        </Field>
+        <Field
+          label="Clinical justification"
+          required
+          hint="Cite progress notes, vital trends, ICU days, etc."
+          span={2}
+        >
+          <textarea
+            rows={4}
+            value={reasonDetail}
+            onChange={(e) => setReasonDetail(e.target.value)}
+            placeholder="e.g. Patient continued in ICU on day 4 post-op due to sustained tachycardia and low EF (32%); cardiology advised 48h further monitoring…"
+          />
+        </Field>
+      </PortalSection>
+
+      <PortalSection
+        title="Amount"
+        hint="Enter only the additional amount over what's already approved"
+        cols={3}
+      >
+        <ReadField label="Approved already" value={formatINR(submitResult.approved_amount)} />
+        <Field label="Additional requested (₹)" required>
+          <input
+            type="number"
+            value={additional}
+            onChange={(e) => setAdditional(e.target.value)}
+            placeholder="e.g. 70000"
+            min="0"
+          />
+        </Field>
+        <ReadField
+          label="Revised total"
+          value={
+            <span style={{ color: '#4f46e5', fontWeight: 700 }}>{formatINR(revisedTotal)}</span>
+          }
+        />
+      </PortalSection>
+
+      <PortalSection
+        title="Supporting documents"
+        hint="Revised invoices, ICU notes, lab reports"
+        cols={1}
+      >
+        <Field span={1}>
+          <FilesList
+            files={files}
+            onAdd={(f) => setFiles((prev) => [...prev, f])}
+            onRemove={(i) => setFiles((prev) => prev.filter((_, ix) => ix !== i))}
+            addLabel="Attach revised invoice / clinical note"
+          />
+        </Field>
+      </PortalSection>
+
+      <EmailPreview
+        subject={subject}
+        to={submitResult.policy_provider_email}
+        cc={submitResult.cc_emails}
+        body={body}
+      />
+    </PortalShell>
+  );
+}
+
+// ── ADR submission form (ADR_NMI) ───────────────────────────────────
+
+const DEFAULT_ADR_CHECKLIST = [
+  'LMP / EDD certificate',
+  'First-consultation papers',
+  'ID / address proof',
+  'Treating doctor clarification note',
+];
+
+function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) {
+  // Prefer the latest OPEN ADR query log (structured data with documents_list)
+  // and fall back to the most recent ADR query if none are open.
+  const latestAdrQuery = useMemo(() => {
+    const logs = Array.isArray(submitResult.query_logs) ? submitResult.query_logs : [];
+    const adrQueries = logs.filter((q) => q.query_type === 'ADR_NMI');
+    if (adrQueries.length === 0) return null;
+    const open = adrQueries.filter((q) => q.status === 'OPEN');
+    const pool = open.length > 0 ? open : adrQueries;
+    return [...pool].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+  }, [submitResult.query_logs]);
+
+  const latestAdrEmail = useMemo(() => {
+    if (!Array.isArray(adrEmails) || adrEmails.length === 0) return null;
+    return [...adrEmails]
+      .sort((a, b) => new Date(b.email_date || 0) - new Date(a.email_date || 0))[0];
+  }, [adrEmails]);
+
+  // Seed checklist from the latest ADR query: documents_list (array) > documents_requested (comma-split) > hardcoded default.
+  const initialItems = useMemo(() => {
+    if (Array.isArray(latestAdrQuery?.documents_list) && latestAdrQuery.documents_list.length > 0) {
+      return latestAdrQuery.documents_list.map((label) => ({ label, attached: false, file: null }));
+    }
+    if (typeof latestAdrQuery?.documents_requested === 'string' && latestAdrQuery.documents_requested.trim()) {
+      const labels = latestAdrQuery.documents_requested
+        .split(/[,;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (labels.length > 0) {
+        return labels.map((label) => ({ label, attached: false, file: null }));
+      }
+    }
+    return DEFAULT_ADR_CHECKLIST.map((label) => ({ label, attached: false, file: null }));
+  }, [latestAdrQuery]);
+
+  const [items, setItems] = useState(initialItems);
+  const [extraFiles, setExtraFiles] = useState([]);
+  const [clarification, setClarification] = useState('');
+
+  const setItem = (idx, patch) =>
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+
+  const attachedCount = items.filter((it) => it.attached).length;
+  const allMandatoryDone = items.every((it) => it.attached);
+  const canSubmit = (items.some((it) => it.attached) || extraFiles.length > 0) && !sending;
+
+  const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
+  const subject = `[${paId}] ADR Response — ${submitResult.patient_name || ''}`.trim();
+
+  const attachedFilesForEmail = items.filter((it) => it.attached && it.file).map((it) => it.file);
+  const allFiles = [...attachedFilesForEmail, ...extraFiles];
+
+  const checklistLines = items
+    .filter((it) => it.attached)
+    .map((it) => `• ${it.label}${it.file ? ` — ${it.file.name}` : ''}`)
+    .join('\n');
+  const extraLines = extraFiles.length
+    ? `\nAdditional documents:\n${extraFiles.map((f) => `• ${f.name}`).join('\n')}\n`
+    : '';
+
+  const body =
+    `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
+    `In response to your additional document request for ${submitResult.patient_name || '—'} ` +
+    `(${paId}, UHID: ${submitResult.uhid || '—'}), please find the requested documents:\n\n` +
+    `${checklistLines || '(none yet)'}\n` +
+    extraLines +
+    (clarification ? `\nClarifications: ${clarification}\n` : '') +
+    `\nKindly process at the earliest.\n\n` +
+    `Regards,\nHospital Insurance Desk`;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({ subject, body, files: allFiles });
+  };
+
+  const insurerQuoteText =
+    latestAdrQuery?.query_details ||
+    latestAdrQuery?.documents_requested ||
+    latestAdrEmail?.subject ||
+    latestAdrEmail?.content ||
+    'Additional documents requested.';
+  const quoteTimestamp = latestAdrQuery?.created_at || latestAdrEmail?.email_date || null;
+  const insurerQuoteMeta = quoteTimestamp
+    ? `${submitResult.insurer_name || 'Insurer'} Claims · ${new Date(quoteTimestamp).toLocaleString('en-IN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).replace(',', '')}`
+    : `${submitResult.insurer_name || 'Insurer'} Claims`;
+
+  return (
+    <PortalShell
+      title="Submit Additional Documents (ADR Response)"
+      subtitle={`Replying to ${submitResult.insurer_name || 'insurer'}`}
+      accent="warning"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+          >
+            {sending ? <Spinner size={16} /> : <><IconSend size={16} /> Submit response ({attachedCount + extraFiles.length} files)</>}
+          </button>
+        </>
+      }
+    >
+      <div className="portal-form__quote portal-form__quote--warning">
+        <div className="portal-form__quote-label">Insurer's request</div>
+        <div className="portal-form__quote-text">"{insurerQuoteText}"</div>
+        <div className="portal-form__quote-meta">{insurerQuoteMeta}</div>
+      </div>
+
+      <PortalSection
+        title="Documents requested"
+        hint={`${attachedCount} of ${items.length} attached`}
+        cols={1}
+      >
+        <div className="portal-form__adr-list">
+          {items.map((it, i) => (
+            <div key={i} className="portal-form__adr-row">
+              <label className="portal-form__adr-check">
+                <input
+                  type="checkbox"
+                  checked={it.attached}
+                  onChange={(e) => setItem(i, { attached: e.target.checked, file: e.target.checked ? it.file : null })}
+                />
+                <span className="portal-form__adr-label">{it.label}</span>
+                {!it.attached ? (
+                  <span className="portal-form__adr-tag">Required</span>
+                ) : (
+                  <span className="portal-form__adr-tag portal-form__adr-tag--done">
+                    <IconCheck size={12} /> Attached
+                  </span>
+                )}
+              </label>
+              {it.attached && (
+                <div className="portal-form__adr-file">
+                  {it.file ? (
+                    <span className="apply-step__attach-chip">
+                      <span>{it.file.name}</span>
+                      <button type="button" onClick={() => setItem(i, { file: null })}>&times;</button>
+                    </span>
+                  ) : (
+                    <label className="apply-step__attach-btn">
+                      + Upload file
+                      <input
+                        type="file"
+                        hidden
+                        onChange={(e) => {
+                          const picked = e.target.files?.[0];
+                          if (picked) setItem(i, { file: picked });
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            className="apply-step__attach-btn portal-form__adr-add"
+            onClick={() => {
+              const label = window.prompt('Document the insurer asked for:');
+              if (label && label.trim()) {
+                setItems((prev) => [...prev, { label: label.trim(), attached: false, file: null }]);
+              }
+            }}
+          >
+            <IconPlus size={12} /> Add another requested item
+          </button>
+        </div>
+      </PortalSection>
+
+      <PortalSection title="Additional documents (optional)" cols={1}>
+        <Field span={1}>
+          <FilesList
+            files={extraFiles}
+            onAdd={(f) => setExtraFiles((prev) => [...prev, f])}
+            onRemove={(i) => setExtraFiles((prev) => prev.filter((_, ix) => ix !== i))}
+            addLabel="Attach supporting document"
+          />
+        </Field>
+      </PortalSection>
+
+      <PortalSection title="Clarifications to claims team (optional)" cols={1}>
+        <Field span={1}>
+          <textarea
+            rows={3}
+            value={clarification}
+            onChange={(e) => setClarification(e.target.value)}
+            placeholder="e.g. The address mismatch is because the patient relocated 3 months ago; updated address proof attached…"
+          />
+        </Field>
+      </PortalSection>
+
+      {!allMandatoryDone && (
+        <div className="portal-form__notice">
+          <IconAlertCircle size={16} />
+          <div>
+            <strong>{items.length - attachedCount} requested item(s) still not attached.</strong>{' '}
+            You can submit a partial response, but insurer may raise another ADR.
+          </div>
+        </div>
+      )}
+
+      <EmailPreview
+        subject={subject}
+        to={submitResult.policy_provider_email}
+        cc={submitResult.cc_emails}
+        body={body}
+      />
+    </PortalShell>
+  );
+}
+
+// ── Reconsideration form (DENIED) ───────────────────────────────────
+
+const RECONSIDER_GROUNDS = [
+  'Medical necessity',
+  'Pre-existing disease — clarification',
+  'Policy interpretation / sub-limit',
+  'Documentation already provided',
+  'Treatment within policy scope',
+  'Emergency override',
+  'Other',
+];
+
+function ReconsiderPortalForm({ submitResult, onClose, onSubmit, sending }) {
+  const denialEntry = useMemo(() => {
+    const history = submitResult.status_history || [];
+    return [...history].reverse().find((e) => e.status === 'DENIED') || null;
+  }, [submitResult.status_history]);
+
+  const [grounds, setGrounds] = useState(RECONSIDER_GROUNDS[0]);
+  const [justification, setJustification] = useState('');
+  const [requestedAmount, setRequestedAmount] = useState(submitResult.requested_amount || '');
+  const [doctorName, setDoctorName] = useState('');
+  const [doctorQualification, setDoctorQualification] = useState('');
+  const [doctorRegistration, setDoctorRegistration] = useState('');
+  const [doctorContact, setDoctorContact] = useState('');
+  const [files, setFiles] = useState([]);
+  const [escalate, setEscalate] = useState(false);
+
+  const canSubmit = justification.trim().length > 0 && !sending;
+
+  const denialNote = denialEntry?.remarks || 'Pre-auth denied.';
+  const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
+  const subject = `[${paId}] Reconsideration Request — ${submitResult.patient_name || ''}`.trim();
+  const doctorLine = doctorName
+    ? `Co-signing physician: ${doctorName}${doctorQualification ? ` (${doctorQualification}` : ''}${doctorRegistration ? `${doctorQualification ? ', ' : ' ('}Reg. ${doctorRegistration}` : ''}${doctorQualification || doctorRegistration ? ')' : ''}${doctorContact ? ` · ${doctorContact}` : ''}\n`
+    : '';
+  const body =
+    `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
+    `We respectfully request reconsideration of the denial against ${paId} for ${submitResult.patient_name || '—'} ` +
+    `(UHID: ${submitResult.uhid || '—'}).\n\n` +
+    `Denial reason cited: ${denialNote}\n\n` +
+    `Grounds for reconsideration: ${grounds}\n` +
+    `Detailed justification: ${justification || '—'}\n` +
+    `Amount being claimed: ${formatINR(Number(requestedAmount) || 0)}\n` +
+    doctorLine +
+    (escalate ? `\nThis case is being escalated to your medical review board for second opinion.\n` : '') +
+    `\nSupporting clinical documentation is attached.\n\n` +
+    `Regards,\nHospital Insurance Desk`;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({ subject, body, files });
+  };
+
+  const denialMeta = denialEntry?.created_at
+    ? `${submitResult.insurer_name || 'Insurer'} Claims · ${new Date(denialEntry.created_at).toLocaleString('en-IN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).replace(',', '')}`
+    : `${submitResult.insurer_name || 'Insurer'} Claims`;
+
+  return (
+    <PortalShell
+      title="Reconsideration Request"
+      subtitle={`Appeal denial from ${submitResult.insurer_name || 'insurer'}`}
+      accent="danger"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+          >
+            {sending ? <Spinner size={16} /> : <><IconSend size={16} /> Submit reconsideration</>}
+          </button>
+        </>
+      }
+    >
+      <div className="portal-form__quote portal-form__quote--danger">
+        <div className="portal-form__quote-label">Insurer's denial reason</div>
+        <div className="portal-form__quote-text">"{denialNote}"</div>
+        <div className="portal-form__quote-meta">{denialMeta}</div>
+      </div>
+
+      <PortalSection title="Grounds for reconsideration" cols={2}>
+        <Field label="Grounds" required>
+          <select value={grounds} onChange={(e) => setGrounds(e.target.value)}>
+            {RECONSIDER_GROUNDS.map((g) => <option key={g}>{g}</option>)}
+          </select>
+        </Field>
+        <Field label="Amount being claimed (₹)" required>
+          <input
+            type="number"
+            value={requestedAmount}
+            onChange={(e) => setRequestedAmount(e.target.value)}
+            min="0"
+          />
+        </Field>
+        <Field
+          label="Detailed clinical & policy justification"
+          required
+          hint="Reference clinical guidelines, policy clauses, prior consultation history"
+          span={2}
+        >
+          <textarea
+            rows={5}
+            value={justification}
+            onChange={(e) => setJustification(e.target.value)}
+            placeholder="e.g. Patient has documented HTN since 2019 (prior to policy inception); the claim of PED non-disclosure is incorrect — see attached medical records from 2020 onwards…"
+          />
+        </Field>
+      </PortalSection>
+
+      <PortalSection title="Co-signing physician" hint="Senior physician supporting the appeal" cols={2}>
+        <Field label="Doctor name" span={2}>
+          <input
+            type="text"
+            value={doctorName}
+            onChange={(e) => setDoctorName(e.target.value)}
+            placeholder="e.g. Dr. Anjali Rao"
+          />
+        </Field>
+        <Field label="Qualification">
+          <input
+            type="text"
+            value={doctorQualification}
+            onChange={(e) => setDoctorQualification(e.target.value)}
+            placeholder="e.g. MD, DM (Cardiology)"
+          />
+        </Field>
+        <Field label="Registration No.">
+          <input
+            type="text"
+            value={doctorRegistration}
+            onChange={(e) => setDoctorRegistration(e.target.value)}
+            placeholder="e.g. MCI-12345"
+          />
+        </Field>
+        <Field label="Contact" span={2}>
+          <input
+            type="text"
+            value={doctorContact}
+            onChange={(e) => setDoctorContact(e.target.value)}
+            placeholder="Phone or email"
+          />
+        </Field>
+      </PortalSection>
+
+      <PortalSection
+        title="Supporting documents"
+        hint="Prior consultation records, lab reports, clinical guidelines"
+        cols={1}
+      >
+        <Field span={1}>
+          <FilesList
+            files={files}
+            onAdd={(f) => setFiles((prev) => [...prev, f])}
+            onRemove={(i) => setFiles((prev) => prev.filter((_, ix) => ix !== i))}
+            addLabel="Attach supporting document"
+          />
+        </Field>
+      </PortalSection>
+
+      <PortalSection title="Escalation" cols={1}>
+        <Field span={1}>
+          <label className="portal-form__toggle">
+            <input
+              type="checkbox"
+              checked={escalate}
+              onChange={(e) => setEscalate(e.target.checked)}
+            />
+            <span>Escalate to insurer's medical review board for second opinion</span>
+          </label>
+        </Field>
+      </PortalSection>
+
+      <EmailPreview
+        subject={subject}
+        to={submitResult.policy_provider_email}
+        cc={submitResult.cc_emails}
+        body={body}
+      />
+    </PortalShell>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────
 
 export default function PreAuthForm() {
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useToast();
   const backPath = location.state?.from || '/claim-list';
   const { claimCaseId: routeClaimCaseId } = useParams();
   const [loadingCase, setLoadingCase] = useState(false);
@@ -415,15 +1117,17 @@ export default function PreAuthForm() {
   // Timeline reply compose state
   const [showReplyCompose, setShowReplyCompose] = useState(false);
   const [replyEmailType, setReplyEmailType] = useState(null);
+  const [portalSending, setPortalSending] = useState(false);
 
   // Load claim case + emails
   const loadClaimData = async (showLoader = true) => {
     if (!routeClaimCaseId) return;
     if (showLoader) setLoadingCase(true);
     try {
-      const [caseRes, emailsRes] = await Promise.all([
+      const [caseRes, emailsRes, docsRes] = await Promise.all([
         claimCaseService.getById(routeClaimCaseId),
         claimCaseService.getAllEmails(routeClaimCaseId, { is_read: true }).catch(() => ({ data: [] })),
+        documentService.list(routeClaimCaseId).catch(() => ({ data: [] })),
       ]);
       const cc = caseRes.data;
       const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
@@ -431,6 +1135,9 @@ export default function PreAuthForm() {
         : null;
 
       const summary = cc.summary || {};
+      const dj = latestForm?.data_json || {};
+      const insured = dj.patient_insured || {};
+      const doctor = dj.treating_doctor || {};
       setSubmitResult({
         claim_case_id: cc.id,
         form_data_id: latestForm?.id,
@@ -452,6 +1159,18 @@ export default function PreAuthForm() {
         diagnosis: summary.diagnosis,
         icd10_code: summary.icd_10,
         submitted_at: latestForm?.created_at || cc.created_at || null,
+        // from latestForm.data_json — for sidebar cards
+        policy_number: insured.policy_number || '',
+        corporate_name: insured.corporate_name || '',
+        insured_card_id: insured.insured_card_id || '',
+        doctor_name: doctor.doctor_name || '',
+        doctor_qualification: doctor.qualification || doctor.doctor_qualification || '',
+        doctor_registration: doctor.registration || doctor.registration_number || doctor.doctor_registration || '',
+        doctor_contact: doctor.contact || doctor.contact_number || doctor.doctor_contact || '',
+        // Merge: form docs (from GET /documents) + top-level cc.documents
+        documents: Array.isArray(docsRes.data) && docsRes.data.length > 0
+          ? docsRes.data
+          : (Array.isArray(cc.documents) ? cc.documents : []),
       });
       const count = cc.unread_count || 0;
       setUnreadCount(count);
@@ -515,6 +1234,44 @@ export default function PreAuthForm() {
   const handleSubmitPreAuth = () => {
     setShowReplyCompose(true);
     setReplyEmailType('APPLIED');
+  };
+
+  // Submit a structured portal form via the existing /email/query flow.
+  // The form auto-composes subject + body from its fields and hands us
+  // { subject, body, files }; we package those into the same FormData
+  // shape the legacy ApplyStep uses so the backend behaves identically.
+  const handlePortalFormSubmit = async ({ subject, body, files }) => {
+    if (!subject || !body) {
+      toast.error('Could not compose email — missing subject or body');
+      return;
+    }
+    const fd = new FormData();
+    fd.append('claim_case_id', submitResult.claim_case_id);
+    if (submitResult.policy_provider_email) {
+      fd.append('to_email', submitResult.policy_provider_email);
+    }
+    (submitResult.cc_emails || [])
+      .filter((e) => e && e.trim())
+      .forEach((cc) => fd.append('cc_emails', cc.trim()));
+    fd.append('subject', subject.trim());
+    fd.append('content', body);
+    (files || []).forEach((file) => fd.append('file', file));
+
+    setPortalSending(true);
+    try {
+      await emailService.query(fd);
+      toast.success('Email sent successfully');
+      await handleTimelineReplySuccess();
+    } catch {
+      // axios interceptor surfaces the error toast
+    } finally {
+      setPortalSending(false);
+    }
+  };
+
+  const closeReplyCompose = () => {
+    setShowReplyCompose(false);
+    setReplyEmailType(null);
   };
 
   // Build status-timeline events from the full status_history if available,
@@ -638,55 +1395,104 @@ export default function PreAuthForm() {
         </button>
       )}
 
-      {/* Inline reply compose (reuses ApplyStep) */}
-      {showReplyCompose && (
-        <div className="claim-detail__compose-wrap">
-          <div className="claim-detail__compose-header">
-            <h3>
-              {replyEmailType === 'APPLIED' ? 'Submit Pre-Auth'
-                : replyEmailType === 'ENHANCE_SUBMITTED' ? 'Enhance Submit'
-                : replyEmailType === 'RECONSIDER' ? 'Reconsider'
-                : replyEmailType === 'ADR_SUBMITTED' ? 'ADR Submit'
-                : 'Reply'}
-            </h3>
-            <button className="btn btn--ghost btn--sm" onClick={() => { setShowReplyCompose(false); setReplyEmailType(null); }}>
-              Cancel
-            </button>
-          </div>
-          <ApplyStep
-            submitResult={submitResult}
-            onSendSuccess={handleTimelineReplySuccess}
-            useQueryEndpoint={replyEmailType !== 'APPLIED'}
-          />
-        </div>
-      )}
+      {/* Inline reply compose — branches between structured portal forms
+          (APPROVED / PARTIALLY_APPROVED → Enhance, ADR_NMI → ADR,
+          DENIED → Reconsider) and the legacy email-template ApplyStep
+          for the initial APPLIED (DRAFT) submission. */}
+      {showReplyCompose && (() => {
+        const useEnhanceForm =
+          replyEmailType === 'ENHANCE_SUBMITTED' &&
+          (submitResult.claim_status === 'APPROVED' ||
+            submitResult.claim_status === 'PARTIALLY_APPROVED');
+        const useAdrForm = replyEmailType === 'ADR_SUBMITTED';
+        const useReconsiderForm =
+          replyEmailType === 'RECONSIDER' &&
+          submitResult.claim_status === 'DENIED';
 
-      {/* Accordions */}
-      <div className="claim-detail__accordions">
-        <Accordion number={1} title="Status Timeline" defaultOpen>
-          <StatusTimeline events={statusEvents} />
-        </Accordion>
-        <Accordion number={2} title={`Enhance Requests (${enhanceEmails.length})`}>
-          <CategoryEmails
-            emails={enhanceEmails}
-            claimCaseId={submitResult.claim_case_id}
-            emptyText="No enhance requests yet"
-          />
-        </Accordion>
-        <Accordion number={3} title={`Additional Document Requests (${adrEmails.length})`}>
-          <CategoryEmails
-            emails={adrEmails}
-            claimCaseId={submitResult.claim_case_id}
-            emptyText="No additional document requests"
-          />
-        </Accordion>
-        <Accordion number={4} title={`Reconsideration Requests (${reconsiderEmails.length})`}>
-          <CategoryEmails
-            emails={reconsiderEmails}
-            claimCaseId={submitResult.claim_case_id}
-            emptyText="No reconsideration requests"
-          />
-        </Accordion>
+        if (useEnhanceForm) {
+          return (
+            <EnhancePortalForm
+              submitResult={submitResult}
+              onClose={closeReplyCompose}
+              onSubmit={handlePortalFormSubmit}
+              sending={portalSending}
+            />
+          );
+        }
+        if (useAdrForm) {
+          return (
+            <ADRPortalForm
+              submitResult={submitResult}
+              adrEmails={adrEmails}
+              onClose={closeReplyCompose}
+              onSubmit={handlePortalFormSubmit}
+              sending={portalSending}
+            />
+          );
+        }
+        if (useReconsiderForm) {
+          return (
+            <ReconsiderPortalForm
+              submitResult={submitResult}
+              onClose={closeReplyCompose}
+              onSubmit={handlePortalFormSubmit}
+              sending={portalSending}
+            />
+          );
+        }
+        return (
+          <div className="claim-detail__compose-wrap">
+            <div className="claim-detail__compose-header">
+              <h3>
+                {replyEmailType === 'APPLIED' ? 'Submit Pre-Auth'
+                  : replyEmailType === 'ENHANCE_SUBMITTED' ? 'Enhance Submit'
+                  : replyEmailType === 'RECONSIDER' ? 'Reconsider'
+                  : replyEmailType === 'ADR_SUBMITTED' ? 'ADR Submit'
+                  : 'Reply'}
+              </h3>
+              <button className="btn btn--ghost btn--sm" onClick={closeReplyCompose}>
+                Cancel
+              </button>
+            </div>
+            <ApplyStep
+              submitResult={submitResult}
+              onSendSuccess={handleTimelineReplySuccess}
+              useQueryEndpoint={replyEmailType !== 'APPLIED'}
+            />
+          </div>
+        );
+      })()}
+
+      {/* Two-column layout: accordions on the left, info cards on the right */}
+      <div className="claim-detail__layout">
+        <div className="claim-detail__accordions">
+          <Accordion number={1} title="Status Timeline" defaultOpen>
+            <StatusTimeline events={statusEvents} />
+          </Accordion>
+          <Accordion number={2} title={`Enhance Requests (${enhanceEmails.length})`}>
+            <CategoryEmails
+              emails={enhanceEmails}
+              claimCaseId={submitResult.claim_case_id}
+              emptyText="No enhance requests yet"
+            />
+          </Accordion>
+          <Accordion number={3} title={`Additional Document Requests (${adrEmails.length})`}>
+            <CategoryEmails
+              emails={adrEmails}
+              claimCaseId={submitResult.claim_case_id}
+              emptyText="No additional document requests"
+            />
+          </Accordion>
+          <Accordion number={4} title={`Reconsideration Requests (${reconsiderEmails.length})`}>
+            <CategoryEmails
+              emails={reconsiderEmails}
+              claimCaseId={submitResult.claim_case_id}
+              emptyText="No reconsideration requests"
+            />
+          </Accordion>
+        </div>
+
+        <ClaimSidebar submitResult={submitResult} claimEmails={claimEmails} />
       </div>
 
       {showUnreadPopup && (
@@ -784,5 +1590,193 @@ function CategoryEmails({ emails, claimCaseId, onReplyClick, emptyText }) {
       claimCaseId={claimCaseId}
       onReplyClick={onReplyClick}
     />
+  );
+}
+
+// ── Sidebar (Insurer & Policy / Treating Doctor / Documents) ────────
+
+function KV({ label, value }) {
+  const display = value === null || value === undefined || value === '' ? '—' : value;
+  return (
+    <div className="info-card__kv">
+      <span className="info-card__kv-label">{label}</span>
+      <span className="info-card__kv-value">{display}</span>
+    </div>
+  );
+}
+
+function InfoCard({ title, headerRight, children }) {
+  return (
+    <div className="info-card">
+      <div className="info-card__head">
+        <h3 className="info-card__title">{title}</h3>
+        {headerRight && <span className="info-card__head-right">{headerRight}</span>}
+      </div>
+      <div className="info-card__body">{children}</div>
+    </div>
+  );
+}
+
+function ClaimSidebar({ submitResult, claimEmails }) {
+  const [docViewUrl, setDocViewUrl] = useState(null);
+  const [docViewName, setDocViewName] = useState('');
+  const [docViewType, setDocViewType] = useState('');
+
+  const closeDocView = () => {
+    if (docViewUrl) window.URL.revokeObjectURL(docViewUrl);
+    setDocViewUrl(null);
+    setDocViewName('');
+    setDocViewType('');
+  };
+
+  // Build a unified document list from two sources:
+  //   1. Submission documents (fetched via documentService.list)
+  //   2. Email attachments (sent + received), inlined on each email
+  const documents = useMemo(() => {
+    const list = [];
+    (submitResult.documents || []).forEach((d) => {
+      list.push({
+        id: `doc-${d.id}`,
+        name: d.original_filename || d.name || 'Document',
+        size: d.size || d.file_size || null,
+        source: 'Submission',
+        kind: 'doc',
+        rawId: d.id,
+        contentType: d.content_type,
+      });
+    });
+    (claimEmails || []).forEach((email) => {
+      (email.attachments || []).forEach((att) => {
+        list.push({
+          id: `email-${email.id}-att-${att.id}`,
+          name: att.original_filename || att.name || 'Attachment',
+          size: att.file_size || null,
+          source: email.direction === 'SENT' ? 'Submission' : 'Insurer Response',
+          kind: 'attachment',
+          emailId: email.id,
+          rawId: att.id,
+        });
+      });
+    });
+    return list;
+  }, [submitResult.documents, claimEmails]);
+
+  const openView = (item) => async () => {
+    try {
+      const res = item.kind === 'doc'
+        ? await documentService.view(submitResult.claim_case_id, item.rawId)
+        : await claimCaseService.viewAttachment(submitResult.claim_case_id, item.emailId, item.rawId);
+      // Trust the filename extension over the server's Content-Type — backends
+      // sometimes mislabel attachments (e.g. returning application/pdf for a
+      // .png). Header is used only when the extension is unrecognized.
+      const ext = (item.name.split('.').pop() || '').toLowerCase();
+      const extMap = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+        webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+        pdf: 'application/pdf',
+      };
+      const headerCT = res.headers?.['content-type'] || res.headers?.['Content-Type'] || '';
+      const contentType = extMap[ext] || item.contentType || headerCT || '';
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: contentType }));
+      setDocViewUrl(url);
+      setDocViewName(item.name);
+      setDocViewType(contentType);
+    } catch {
+      // handled by interceptor
+    }
+  };
+
+  // Group by source label for the design's "Submission / Sent / Received" sections.
+  const grouped = useMemo(() => {
+    const buckets = { Submission: [], 'Insurer Response': [] };
+    documents.forEach((d) => {
+      if (buckets[d.source]) buckets[d.source].push(d);
+    });
+    return buckets;
+  }, [documents]);
+
+  return (
+    <aside className="claim-detail__sidebar">
+      <InfoCard title="Insurer & Policy">
+        <KV label="Insurer" value={submitResult.insurer_name} />
+        <KV label="Policy No." value={submitResult.policy_number} />
+        {submitResult.corporate_name && <KV label="Corporate" value={submitResult.corporate_name} />}
+        <KV label="Insured Card ID" value={submitResult.insured_card_id} />
+        <KV label="Claims Email" value={submitResult.policy_provider_email} />
+      </InfoCard>
+
+      <InfoCard title="Treating Doctor">
+        <KV label="Name" value={submitResult.doctor_name} />
+        <KV label="Qualification" value={submitResult.doctor_qualification} />
+        <KV label="Reg. No." value={submitResult.doctor_registration} />
+        <KV label="Contact" value={submitResult.doctor_contact} />
+      </InfoCard>
+
+      <InfoCard
+        title="Documents"
+        headerRight={`${documents.length} file${documents.length === 1 ? '' : 's'}`}
+      >
+        {documents.length === 0 ? (
+          <div className="info-card__empty">No documents</div>
+        ) : (
+          <div className="info-card__doc-groups">
+            {['Submission', 'Insurer Response'].map((label) => {
+              const items = grouped[label];
+              if (!items || items.length === 0) return null;
+              return (
+                <div key={label} className="info-card__doc-group">
+                  <div className="info-card__doc-group-label">{label}</div>
+                  <div className="info-card__doc-list">
+                    {items.map((item) => {
+                      const ext = (item.name.split('.').pop() || '').toLowerCase();
+                      const kind = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext) ? 'img' : 'pdf';
+                      const sizeLabel = typeof item.size === 'number'
+                        ? `${(item.size / 1024).toFixed(1)} KB`
+                        : (item.size || null);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="info-card__doc"
+                          onClick={openView(item)}
+                          title="View"
+                        >
+                          <span className={`info-card__doc-icon info-card__doc-icon--${kind}`}>
+                            {kind.toUpperCase()}
+                          </span>
+                          <span className="info-card__doc-meta">
+                            <span className="info-card__doc-name">{item.name}</span>
+                            {sizeLabel && <span className="info-card__doc-size">{sizeLabel}</span>}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </InfoCard>
+
+      {docViewUrl && (
+        <Modal title={docViewName} onClose={closeDocView} size="lg">
+          <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+            {docViewType.startsWith('image/') ? (
+              <img src={docViewUrl} alt={docViewName} style={{ maxWidth: '100%', height: 'auto' }} />
+            ) : docViewType === 'application/pdf' ? (
+              <iframe src={docViewUrl} title={docViewName} style={{ width: '100%', height: '70vh', border: 'none' }} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: 24 }}>
+                <p>Preview not available for this file type.</p>
+                <a href={docViewUrl} download={docViewName} className="btn btn--primary" style={{ marginTop: 12 }}>
+                  Download
+                </a>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+    </aside>
   );
 }

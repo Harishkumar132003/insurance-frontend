@@ -17,7 +17,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from './icons/Icons';
-import oasysLogo from '../assets/oasys.svg';
+import oasysLogo from '../assets/oasys.png';
 import './Sidebar.scss';
 
 const { SUPER_ADMIN, HOSPITAL_ADMIN, INSURANCE_PROVIDER } = ROLES;
