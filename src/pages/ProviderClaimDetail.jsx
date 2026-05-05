@@ -71,6 +71,8 @@ export default function ProviderClaimDetail() {
   const [approvedAmount, setApprovedAmount] = useState('');
   const [claimNumber, setClaimNumber] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [documentsList, setDocumentsList] = useState([]);
+  const [newDocLabel, setNewDocLabel] = useState('');
   const [saving, setSaving] = useState(false);
 
   const loadClaimData = async (showLoader = true) => {
@@ -153,6 +155,8 @@ export default function ProviderClaimDetail() {
     setApprovedAmount(claim?.approved_amount || claim?.requested_amount || '');
     setClaimNumber(claim?.claim_number || '');
     setRemarks('');
+    setDocumentsList([]);
+    setNewDocLabel('');
     setActionOpen(true);
   };
 
@@ -162,6 +166,8 @@ export default function ProviderClaimDetail() {
     setApprovedAmount('');
     setClaimNumber('');
     setRemarks('');
+    setDocumentsList([]);
+    setNewDocLabel('');
   };
 
   const handleSubmit = async () => {
@@ -188,6 +194,7 @@ export default function ProviderClaimDetail() {
         return;
       }
       payload.remarks = remarks.trim();
+      payload.documents_list = documentsList;
     }
 
     setSaving(true);
@@ -375,16 +382,69 @@ export default function ProviderClaimDetail() {
             )}
 
             {actionStatus === 'ADR_NMI' && (
-              <div className="form-group">
-                <label>Remarks <span style={{ color: '#b91c1c' }}>*</span></label>
-                <textarea
-                  rows={4}
-                  placeholder="What clarification or documents are being requested"
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  required
-                />
-              </div>
+              <>
+                <div className="form-group">
+                  <label>Remarks <span style={{ color: '#b91c1c' }}>*</span></label>
+                  <textarea
+                    rows={4}
+                    placeholder="What clarification or documents are being requested"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Required Documents</label>
+                  {documentsList.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                      {documentsList.map((doc, idx) => (
+                        <span key={idx} className="apply-step__attach-chip">
+                          <span>{doc}</span>
+                          <button
+                            type="button"
+                            onClick={() => setDocumentsList((prev) => prev.filter((_, i) => i !== idx))}
+                          >
+                            &times;
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="e.g. LMP / EDD certificate"
+                      value={newDocLabel}
+                      onChange={(e) => setNewDocLabel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const v = newDocLabel.trim();
+                          if (v) {
+                            setDocumentsList((prev) => [...prev, v]);
+                            setNewDocLabel('');
+                          }
+                        }
+                      }}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => {
+                        const v = newDocLabel.trim();
+                        if (v) {
+                          setDocumentsList((prev) => [...prev, v]);
+                          setNewDocLabel('');
+                        }
+                      }}
+                      disabled={!newDocLabel.trim()}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
 
             <div className="modal-actions">

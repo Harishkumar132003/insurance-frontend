@@ -37,9 +37,10 @@
   }
 
   &__brand {
-    @include flex(row, flex-start, center);
-    padding: $space-6;
+    @include flex(row, center, center);
+    padding: $space-3 $space-4;
     height: 64px;
+    background: $bg-card;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
@@ -180,7 +181,7 @@
 
 .sidebar:not(.sidebar--collapsed) {
   .sidebar__brand {
-    background: linear-gradient(135deg, rgba(108, 92, 231, 0.22), rgba(108, 92, 231, 0.08));
+    background: $bg-card;
     padding: $space-3 $space-5;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   }

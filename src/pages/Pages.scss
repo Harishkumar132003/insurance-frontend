@@ -1078,6 +1078,397 @@
   }
 }
 
+// ── Portal-style structured forms (Enhance / ADR) ──────────────────
+.portal-form {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  box-shadow: $shadow-sm;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    padding: $space-4 $space-5;
+    border-bottom: 1px solid $border-color;
+
+    &--info    { background: rgba($info, 0.08);    border-bottom-color: rgba($info, 0.25); }
+    &--warning { background: rgba($warning, 0.10); border-bottom-color: rgba($warning, 0.30); }
+    &--danger  { background: rgba($danger, 0.08);  border-bottom-color: rgba($danger, 0.25); }
+  }
+
+  &__head-text { flex: 1; min-width: 0; }
+
+  &__head-title {
+    font-size: $font-size-base;
+    font-weight: 700;
+    color: $text-primary;
+  }
+
+  &__head-sub {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    margin-top: 2px;
+  }
+
+  &__close {
+    @include flex-center;
+    width: 28px;
+    height: 28px;
+    border-radius: $radius-full;
+    border: none;
+    background: transparent;
+    color: $text-secondary;
+    cursor: pointer;
+    transition: background $transition-fast, color $transition-fast;
+
+    &:hover { background: rgba(0, 0, 0, 0.06); color: $text-primary; }
+  }
+
+  &__body {
+    padding: $space-5;
+    display: flex;
+    flex-direction: column;
+    gap: $space-5;
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: $space-3;
+    padding: $space-3 $space-5;
+    border-top: 1px solid $border-color;
+    background: $bg-body;
+  }
+
+  // Section
+  &__section { display: flex; flex-direction: column; gap: $space-3; }
+
+  &__section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: $space-3;
+    border-bottom: 1px dashed $border-color;
+    padding-bottom: $space-2;
+
+    h4 {
+      margin: 0;
+      font-size: $font-size-sm;
+      font-weight: 700;
+      color: $text-primary;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+  }
+
+  &__section-hint {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    font-style: italic;
+  }
+
+  &__section-body {
+    display: grid;
+    gap: $space-3 $space-4;
+
+    @include mobile {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  // Field
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: $space-1;
+    min-width: 0;
+
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    select,
+    textarea {
+      width: 100%;
+      padding: $space-2 $space-3;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: $bg-card;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      font-family: inherit;
+      outline: none;
+      transition: border-color $transition-fast, box-shadow $transition-fast;
+
+      &:focus {
+        border-color: $primary;
+        box-shadow: 0 0 0 3px rgba($primary, 0.12);
+      }
+
+      &::placeholder { color: $text-light; }
+    }
+
+    textarea { resize: vertical; line-height: 1.5; }
+  }
+
+  &__field-label {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  &__req { color: $danger; }
+
+  &__field-hint {
+    font-size: $font-size-xs;
+    color: $text-light;
+    margin-top: 2px;
+  }
+
+  &__read-field {
+    padding: $space-2 $space-3;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    background: $bg-body;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    word-break: break-word;
+  }
+
+  // Files
+  &__files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+    margin-bottom: $space-2;
+  }
+
+  &__files-empty {
+    font-size: $font-size-xs;
+    color: $text-light;
+    font-style: italic;
+  }
+
+  &__add-file {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-1;
+    border: 1px dashed $border-color;
+    background: $bg-body;
+  }
+
+  // ADR-specific quote block
+  &__quote {
+    border-left: 3px solid $border-color;
+    background: rgba($text-secondary, 0.04);
+    padding: $space-3 $space-4;
+    border-radius: 0 $radius-md $radius-md 0;
+
+    &--warning {
+      border-left-color: $warning;
+      background: rgba($warning, 0.06);
+    }
+
+    &--danger {
+      border-left-color: $danger;
+      background: rgba($danger, 0.06);
+    }
+  }
+
+  &__quote-label {
+    font-size: $font-size-xs;
+    font-weight: 700;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: $space-1;
+  }
+
+  &__quote-text {
+    font-size: $font-size-sm;
+    color: $text-primary;
+    line-height: 1.5;
+    font-style: italic;
+  }
+
+  &__quote-meta {
+    font-size: $font-size-xs;
+    color: $text-light;
+    margin-top: $space-1;
+  }
+
+  // ADR checklist
+  &__adr-list {
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+    grid-column: 1 / -1;
+  }
+
+  &__adr-row {
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    padding: $space-3;
+    background: $bg-card;
+  }
+
+  &__adr-check {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    cursor: pointer;
+    font-size: $font-size-sm;
+    color: $text-primary;
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: $primary;
+    }
+  }
+
+  &__adr-label { flex: 1; }
+
+  &__adr-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px $space-2;
+    border-radius: $radius-full;
+    background: rgba($text-secondary, 0.1);
+    color: $text-secondary;
+
+    &--done {
+      background: rgba($secondary, 0.12);
+      color: $secondary;
+    }
+  }
+
+  &__adr-file { margin-top: $space-2; padding-left: 24px; }
+
+  &__adr-add {
+    align-self: flex-start;
+    margin-top: $space-1;
+    border: 1px dashed $border-color;
+  }
+
+  &__notice {
+    display: flex;
+    gap: $space-2;
+    align-items: flex-start;
+    padding: $space-3;
+    border: 1px solid rgba($warning, 0.3);
+    background: rgba($warning, 0.08);
+    border-radius: $radius-md;
+    font-size: $font-size-sm;
+    color: $text-primary;
+
+    svg { color: $warning; flex-shrink: 0; margin-top: 2px; }
+  }
+
+  &__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    cursor: pointer;
+    font-size: $font-size-sm;
+    color: $text-primary;
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: $primary;
+    }
+  }
+
+  // Email preview reveal — shows the auto-composed subject/body
+  &__preview {
+    border: 1px dashed $border-color;
+    border-radius: $radius-md;
+    background: $bg-body;
+    overflow: hidden;
+  }
+
+  &__preview-toggle {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    width: 100%;
+    padding: $space-3 $space-4;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+
+    &:hover { color: $primary; }
+  }
+
+  &__preview-chev {
+    margin-left: auto;
+    display: inline-flex;
+    transition: transform $transition-fast;
+    color: $text-light;
+
+    &--open { transform: rotate(90deg); }
+  }
+
+  &__preview-body {
+    padding: $space-3 $space-4 $space-4;
+    border-top: 1px dashed $border-color;
+    background: $bg-card;
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+  }
+
+  &__preview-row {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: $space-2;
+    align-items: baseline;
+    font-size: $font-size-xs;
+
+    span {
+      font-weight: 700;
+      color: $text-secondary;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    code {
+      color: $text-primary;
+      font-family: $font-family;
+      word-break: break-word;
+    }
+  }
+
+  &__preview-text {
+    margin: 0;
+    padding: $space-3;
+    background: $bg-body;
+    border-radius: $radius-sm;
+    font-size: $font-size-xs;
+    color: $text-primary;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: $font-family;
+  }
+}
+
 // Status step
 .status-step {
   @include card;
@@ -1908,6 +2299,175 @@
     display: flex;
     flex-direction: column;
     gap: $space-3;
+  }
+
+  // Two-column layout: accordions (left) + sidebar info cards (right)
+  &__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: $space-4;
+    align-items: start;
+
+    @include tablet {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  &__sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    position: sticky;
+    top: $space-4;
+
+    @include tablet {
+      position: static;
+    }
+  }
+}
+
+// ── Sidebar info cards (Insurer & Policy / Treating Doctor / Documents) ──
+.info-card {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-lg;
+  overflow: hidden;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $space-2;
+    padding: $space-3 $space-4;
+    border-bottom: 1px solid $border-color;
+    background: $bg-body;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    color: $text-primary;
+  }
+
+  &__head-right {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+  }
+
+  &__body {
+    padding: $space-2 $space-4;
+  }
+
+  &__empty {
+    padding: $space-3 0;
+    font-size: $font-size-xs;
+    color: $text-light;
+    font-style: italic;
+    text-align: center;
+  }
+
+  // Key/value rows
+  &__kv {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: $space-2;
+    padding: $space-2 0;
+    font-size: $font-size-sm;
+    border-bottom: 1px dashed $border-color;
+
+    &:last-child { border-bottom: none; }
+  }
+
+  &__kv-label {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  &__kv-value {
+    color: $text-primary;
+    word-break: break-word;
+  }
+
+  // Documents
+  &__doc-groups {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    padding: $space-2 0;
+  }
+
+  &__doc-group { display: flex; flex-direction: column; gap: $space-2; }
+
+  &__doc-group-label {
+    font-size: $font-size-xs;
+    font-weight: 700;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  &__doc-list {
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+  }
+
+  &__doc {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    width: 100%;
+    padding: $space-2 $space-3;
+    background: $bg-body;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color $transition-fast, background $transition-fast;
+
+    &:hover {
+      border-color: $primary;
+      background: rgba($primary, 0.04);
+    }
+  }
+
+  &__doc-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: $radius-sm;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+
+    &--pdf { background: rgba($danger, 0.1);    color: $danger; }
+    &--img { background: rgba($info, 0.1);      color: $info; }
+  }
+
+  &__doc-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  &__doc-name {
+    font-size: $font-size-sm;
+    color: $text-primary;
+    @include truncate;
+  }
+
+  &__doc-size {
+    font-size: $font-size-xs;
+    color: $text-light;
   }
 }
 
