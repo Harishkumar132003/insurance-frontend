@@ -753,9 +753,14 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
     `\nKindly process at the earliest.\n\n` +
     `Regards,\nHospital Insurance Desk`;
 
+  // Labels of the checked checklist rows — sent as `documents_list` so the
+  // backend can record exactly which insurer-requested items the hospital is
+  // responding to (separate from filename-only attachments).
+  const documentsList = items.filter((it) => it.attached).map((it) => it.label);
+
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files: allFiles });
+    onSubmit({ subject, body, files: allFiles, documentsList });
   };
 
   const insurerQuoteText =
@@ -1240,7 +1245,7 @@ export default function PreAuthForm() {
   // The form auto-composes subject + body from its fields and hands us
   // { subject, body, files }; we package those into the same FormData
   // shape the legacy ApplyStep uses so the backend behaves identically.
-  const handlePortalFormSubmit = async ({ subject, body, files }) => {
+  const handlePortalFormSubmit = async ({ subject, body, files, documentsList }) => {
     if (!subject || !body) {
       toast.error('Could not compose email — missing subject or body');
       return;
@@ -1256,6 +1261,12 @@ export default function PreAuthForm() {
     fd.append('subject', subject.trim());
     fd.append('content', body);
     (files || []).forEach((file) => fd.append('file', file));
+    // Send checked ADR checklist labels as documents_list (array of strings).
+    // Backend may receive these as repeated form fields or, if it expects a
+    // single JSON string, parse the matching key.
+    if (Array.isArray(documentsList) && documentsList.length > 0) {
+      documentsList.forEach((label) => fd.append('documents_list', label));
+    }
 
     setPortalSending(true);
     try {
