@@ -1409,8 +1409,14 @@ export default function PreAuthForm() {
         // populate every template field, not just the ones surfaced above.
         data_json: dj,
         // Top-level header_info on the claim case (sibling of form_data),
-        // used by the print template's header section.
-        header_info: cc.header_info || {},
+        // used by the print template's header section. Falls back to the
+        // form_data section name some backends use (tpa_insurer_hospital)
+        // if header_info isn't present at the top level.
+        header_info:
+          cc.header_info
+          || dj.tpa_insurer_hospital
+          || dj.header_info
+          || {},
         // Merge: form docs (from GET /documents) + top-level cc.documents
         documents: Array.isArray(docsRes.data) && docsRes.data.length > 0
           ? docsRes.data
@@ -1556,37 +1562,76 @@ export default function PreAuthForm() {
         if (v !== undefined && v !== null && v !== '') flat[k] = v;
       });
 
-      // Header / hospital identity fields — the template uses short keys
-      // (a/b/c/d/i/ii/iii) that pull from cc.header_info (top-level on the
-      // claim case, sibling of form_data — not inside data_json).
+      // Header / hospital identity fields — the template's data-field keys
+      // are the full names (tpa_name, hospital_name, etc.) sourced from
+      // cc.header_info (top-level on the claim case).
       const headerInfo = submitResult.header_info || {};
       const headerMap = {
-        a: headerInfo.tpa_name,
-        b: headerInfo.tpa_toll_free_phone,
-        c: headerInfo.tpa_toll_free_fax,
-        d: headerInfo.hospital_name,
-        i: headerInfo.hospital_address,
-        ii: headerInfo.hospital_rohini_id,
-        iii: headerInfo.hospital_email,
+        tpa_name: headerInfo.tpa_name,
+        tpa_toll_free_phone: headerInfo.tpa_toll_free_phone,
+        tpa_toll_free_fax: headerInfo.tpa_toll_free_fax,
+        hospital_name: headerInfo.hospital_name,
+        hospital_address: headerInfo.hospital_address,
+        hospital_rohini_id: headerInfo.hospital_rohini_id,
+        hospital_email: headerInfo.hospital_email,
       };
       Object.entries(headerMap).forEach(([k, v]) => {
         if (v !== undefined && v !== null && v !== '') flat[k] = v;
       });
 
-      // Always recreate the iframe so any stale onload from a previous
-      // print attempt is gone, and the load race below is deterministic.
-      const stale = document.getElementById('print-frame');
-      if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
-      const iframe = document.createElement('iframe');
-      iframe.id = 'print-frame';
-      iframe.style.cssText = 'position:fixed;width:0;height:0;border:none;left:-9999px;';
-      document.body.appendChild(iframe);
+      // Doctor / declaration fields the template uses with slightly different
+      // names than what we extract.
+      const doctorMap = {
+        doctor_qualification: submitResult.doctor_qualification,
+        doctor_registration_number: submitResult.doctor_registration,
+        doctor_contact: submitResult.doctor_contact,
+      };
+      Object.entries(doctorMap).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') flat[k] = v;
+      });
 
-      const populateAndPrint = () => {
+      // The template has paired checkbox/radio data-fields for booleans —
+      // e.g. data-field="is_emergency_yes" and data-field="is_emergency_no".
+      // Derive those paired keys from the underlying boolean so our
+      // populate's checkbox branch can tick the right one.
+      const truthy = (v) => v === true || v === 'true' || v === 'Yes' || v === 'yes';
+      const falsy = (v) => v === false || v === 'false' || v === 'No' || v === 'no';
+      const boolPairs = [
+        'is_emergency',
+        'has_other_insurance',
+        'has_family_physician',
+        'is_rta',
+        'reported_to_police',
+        'substance_abuse',
+        'test_conducted',
+      ];
+      boolPairs.forEach((k) => {
+        const v = flat[k];
+        if (truthy(v)) flat[`${k}_yes`] = true;
+        else if (falsy(v)) flat[`${k}_no`] = true;
+      });
+
+      // Gender splits into three checkboxes: gender_male / gender_female / gender_third.
+      const gender = String(flat.gender || '').toLowerCase().trim();
+      if (gender === 'male' || gender === 'm') flat.gender_male = true;
+      else if (gender === 'female' || gender === 'f') flat.gender_female = true;
+      else if (gender === 'third' || gender === 'other' || gender === 'transgender') flat.gender_third = true;
+
+      // Reuse / create the off-screen iframe — same pattern as
+      // PreAuthFormPage.populateAndPrint.
+      let iframe = document.getElementById('print-frame');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'print-frame';
+        iframe.style.cssText = 'position:fixed;width:0;height:0;border:none;left:-9999px;';
+        document.body.appendChild(iframe);
+      }
+
+      const populate = () => {
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!doc) return;
+        if (!doc) return 0;
         let populated = 0;
-        let missingFields = [];
+        const missingFields = [];
         doc.querySelectorAll('[data-field]').forEach((el) => {
           const field = el.getAttribute('data-field');
           const value = flat[field];
@@ -1594,32 +1639,46 @@ export default function PreAuthForm() {
             missingFields.push(field);
             return;
           }
+          const tag = el.tagName.toLowerCase();
           if (el.type === 'radio') {
             if (el.value === String(value)) el.checked = true;
           } else if (el.type === 'checkbox') {
             el.checked = !!value;
-          } else {
+          } else if (tag === 'input' || tag === 'textarea') {
             el.value = value;
+            // Set the attribute too so static print serialisation picks it up
+            // even when browsers print from the source HTML rather than DOM.
+            el.setAttribute('value', String(value));
+          } else if (tag === 'select') {
+            el.value = value;
+            el.querySelectorAll('option').forEach((opt) => {
+              if (opt.value === String(value)) opt.setAttribute('selected', 'selected');
+            });
+          } else {
+            // span / div / td / u / etc. — text-only elements need textContent.
+            el.textContent = String(value);
           }
           populated += 1;
         });
-        // Surface debug info so we can diagnose unfilled fields without a rebuild.
         console.info('[Print Part C] populated', populated, 'fields; missing:', [...new Set(missingFields)], 'flat keys:', Object.keys(flat));
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
+        return populated;
       };
 
-      // Populate synchronously after doc.close() (parsing is sync in same-origin
-      // about:blank iframes). Also bind onload as a belt-and-braces fallback
-      // for browsers that delay parsing.
-      iframe.onload = populateAndPrint;
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open();
       doc.write(html);
       doc.close();
-      // Run synchronously too; harmless to do twice (the second run is a no-op
-      // for already-set fields).
-      populateAndPrint();
+
+      // Print only after onload, so the doc is fully parsed and all fields
+      // exist before the print dialog opens. Populating synchronously first
+      // is harmless (sets values on whatever's already parsed); the
+      // onload-time call covers any nodes that were still being parsed.
+      populate();
+      iframe.onload = () => {
+        populate();
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      };
     } catch {
       // axios interceptor surfaces the toast on API errors
     } finally {
