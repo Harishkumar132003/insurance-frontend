@@ -16,6 +16,7 @@ import RunWorkflow from './pages/RunWorkflow';
 import ClaimList from './pages/ClaimList';
 import PreAuthForm from './pages/PreAuthForm';
 import PreAuthFormPage from './pages/PreAuthFormPage';
+import PreAuthPrint from './pages/PreAuthPrint';
 import PreAuthChoicePage from './pages/PreAuthChoicePage';
 import PreAuthAIFillPage from './pages/PreAuthAIFillPage';
 import Email from './pages/Email';
@@ -125,6 +126,14 @@ export default function App() {
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN, INSURANCE_PROVIDER]}>
                     <FeatureGate feature="preauth_list"><PreAuthForm /></FeatureGate>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/pre-auth-print/:claimCaseId"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <FeatureGate feature="preauth_list"><PreAuthPrint /></FeatureGate>
                   </PrivateRoute>
                 }
               />

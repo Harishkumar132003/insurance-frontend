@@ -1469,6 +1469,146 @@
   }
 }
 
+// ── Action bar (DRAFT "Ready to submit" CTA) ───────────────────────
+.actionbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-4;
+  padding: $space-3 $space-4;
+  background: rgba($info, 0.08);
+  border: 1px solid rgba($info, 0.18);
+  border-radius: $radius-lg;
+  margin-bottom: $space-4;
+
+  @include mobile {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  &--info    { background: rgba($info, 0.08);    border-color: rgba($info, 0.20); }
+  &--warning { background: rgba($warning, 0.10); border-color: rgba($warning, 0.25); }
+  &--danger  { background: rgba($danger, 0.08);  border-color: rgba($danger, 0.20); }
+
+  &__msg {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__icon {
+    @include flex-center;
+    width: 36px;
+    height: 36px;
+    border-radius: $radius-md;
+    background: rgba($info, 0.15);
+    color: $info;
+    flex-shrink: 0;
+  }
+
+  &__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+
+    strong {
+      font-size: $font-size-sm;
+      color: $text-primary;
+      font-weight: 700;
+    }
+
+    span {
+      font-size: $font-size-xs;
+      color: $text-secondary;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    flex-shrink: 0;
+  }
+}
+
+// ── Pre-Auth Print preview page ────────────────────────────────────
+.preauth-print {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+
+  &__topbar {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    padding: $space-3 $space-4;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  &__title {
+    flex: 1;
+    font-size: $font-size-base;
+    font-weight: 600;
+    color: $text-primary;
+    @include truncate;
+  }
+
+  &__topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    flex-shrink: 0;
+  }
+
+  &__body {
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    overflow: hidden;
+  }
+
+  &__frame {
+    width: 100%;
+    height: calc(100vh - 140px);
+    border: none;
+    background: $bg-card;
+    display: block;
+  }
+
+  &__empty {
+    padding: $space-9 0;
+    text-align: center;
+    color: $text-light;
+    font-size: $font-size-sm;
+  }
+
+  // ── Print rules ──
+  @media print {
+    gap: 0;
+
+    .no-print { display: none !important; }
+
+    .preauth-print__body {
+      border: none;
+      padding: 0;
+      box-shadow: none;
+    }
+  }
+}
+
+// Hide app chrome (sidebar etc.) when printing the preauth-print page only.
+@media print {
+  body { background: white; }
+}
+
 // Status step
 .status-step {
   @include card;
