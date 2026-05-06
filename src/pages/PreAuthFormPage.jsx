@@ -118,19 +118,19 @@ const FORM_SECTIONS = [
         label: 'Chronic Conditions',
         fields: (() => {
           const BOOL_OPTIONS = [
-            { value: true, label: 'True' },
-            { value: false, label: 'False' },
+            { value: true, label: 'Yes' },
+            { value: false, label: 'No' },
           ];
           return [
-            { key: 'diabetes', label: 'Diabetes', type: 'select', options: BOOL_OPTIONS },
-            { key: 'heart_disease', label: 'Heart Disease', type: 'select', options: BOOL_OPTIONS },
-            { key: 'hypertension', label: 'Hypertension', type: 'select', options: BOOL_OPTIONS },
-            { key: 'hyperlipidemia', label: 'Hyperlipidemia', type: 'select', options: BOOL_OPTIONS },
-            { key: 'osteoarthritis', label: 'Osteoarthritis', type: 'select', options: BOOL_OPTIONS },
-            { key: 'asthma_copd', label: 'Asthma / COPD', type: 'select', options: BOOL_OPTIONS },
-            { key: 'cancer', label: 'Cancer', type: 'select', options: BOOL_OPTIONS },
-            { key: 'alcohol_drug_abuse', label: 'Alcohol / Drug Abuse', type: 'select', options: BOOL_OPTIONS },
-            { key: 'hiv_std', label: 'HIV / STD', type: 'select', options: BOOL_OPTIONS },
+            { key: 'diabetes', label: 'Diabetes', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'heart_disease', label: 'Heart Disease', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'hypertension', label: 'Hypertension', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'hyperlipidemia', label: 'Hyperlipidemia', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'osteoarthritis', label: 'Osteoarthritis', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'asthma_copd', label: 'Asthma / COPD', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'cancer', label: 'Cancer', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'alcohol_drug_abuse', label: 'Alcohol / Drug Abuse', type: 'radio', options: BOOL_OPTIONS },
+            { key: 'hiv_std', label: 'HIV / STD', type: 'radio', options: BOOL_OPTIONS },
             { key: 'other', label: 'Other', type: 'text' },
           ];
         })(),
@@ -154,7 +154,7 @@ const FORM_SECTIONS = [
           { key: 'medicines_cost', label: 'Medicines Cost', type: 'number' },
           { key: 'other_expenses', label: 'Other Expenses', type: 'number' },
           { key: 'package_charges', label: 'Package Charges', type: 'number' },
-          { key: 'total_cost', label: 'Total Cost', type: 'number' },
+          { key: 'total_cost', label: 'Total Cost', type: 'number', readOnly: true },
         ],
       },
     ],
@@ -264,20 +264,29 @@ function FieldInput({ field, value, onChange }) {
   }
 
   if (type === 'radio') {
+    // Support both string options and { value, label } object options.
+    // Object options are coerced to strings for the input element and
+    // converted back on change so booleans (true/false) round-trip correctly.
+    const isObjectOption = (opt) => opt !== null && typeof opt === 'object';
     return (
       <div className="preauth-radio-group">
-        {(options || []).map((opt) => (
-          <label key={opt} className="preauth-radio">
-            <input
-              type="radio"
-              name={key}
-              value={opt}
-              checked={value === opt}
-              onChange={(e) => onChange(key, e.target.value)}
-            />
-            <span>{opt}</span>
-          </label>
-        ))}
+        {(options || []).map((opt) => {
+          const optValue = isObjectOption(opt) ? opt.value : opt;
+          const optLabel = isObjectOption(opt) ? opt.label : opt;
+          const optKey = String(optValue);
+          return (
+            <label key={optKey} className="preauth-radio">
+              <input
+                type="radio"
+                name={key}
+                value={optKey}
+                checked={value === optValue}
+                onChange={() => onChange(key, optValue)}
+              />
+              <span>{optLabel}</span>
+            </label>
+          );
+        })}
       </div>
     );
   }
@@ -305,7 +314,8 @@ function FieldInput({ field, value, onChange }) {
     <input
       type={type === 'number' ? 'number' : type === 'date' ? 'date' : type === 'time' ? 'time' : 'text'}
       placeholder={field.label}
-      value={value || ''}
+      value={value === 0 ? 0 : (value || '')}
+      readOnly={!!field.readOnly}
       onChange={(e) => onChange(key, e.target.value)}
     />
   );
@@ -413,6 +423,9 @@ export default function PreAuthFormPage() {
   // Load claim case for editing
   useEffect(() => {
     if (!routeClaimCaseId) return;
+    // Skip the round-trip when we just saved a draft and switched the URL via
+    // navigate(replace) — formDataId is already set and form state is current.
+    if (formDataId) return;
 
     const loadClaimCase = async () => {
       setLoadingCase(true);
@@ -448,6 +461,9 @@ export default function PreAuthFormPage() {
       }
     };
     loadClaimCase();
+    // formDataId is read inside but intentionally omitted: we only want to
+    // load when the route changes, not when a draft save populates formDataId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeClaimCaseId]);
 
   // Pre-fill from AI data passed via navigation state
@@ -552,11 +568,30 @@ export default function PreAuthFormPage() {
     return section[key] ?? '';
   };
 
+  // Cost-estimate fields whose sum drives total_cost. Editing any of these
+  // recomputes total_cost so the user can't fall out of sync with the line items.
+  const COST_LINE_KEYS = [
+    'room_rent',
+    'investigation_cost',
+    'icu_charges',
+    'ot_charges',
+    'professional_fees',
+    'medicines_cost',
+    'other_expenses',
+    'package_charges',
+  ];
+
   const setValue = (sectionName, key, value, subgroupKey) => {
     setFormData((prev) => {
       const section = { ...(prev[sectionName] || {}) };
       if (subgroupKey) {
-        section[subgroupKey] = { ...(section[subgroupKey] || {}), [key]: value };
+        const subgroup = { ...(section[subgroupKey] || {}), [key]: value };
+        // Recompute total_cost whenever a line-item cost changes.
+        if (subgroupKey === 'costs' && COST_LINE_KEYS.includes(key)) {
+          const sum = COST_LINE_KEYS.reduce((acc, k) => acc + (Number(subgroup[k]) || 0), 0);
+          subgroup.total_cost = sum;
+        }
+        section[subgroupKey] = subgroup;
       } else {
         section[key] = value;
       }
@@ -598,10 +633,12 @@ export default function PreAuthFormPage() {
     return dataJson;
   };
 
-  // ── Save & Proceed ──
+  // ── Save handlers (Save as Draft / Save & Proceed) ──
+  // Both call the same endpoints; "Save as Draft" stays on the form so the
+  // user can keep editing, while "Save & Proceed" navigates to the claim
+  // detail page where the email composer lives.
 
-  const handleSaveAndProceed = async (e) => {
-    e.preventDefault();
+  const saveForm = async ({ asDraft }) => {
     if (!uhid.trim()) { toast.error('Please enter a UHID'); return; }
     if (!selectedProviderId) { toast.error('Please select a service provider'); return; }
 
@@ -610,16 +647,18 @@ export default function PreAuthFormPage() {
       const payload = buildPayload();
 
       if (formDataId) {
+        // Edit mode — same PATCH for both buttons
         await formDataService.update(formDataId, { data_json: payload });
-        // Upload files via documents endpoint for existing claims
         if (files.length > 0) {
           const fd = new FormData();
           files.forEach((file) => fd.append('files', file));
           await documentService.upload(routeClaimCaseId, fd);
+          setFiles([]);
         }
-        toast.success('Form updated successfully');
-        navigate(`/claim-list/${routeClaimCaseId}`);
+        toast.success(asDraft ? 'Draft saved' : 'Form updated successfully');
+        if (!asDraft) navigate(`/claim-list/${routeClaimCaseId}`);
       } else {
+        // Create mode
         const fd = new FormData();
         fd.append('uhid', uhid.trim());
         fd.append('policy_provider_id', selectedProviderId);
@@ -627,8 +666,23 @@ export default function PreAuthFormPage() {
         files.forEach((file) => fd.append('files', file));
 
         const res = await formDataService.submit(fd);
-        toast.success(`Form saved — Claim Case #${res.data.claim_case_id}`);
-        navigate(`/claim-list/${res.data.claim_case_id}`);
+        const newClaimId = res.data.claim_case_id;
+        const newFormId = res.data.form_data_id;
+
+        if (asDraft) {
+          // Stay on the form — switch local state to edit mode so subsequent
+          // clicks PATCH the same record instead of creating duplicates.
+          setFormDataId(newFormId);
+          setFiles([]);
+          // Update URL so refresh keeps the user on the same draft. `replace`
+          // avoids a back-history entry. The loader effect is gated against
+          // re-fetching when formDataId is already set.
+          navigate(`/pre-auth/${newClaimId}`, { replace: true });
+          toast.success('Draft saved');
+        } else {
+          toast.success(`Form saved — Claim Case #${newClaimId}`);
+          navigate(`/claim-list/${newClaimId}`);
+        }
       }
     } catch {
       // handled
@@ -636,6 +690,9 @@ export default function PreAuthFormPage() {
       setSaving(false);
     }
   };
+
+  const handleSaveAndProceed = (e) => { e.preventDefault(); saveForm({ asDraft: false }); };
+  const handleSaveAsDraft = (e) => { e.preventDefault(); saveForm({ asDraft: true }); };
 
   const [printing, setPrinting] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -822,16 +879,31 @@ export default function PreAuthFormPage() {
   const renderFields = (fields, sectionName, subgroupKey) =>
     fields.filter((f) => shouldShow(f, sectionName)).map((field) => {
       const suggestion = getPolicySuggestion(subgroupKey, field.key);
+      const fieldValue = getValue(sectionName, field.key, subgroupKey);
+      // Chronic-conditions: only show the suggestion when the user has
+      // selected "Yes" for that specific condition. No fallback — if they
+      // select No, hide the policy hint even if the policy returned text.
+      // Other subgroups (costs, etc.) keep the always-on string suggestion.
+      let showSuggestion = false;
+      let suggestionText = suggestion;
+      if (subgroupKey === 'chronic_conditions') {
+        showSuggestion = fieldValue === true;
+        suggestionText = (typeof suggestion === 'string' && suggestion.trim())
+          ? suggestion
+          : 'Suggested by policy';
+      } else {
+        showSuggestion = typeof suggestion === 'string' && suggestion.trim().length > 0;
+      }
       return (
         <div key={field.key} className={`form-group ${field.type === 'textarea' ? 'form-group--wide' : ''}`}>
           <label>{field.label}</label>
           <FieldInput
             field={field}
-            value={getValue(sectionName, field.key, subgroupKey)}
+            value={fieldValue}
             onChange={(key, val) => setValue(sectionName, key, val, subgroupKey)}
           />
-          {typeof suggestion === 'string' && suggestion.trim() && (
-            <small className="policy-suggestion">{suggestion}</small>
+          {showSuggestion && (
+            <small className="policy-suggestion">{suggestionText}</small>
           )}
         </div>
       );
@@ -1001,6 +1073,9 @@ export default function PreAuthFormPage() {
             <div className="preauth-form__actions">
               <button type="button" className="btn btn--ghost" onClick={handlePrint} disabled={printing}>
                 {printing ? <Spinner size={18} /> : 'Print Form'}
+              </button>
+              <button type="button" className="btn btn--ghost" onClick={handleSaveAsDraft} disabled={saving}>
+                {saving ? <Spinner size={18} /> : 'Save as Draft'}
               </button>
               <button type="submit" className="btn btn--primary" disabled={saving}>
                 {saving ? <Spinner size={18} /> : 'Save & Proceed'}

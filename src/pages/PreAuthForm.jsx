@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { claimCaseService, emailTemplateService, emailService, documentService } from '../services/api';
+import { claimCaseService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
 import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
@@ -519,13 +519,242 @@ function EmailPreview({ subject, to, cc, body }) {
   );
 }
 
+// ── Submit Pre-Auth (initial DRAFT → APPLIED) ───────────────────────
+
+function SubmitPortalForm({ submitResult, onClose, onSubmit, sending }) {
+  const [docViewUrl, setDocViewUrl] = useState(null);
+  const [docViewName, setDocViewName] = useState('');
+  const [docViewType, setDocViewType] = useState('');
+
+  const closeDocView = () => {
+    if (docViewUrl) window.URL.revokeObjectURL(docViewUrl);
+    setDocViewUrl(null);
+    setDocViewName('');
+    setDocViewType('');
+  };
+
+  const handleViewDoc = async (doc) => {
+    try {
+      const res = await documentService.view(submitResult.claim_case_id, doc.id);
+      const name = doc.original_filename || doc.name || 'Document';
+      // Trust the filename extension over the server's Content-Type since
+      // some backends mislabel attachments (matches ClaimSidebar logic).
+      const ext = (name.split('.').pop() || '').toLowerCase();
+      const extMap = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+        webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+        pdf: 'application/pdf',
+      };
+      const headerCT = res.headers?.['content-type'] || res.headers?.['Content-Type'] || '';
+      const contentType = extMap[ext] || doc.content_type || headerCT || '';
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: contentType }));
+      setDocViewUrl(url);
+      setDocViewName(name);
+      setDocViewType(contentType);
+    } catch {
+      // handled by interceptor
+    }
+  };
+
+  const [diagnosis, setDiagnosis] = useState(submitResult.diagnosis || '');
+  const [icd10, setIcd10] = useState(submitResult.icd10_code || '');
+  const [treatmentLine, setTreatmentLine] = useState('Surgical');
+  const [treatment, setTreatment] = useState(submitResult.treatment || '');
+  const [anaesthesia, setAnaesthesia] = useState('General Anaesthesia');
+  const [icuRequired, setIcuRequired] = useState(Boolean(submitResult.icu_required));
+  const [admissionMode, setAdmissionMode] = useState(submitResult.admission_mode || 'Planned');
+  const [admissionDate, setAdmissionDate] = useState(submitResult.admission_date || '');
+  const [admissionTime, setAdmissionTime] = useState(submitResult.admission_time || '');
+  const [expectedStay, setExpectedStay] = useState(submitResult.expected_stay ?? '');
+  const [requestedAmount, setRequestedAmount] = useState(submitResult.requested_amount ?? 0);
+  const [files, setFiles] = useState([]);
+  const [notes, setNotes] = useState('');
+
+  const canSubmit =
+    diagnosis.trim() &&
+    icd10.trim() &&
+    treatment.trim() &&
+    admissionDate &&
+    Number(expectedStay) > 0 &&
+    Number(requestedAmount) > 0 &&
+    !sending;
+
+  const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
+  const subject = `[${paId}] Cashless Pre-Auth — ${submitResult.patient_name || ''} — ${submitResult.policy_number || ''}`.trim();
+  const body =
+    `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
+    `Please find enclosed the cashless pre-authorisation request (Part C) for our patient ${submitResult.patient_name || '—'} ` +
+    `(UHID: ${submitResult.uhid || '—'}${submitResult.policy_number ? `, Policy: ${submitResult.policy_number}` : ''}).\n\n` +
+    `Diagnosis: ${diagnosis} (ICD-10: ${icd10})\n` +
+    `Proposed Treatment: ${treatment}\n` +
+    `Treatment Line: ${treatmentLine}\n` +
+    `Anaesthesia: ${anaesthesia}\n` +
+    `Admission: ${admissionMode} — ${admissionDate}${admissionTime ? ' ' + admissionTime : ''}\n` +
+    `Expected Stay: ${expectedStay} day(s)${icuRequired ? ' (ICU required)' : ''}\n` +
+    `Requested Amount: ${formatINR(Number(requestedAmount) || 0)}\n\n` +
+    (notes ? `Clinical notes: ${notes}\n\n` : '') +
+    `All supporting documents are attached. Request your earliest review and authorisation.\n\n` +
+    `Regards,\nHospital Insurance Desk`;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({ subject, body, files });
+  };
+
+  return (
+    <PortalShell
+      title="Submit Pre-Authorisation"
+      subtitle={`To ${submitResult.insurer_name || 'insurer'} · ${paId}`}
+      accent="info"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+          >
+            {sending ? <Spinner size={16} /> : <><IconSend size={16} /> Submit to {submitResult.insurer_name || 'insurer'}</>}
+          </button>
+        </>
+      }
+    >
+      <PortalSection title="Confirm clinical details" hint="Verified by treating doctor before submission" cols={2}>
+        <Field label="Diagnosis" required span={2}>
+          <input type="text" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
+        </Field>
+        <Field label="ICD-10 Code" required>
+          <input type="text" value={icd10} onChange={(e) => setIcd10(e.target.value)} />
+        </Field>
+        <Field label="Treatment Line" required>
+          <select value={treatmentLine} onChange={(e) => setTreatmentLine(e.target.value)}>
+            <option>Surgical</option>
+            <option>Medical</option>
+            <option>Maternity</option>
+            <option>Day Care</option>
+          </select>
+        </Field>
+        <Field label="Proposed Treatment / Procedure" required span={2}>
+          <textarea rows={2} value={treatment} onChange={(e) => setTreatment(e.target.value)} />
+        </Field>
+        <Field label="Anaesthesia Type">
+          <select value={anaesthesia} onChange={(e) => setAnaesthesia(e.target.value)}>
+            <option>General Anaesthesia</option>
+            <option>Regional / Spinal</option>
+            <option>Local</option>
+            <option>None</option>
+          </select>
+        </Field>
+        <Field label="ICU Required">
+          <label className="portal-form__toggle">
+            <input
+              type="checkbox"
+              checked={icuRequired}
+              onChange={(e) => setIcuRequired(e.target.checked)}
+            />
+            <span>{icuRequired ? 'Yes — ICU bed required' : 'No'}</span>
+          </label>
+        </Field>
+      </PortalSection>
+
+      <PortalSection title="Admission" cols={3}>
+        <Field label="Mode" required>
+          <select value={admissionMode} onChange={(e) => setAdmissionMode(e.target.value)}>
+            <option>Planned</option>
+            <option>Emergency</option>
+          </select>
+        </Field>
+        <Field label="Admission Date" required>
+          <input type="date" value={admissionDate} onChange={(e) => setAdmissionDate(e.target.value)} />
+        </Field>
+        <Field label="Admission Time">
+          <input type="time" value={admissionTime} onChange={(e) => setAdmissionTime(e.target.value)} />
+        </Field>
+        <Field label="Expected Stay (days)" required>
+          <input type="number" value={expectedStay} min="0" onChange={(e) => setExpectedStay(e.target.value)} />
+        </Field>
+        <Field label="Requested Amount (₹)" required span={2}>
+          <input type="number" value={requestedAmount} min="0" onChange={(e) => setRequestedAmount(e.target.value)} />
+        </Field>
+      </PortalSection>
+
+      <PortalSection title="Attachments" hint="Mandatory: signed Part C, ID proof, insurance card" cols={1}>
+        <Field span={1}>
+          {/* Documents already attached to the claim (e.g. signed Part C
+              uploaded via the print page) — read-only chips, included with
+              the submission automatically by the backend. */}
+          {Array.isArray(submitResult.documents) && submitResult.documents.length > 0 && (
+            <div className="portal-form__files" style={{ marginBottom: 8 }}>
+              {submitResult.documents.map((doc) => (
+                <button
+                  key={doc.id}
+                  type="button"
+                  className="apply-step__attach-chip apply-step__attach-chip--editable"
+                  onClick={() => handleViewDoc(doc)}
+                  title="View"
+                >
+                  <span>{doc.original_filename || doc.name || 'Document'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <FilesList
+            files={files}
+            onAdd={(f) => setFiles((prev) => [...prev, f])}
+            onRemove={(i) => setFiles((prev) => prev.filter((_, ix) => ix !== i))}
+            addLabel="Attach document"
+          />
+        </Field>
+      </PortalSection>
+
+      <PortalSection title="Additional clinical notes (optional)" cols={1}>
+        <Field span={1}>
+          <textarea
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Any clarifications for the claims team…"
+          />
+        </Field>
+      </PortalSection>
+
+      <EmailPreview
+        subject={subject}
+        to={submitResult.policy_provider_email}
+        cc={submitResult.cc_emails}
+        body={body}
+      />
+
+      {docViewUrl && (
+        <Modal title={docViewName} onClose={closeDocView} size="lg">
+          <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+            {docViewType.startsWith('image/') ? (
+              <img src={docViewUrl} alt={docViewName} style={{ maxWidth: '100%', height: 'auto' }} />
+            ) : docViewType === 'application/pdf' ? (
+              <iframe src={docViewUrl} title={docViewName} style={{ width: '100%', height: '70vh', border: 'none' }} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: 24 }}>
+                <p>Preview not available for this file type.</p>
+                <a href={docViewUrl} download={docViewName} className="btn btn--primary" style={{ marginTop: 12 }}>
+                  Download
+                </a>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+    </PortalShell>
+  );
+}
+
 // ── Enhancement form (PARTIALLY_APPROVED) ───────────────────────────
 
 function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
   const [reasonCat, setReasonCat] = useState('Extended ICU stay');
   const [reasonDetail, setReasonDetail] = useState('');
   const [additional, setAdditional] = useState('');
-  const [neededBy, setNeededBy] = useState('');
   const [files, setFiles] = useState([]);
 
   const additionalNum = Number(additional) || 0;
@@ -545,7 +774,6 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
     `Approved so far: ${formatINR(submitResult.approved_amount)}\n` +
     `Additional amount requested: ${formatINR(additionalNum)}\n` +
     `Revised total: ${formatINR(revisedTotal)}\n` +
-    (neededBy ? `Decision required by: ${neededBy}\n` : '') +
     `\nRevised invoices and clinical notes are attached.\n\n` +
     `Regards,\nHospital Insurance Desk`;
 
@@ -608,9 +836,6 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
             <option>Other</option>
           </select>
         </Field>
-        <Field label="Decision required by" hint="Insurer SLA reminder">
-          <input type="date" value={neededBy} onChange={(e) => setNeededBy(e.target.value)} />
-        </Field>
         <Field
           label="Clinical justification"
           required
@@ -659,7 +884,7 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
             files={files}
             onAdd={(f) => setFiles((prev) => [...prev, f])}
             onRemove={(i) => setFiles((prev) => prev.filter((_, ix) => ix !== i))}
-            addLabel="Attach revised invoice / clinical note"
+            addLabel="Attach Supporting Document"
           />
         </Field>
       </PortalSection>
@@ -1143,6 +1368,7 @@ export default function PreAuthForm() {
       const dj = latestForm?.data_json || {};
       const insured = dj.patient_insured || {};
       const doctor = dj.treating_doctor || {};
+      const hospitalization = dj.hospitalization || {};
       setSubmitResult({
         claim_case_id: cc.id,
         form_data_id: latestForm?.id,
@@ -1172,6 +1398,19 @@ export default function PreAuthForm() {
         doctor_qualification: doctor.qualification || doctor.doctor_qualification || '',
         doctor_registration: doctor.registration || doctor.registration_number || doctor.doctor_registration || '',
         doctor_contact: doctor.contact || doctor.contact_number || doctor.doctor_contact || '',
+        // Hospitalization / treatment — for the SubmitPortalForm prefill
+        treatment: doctor.surgery_name || doctor.treatment_details || doctor.treatment_plan || '',
+        admission_mode: hospitalization.is_emergency ? 'Emergency' : 'Planned',
+        admission_date: hospitalization.admission_date || '',
+        admission_time: hospitalization.admission_time || '',
+        expected_stay: hospitalization.expected_days ?? '',
+        icu_required: Number(hospitalization.icu_days) > 0,
+        // Raw data_json — needed by the inline Print-to-PDF flow so it can
+        // populate every template field, not just the ones surfaced above.
+        data_json: dj,
+        // Top-level header_info on the claim case (sibling of form_data),
+        // used by the print template's header section.
+        header_info: cc.header_info || {},
         // Merge: form docs (from GET /documents) + top-level cc.documents
         documents: Array.isArray(docsRes.data) && docsRes.data.length > 0
           ? docsRes.data
@@ -1241,6 +1480,153 @@ export default function PreAuthForm() {
     setReplyEmailType('APPLIED');
   };
 
+  // Print Part C — fetches the form template, populates fields with the
+  // claim's data_json, writes into a hidden iframe, then triggers the
+  // browser's native print dialog (where the user can pick "Save as PDF").
+  // No navigation; no html2pdf — pixel-perfect to what the browser renders.
+  const [printingPartC, setPrintingPartC] = useState(false);
+  const handlePrintPartC = async () => {
+    if (!submitResult) return;
+    setPrintingPartC(true);
+    try {
+      const listRes = await formTemplateService.getAll();
+      const templates = Array.isArray(listRes?.data) ? listRes.data : [];
+      const first = templates[0];
+      if (!first?.id) {
+        toast.error('No form template available for this claim');
+        return;
+      }
+      const tplRes = await formTemplateService.getById(first.id);
+      const html = tplRes?.data?.html_content || '';
+      if (!html) {
+        toast.error('Template has no content');
+        return;
+      }
+
+      // Flatten data_json the same way PreAuthFormPage / PreAuthPrint do.
+      const flattenDataJson = (dj) => {
+        const flat = {};
+        for (const [, sectionData] of Object.entries(dj || {})) {
+          if (!sectionData || typeof sectionData !== 'object' || Array.isArray(sectionData)) continue;
+          for (const [k, v] of Object.entries(sectionData)) {
+            if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+              for (const [sk, sv] of Object.entries(v)) flat[sk] = sv;
+            } else {
+              flat[k] = v;
+            }
+          }
+        }
+        const decl = dj?.declaration || {};
+        if (decl.doctor_name) flat.decl_doctor_name = decl.doctor_name;
+        const pd = dj?.patient_declaration || {};
+        if (pd.patient_name) flat.pd_patient_name = pd.patient_name;
+        if (pd.contact_number) flat.pd_contact_number = pd.contact_number;
+        if (pd.email) flat.pd_email = pd.email;
+        if (pd.date) flat.pd_date = pd.date;
+        if (pd.time) flat.pd_time = pd.time;
+        return flat;
+      };
+      const flat = flattenDataJson(submitResult.data_json || {});
+
+      // Layer claim-case-level fields on top so template keys like
+      // {uhid, pa_number, claim_number, insurer_name, requested_amount,
+      // approved_amount, patient_name, diagnosis, icd_10} also fill in,
+      // even when they live on the claim case rather than data_json.
+      // submitResult-level values win over data_json values where they overlap.
+      const overlay = {
+        uhid: submitResult.uhid,
+        pa_number: submitResult.pa_number,
+        claim_number: submitResult.claim_number,
+        insurer_name: submitResult.insurer_name,
+        provider_name: submitResult.insurer_name,
+        policy_provider_name: submitResult.insurer_name,
+        policy_provider_email: submitResult.policy_provider_email,
+        patient_name: submitResult.patient_name,
+        diagnosis: submitResult.diagnosis,
+        icd_10: submitResult.icd10_code,
+        icd10_code: submitResult.icd10_code,
+        requested_amount: submitResult.requested_amount,
+        approved_amount: submitResult.approved_amount,
+      };
+      // Derived helpers a template may expect.
+      if (flat.is_emergency !== undefined) {
+        overlay.admission_mode = flat.is_emergency ? 'Emergency' : 'Planned';
+      }
+      Object.entries(overlay).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') flat[k] = v;
+      });
+
+      // Header / hospital identity fields — the template uses short keys
+      // (a/b/c/d/i/ii/iii) that pull from cc.header_info (top-level on the
+      // claim case, sibling of form_data — not inside data_json).
+      const headerInfo = submitResult.header_info || {};
+      const headerMap = {
+        a: headerInfo.tpa_name,
+        b: headerInfo.tpa_toll_free_phone,
+        c: headerInfo.tpa_toll_free_fax,
+        d: headerInfo.hospital_name,
+        i: headerInfo.hospital_address,
+        ii: headerInfo.hospital_rohini_id,
+        iii: headerInfo.hospital_email,
+      };
+      Object.entries(headerMap).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') flat[k] = v;
+      });
+
+      // Always recreate the iframe so any stale onload from a previous
+      // print attempt is gone, and the load race below is deterministic.
+      const stale = document.getElementById('print-frame');
+      if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
+      const iframe = document.createElement('iframe');
+      iframe.id = 'print-frame';
+      iframe.style.cssText = 'position:fixed;width:0;height:0;border:none;left:-9999px;';
+      document.body.appendChild(iframe);
+
+      const populateAndPrint = () => {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+        let populated = 0;
+        let missingFields = [];
+        doc.querySelectorAll('[data-field]').forEach((el) => {
+          const field = el.getAttribute('data-field');
+          const value = flat[field];
+          if (value === undefined || value === null || value === '') {
+            missingFields.push(field);
+            return;
+          }
+          if (el.type === 'radio') {
+            if (el.value === String(value)) el.checked = true;
+          } else if (el.type === 'checkbox') {
+            el.checked = !!value;
+          } else {
+            el.value = value;
+          }
+          populated += 1;
+        });
+        // Surface debug info so we can diagnose unfilled fields without a rebuild.
+        console.info('[Print Part C] populated', populated, 'fields; missing:', [...new Set(missingFields)], 'flat keys:', Object.keys(flat));
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      };
+
+      // Populate synchronously after doc.close() (parsing is sync in same-origin
+      // about:blank iframes). Also bind onload as a belt-and-braces fallback
+      // for browsers that delay parsing.
+      iframe.onload = populateAndPrint;
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+      // Run synchronously too; harmless to do twice (the second run is a no-op
+      // for already-set fields).
+      populateAndPrint();
+    } catch {
+      // axios interceptor surfaces the toast on API errors
+    } finally {
+      setPrintingPartC(false);
+    }
+  };
+
   // Submit a structured portal form via the existing /email/query flow.
   // The form auto-composes subject + body from its fields and hands us
   // { subject, body, files }; we package those into the same FormData
@@ -1270,7 +1656,11 @@ export default function PreAuthForm() {
 
     setPortalSending(true);
     try {
-      await emailService.query(fd);
+      // The DRAFT → APPLIED initial submission goes through /email/send;
+      // every follow-up (Enhance / ADR / Reconsider) uses /email/query so the
+      // backend categorises it as a query against an existing claim.
+      const sendFn = replyEmailType === 'APPLIED' ? emailService.send : emailService.query;
+      await sendFn(fd);
       toast.success('Email sent successfully');
       await handleTimelineReplySuccess();
     } catch {
@@ -1392,11 +1782,30 @@ export default function PreAuthForm() {
         </div>
       </div>
 
-      {/* Submit Pre-Auth (claim still in draft) */}
+      {/* DRAFT action bar — Print Part C (signed-copy upload) + Submit Pre-Auth */}
       {!showReplyCompose && isDraft && (
-        <button className="claim-detail__enhance-btn" onClick={handleSubmitPreAuth}>
-          <IconPlus size={16} /> Submit Pre-Auth
-        </button>
+        <div className="actionbar actionbar--info">
+          <div className="actionbar__msg">
+            <div className="actionbar__icon"><IconSend size={18} /></div>
+            <div className="actionbar__text">
+              <strong>Ready to submit to insurer</strong>
+              <span>Print Part C, get patient + doctor signatures, then submit.</span>
+            </div>
+          </div>
+          <div className="actionbar__actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={handlePrintPartC}
+              disabled={printingPartC}
+            >
+              {printingPartC ? <Spinner size={16} /> : 'Print Part C'}
+            </button>
+            <button type="button" className="btn btn--primary" onClick={handleSubmitPreAuth}>
+              <IconSend size={16} /> Submit Pre-Auth
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Raise Enhance / Reconsider / ADR Submit (label varies by claim_status) */}
@@ -1407,10 +1816,11 @@ export default function PreAuthForm() {
       )}
 
       {/* Inline reply compose — branches between structured portal forms
-          (APPROVED / PARTIALLY_APPROVED → Enhance, ADR_NMI → ADR,
-          DENIED → Reconsider) and the legacy email-template ApplyStep
-          for the initial APPLIED (DRAFT) submission. */}
+          (APPLIED → Submit, APPROVED / PARTIALLY_APPROVED → Enhance,
+          ADR_NMI → ADR, DENIED → Reconsider). The legacy email-template
+          ApplyStep is now only a fallback for unexpected combinations. */}
       {showReplyCompose && (() => {
+        const useSubmitForm = replyEmailType === 'APPLIED';
         const useEnhanceForm =
           replyEmailType === 'ENHANCE_SUBMITTED' &&
           (submitResult.claim_status === 'APPROVED' ||
@@ -1420,6 +1830,16 @@ export default function PreAuthForm() {
           replyEmailType === 'RECONSIDER' &&
           submitResult.claim_status === 'DENIED';
 
+        if (useSubmitForm) {
+          return (
+            <SubmitPortalForm
+              submitResult={submitResult}
+              onClose={closeReplyCompose}
+              onSubmit={handlePortalFormSubmit}
+              sending={portalSending}
+            />
+          );
+        }
         if (useEnhanceForm) {
           return (
             <EnhancePortalForm
