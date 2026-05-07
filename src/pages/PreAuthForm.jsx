@@ -1354,10 +1354,11 @@ export default function PreAuthForm() {
     if (!routeClaimCaseId) return;
     if (showLoader) setLoadingCase(true);
     try {
-      const [caseRes, emailsRes, docsRes] = await Promise.all([
+      const [caseRes, emailsRes, docsRes, subsRes] = await Promise.all([
         claimCaseService.getById(routeClaimCaseId),
         claimCaseService.getAllEmails(routeClaimCaseId, { is_read: true }).catch(() => ({ data: [] })),
         documentService.list(routeClaimCaseId).catch(() => ({ data: [] })),
+        claimCaseService.getSubmissions(routeClaimCaseId).catch(() => ({ data: { files: [] } })),
       ]);
       const cc = caseRes.data;
       const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
@@ -1421,6 +1422,9 @@ export default function PreAuthForm() {
         documents: Array.isArray(docsRes.data) && docsRes.data.length > 0
           ? docsRes.data
           : (Array.isArray(cc.documents) ? cc.documents : []),
+        // Flat list of email-attached files for the Documents card —
+        // sourced from GET /claim-cases/:id/submissions.
+        submission_files: Array.isArray(subsRes?.data?.files) ? subsRes.data.files : [],
       });
       const count = cc.unread_count || 0;
       setUnreadCount(count);
@@ -1743,7 +1747,6 @@ export default function PreAuthForm() {
       const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
       // Sort oldest → newest so the timeline reads top-to-bottom chronologically.
       const sorted = [...statusHistory]
-        .filter((entry) => entry.status !== 'DRAFT')
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       return sorted.map((entry) => ({
         status: statusLabel(entry.status),
@@ -1982,7 +1985,7 @@ export default function PreAuthForm() {
           </Accordion>
         </div>
 
-        <ClaimSidebar submitResult={submitResult} claimEmails={claimEmails} />
+        <ClaimSidebar submitResult={submitResult} />
       </div>
 
       {showUnreadPopup && (
@@ -2107,7 +2110,7 @@ function InfoCard({ title, headerRight, children }) {
   );
 }
 
-function ClaimSidebar({ submitResult, claimEmails }) {
+function ClaimSidebar({ submitResult }) {
   const [docViewUrl, setDocViewUrl] = useState(null);
   const [docViewName, setDocViewName] = useState('');
   const [docViewType, setDocViewType] = useState('');
@@ -2119,43 +2122,27 @@ function ClaimSidebar({ submitResult, claimEmails }) {
     setDocViewType('');
   };
 
-  // Build a unified document list from two sources:
-  //   1. Submission documents (fetched via documentService.list)
-  //   2. Email attachments (sent + received), inlined on each email
+  // Documents card is sourced from GET /claim-cases/:id/submissions — a flat
+  // list of every email-attached file with its direction (SENT/RECEIVED).
   const documents = useMemo(() => {
-    const list = [];
-    (submitResult.documents || []).forEach((d) => {
-      list.push({
-        id: `doc-${d.id}`,
-        name: d.original_filename || d.name || 'Document',
-        size: d.size || d.file_size || null,
-        source: 'Submission',
-        kind: 'doc',
-        rawId: d.id,
-        contentType: d.content_type,
-      });
-    });
-    (claimEmails || []).forEach((email) => {
-      (email.attachments || []).forEach((att) => {
-        list.push({
-          id: `email-${email.id}-att-${att.id}`,
-          name: att.original_filename || att.name || 'Attachment',
-          size: att.file_size || null,
-          source: email.direction === 'SENT' ? 'Submission' : 'Insurer Response',
-          kind: 'attachment',
-          emailId: email.id,
-          rawId: att.id,
-        });
-      });
-    });
-    return list;
-  }, [submitResult.documents, claimEmails]);
+    return (submitResult.submission_files || []).map((f) => ({
+      id: `f-${f.id}`,
+      name: f.filename || 'Attachment',
+      size: f.file_size || null,
+      source: f.direction === 'RECEIVED' ? 'Insurer Response' : 'Submission',
+      emailId: f.email_id,
+      rawId: f.id,
+      contentType: f.content_type,
+    }));
+  }, [submitResult.submission_files]);
 
   const openView = (item) => async () => {
     try {
-      const res = item.kind === 'doc'
-        ? await documentService.view(submitResult.claim_case_id, item.rawId)
-        : await claimCaseService.viewAttachment(submitResult.claim_case_id, item.emailId, item.rawId);
+      const res = await claimCaseService.viewAttachment(
+        submitResult.claim_case_id,
+        item.emailId,
+        item.rawId,
+      );
       // Trust the filename extension over the server's Content-Type — backends
       // sometimes mislabel attachments (e.g. returning application/pdf for a
       // .png). Header is used only when the extension is unrecognized.

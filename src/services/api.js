@@ -131,6 +131,7 @@ export const claimCaseService = {
   getProviderQueue: (params) => api.get('/claim-cases/provider-queue', { params }),
   providerAction: (id, data) => api.patch(`/claim-cases/${id}/provider-action`, data),
   getAllEmails: (id, params) => api.get(`/claim-cases/${id}/emails/all`, { params }),
+  getSubmissions: (id) => api.get(`/claim-cases/${id}/submissions`),
   getAllEmailsPaginated: (params) => api.get('/claim-cases/emails/all', { params }),
   getEmails: (id, direction) =>
     api.get(`/claim-cases/${id}/emails`, { params: direction ? { direction } : {} }),
