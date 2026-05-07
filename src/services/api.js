@@ -122,6 +122,8 @@ export const formTemplateService = {
   getAll: () => api.get('/form-templates'),
   getById: (id) => api.get(`/form-templates/${id}`),
   getByProvider: () => api.get(`/form-templates/provider/first`),
+  getFirstByType: (formType) =>
+    api.get('/form-templates/first', { params: { form_type: formType } }),
 };
 
 // Claim cases
@@ -129,7 +131,16 @@ export const claimCaseService = {
   getAll: (params) => api.get('/claim-cases', { params }),
   getById: (id) => api.get(`/claim-cases/${id}`),
   getProviderQueue: (params) => api.get('/claim-cases/provider-queue', { params }),
-  providerAction: (id, data) => api.patch(`/claim-cases/${id}/provider-action`, data),
+  // Accepts either a FormData (Approve / Partially-Approve flow attaches a
+  // populated PART_D PDF as `file`) or a plain JSON object (Deny / NMI).
+  providerAction: (id, data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    return api.patch(
+      `/claim-cases/${id}/provider-action`,
+      data,
+      isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined,
+    );
+  },
   getAllEmails: (id, params) => api.get(`/claim-cases/${id}/emails/all`, { params }),
   getSubmissions: (id) => api.get(`/claim-cases/${id}/submissions`),
   getAllEmailsPaginated: (params) => api.get('/claim-cases/emails/all', { params }),

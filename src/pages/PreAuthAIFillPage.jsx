@@ -268,7 +268,7 @@ function PatientSummaryForm({ onResult }) {
   );
 }
 
-function PolicyDetailForm({ onResult }) {
+function PolicyDetailForm({ onResult, onProviderChange }) {
   const toast = useToast();
   const [providers, setProviders] = useState([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
@@ -287,7 +287,9 @@ function PolicyDetailForm({ onResult }) {
         const list = Array.isArray(res.data) ? res.data : [];
         setProviders(list);
         if (list.length > 0) {
-          setProviderId(list[0].provider_id || list[0].id);
+          const initial = list[0].provider_id || list[0].id;
+          setProviderId(initial);
+          if (typeof onProviderChange === 'function') onProviderChange(initial);
         }
       } catch {
         setProviders([]);
@@ -296,6 +298,7 @@ function PolicyDetailForm({ onResult }) {
       }
     };
     fetchProviders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = async (e) => {
@@ -347,7 +350,11 @@ function PolicyDetailForm({ onResult }) {
               ) : (
                 <select
                   value={providerId}
-                  onChange={(e) => setProviderId(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setProviderId(v);
+                    if (typeof onProviderChange === 'function') onProviderChange(v);
+                  }}
                 >
                   {providers.map((p) => (
                     <option key={p.id} value={p.provider_id || p.id}>
@@ -418,6 +425,9 @@ export default function PreAuthAIFillPage() {
   const toast = useToast();
   const [patientResult, setPatientResult] = useState(null);
   const [policyResult, setPolicyResult] = useState(null);
+  // Tracks the AI page's policy-provider dropdown selection even before the
+  // user runs the policy AI step, so we can carry it over to the form.
+  const [pickedProviderId, setPickedProviderId] = useState('');
   const [claimCheckLoading, setClaimCheckLoading] = useState(false);
   const [claimCheckResult, setClaimCheckResult] = useState(null);
 
@@ -433,12 +443,32 @@ export default function PreAuthAIFillPage() {
       ...(patientResult?.data?.data || patientResult?.data || {}),
       ...(policyResult?.data?.data || policyResult?.data || {}),
     };
+    // The /run-policy endpoint exposes policy_number at the response root
+    // (sibling of `data`). Surface it here so the form's
+    // patient_insured.policy_number field auto-fills.
+    const topLevelPolicyNumber =
+      policyResult?.data?.policy_number || policyResult?.policy_number;
+    if (topLevelPolicyNumber && !merged.policy_number) {
+      merged.policy_number = topLevelPolicyNumber;
+    }
+    // Patient lookup may also return a policy_number — fall back if the
+    // policy step didn't run.
+    const patientPolicyNumber =
+      patientResult?.data?.policy_number || patientResult?.policy_number;
+    if (patientPolicyNumber && !merged.policy_number) {
+      merged.policy_number = patientPolicyNumber;
+    }
+    const aiProviderId =
+      pickedProviderId
+      || policyResult?.providerId
+      || policyResult?.data?.provider_id
+      || '';
     navigate('/pre-auth/manual', {
       state: {
         from: '/pre-auth/ai',
         aiData: merged,
         aiUhid: patientResult?.uhid || '',
-        aiProviderId: policyResult?.data?.provider_id || policyResult?.providerId || '',
+        aiProviderId,
         policyChronicConditions: extractChronicConditions(policyResult?.data),
         policyCostEstimates: extractCostEstimates(policyResult?.data),
       },
@@ -499,7 +529,7 @@ export default function PreAuthAIFillPage() {
 
       <div className="workflow workflow--split">
         <PatientSummaryForm onResult={setPatientResult} />
-        <PolicyDetailForm onResult={setPolicyResult} />
+        <PolicyDetailForm onResult={setPolicyResult} onProviderChange={setPickedProviderId} />
       </div>
 
       {hasBothSummaries && (

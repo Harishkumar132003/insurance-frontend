@@ -431,6 +431,13 @@
     }
   }
 
+  &__optional {
+    margin-left: $space-2;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    color: $text-light;
+  }
+
   &__steps {
     display: flex;
     flex-direction: column;
