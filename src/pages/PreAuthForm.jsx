@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
-import { FORM_SECTIONS } from './PreAuthFormPage';
 import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
+import ReadOnlyForm from '../components/ReadOnlyForm';
 import './Pages.scss';
 
 const ENHANCE_TYPES = ['ENHANCE', 'ENHANCEMENT', 'ENHANCE_REQUEST', 'ENHANCE_RESPONSE'];
@@ -522,80 +522,6 @@ function EmailPreview({ subject, to, cc, body }) {
 
 // ── Submit Pre-Auth (initial DRAFT → APPLIED) ───────────────────────
 
-// Format a single field value for read-only display: booleans → Yes/No,
-// select/radio with object options → option label, empty → em-dash.
-function formatReadValue(value, field) {
-  if (value === null || value === undefined || value === '') return '—';
-  if (field?.type === 'boolean') return value === true ? 'Yes' : value === false ? 'No' : String(value);
-  if (field?.type === 'select' || field?.type === 'radio') {
-    const match = (field.options || []).find((opt) => {
-      if (opt !== null && typeof opt === 'object') return opt.value === value;
-      return String(opt) === String(value);
-    });
-    if (match) return typeof match === 'object' ? match.label : String(match);
-    return String(value);
-  }
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  return String(value);
-}
-
-// Read-only renderer that mirrors the Pre-Auth form structure (sections,
-// subgroups, fields) using FORM_SECTIONS as the schema. Pulls values from
-// data_json so what the user sees here is exactly what was saved.
-function ReadOnlyForm({ dataJson }) {
-  const dj = dataJson || {};
-
-  const renderFieldList = (fields, sectionData, subgroupKey) => {
-    if (!fields || fields.length === 0) return null;
-    const source = subgroupKey ? (sectionData?.[subgroupKey] || {}) : (sectionData || {});
-    return fields.map((field) => (
-      <div key={field.key} className="info-card__kv">
-        <span className="info-card__kv-label">{field.label}</span>
-        <span className="info-card__kv-value">{formatReadValue(source[field.key], field)}</span>
-      </div>
-    ));
-  };
-
-  return (
-    <div className="portal-form__readonly">
-      {FORM_SECTIONS.map((section) => {
-        const sectionData = dj[section.name] || {};
-        return (
-          <div key={section.name} className="portal-form__readonly-section">
-            <div className="portal-form__readonly-title">{section.label}</div>
-            {section.fields && section.fields.length > 0 && (
-              <div className="portal-form__readonly-grid">
-                {renderFieldList(section.fields, sectionData)}
-              </div>
-            )}
-            {(section.subgroups || []).map((sg) => (
-              <div key={sg.key} className="portal-form__readonly-subgroup">
-                <div className="portal-form__readonly-subtitle">{sg.label}</div>
-                <div className="portal-form__readonly-grid">
-                  {renderFieldList(sg.fields, sectionData, sg.key)}
-                </div>
-              </div>
-            ))}
-            {section.fieldsAfterSubgroups && section.fieldsAfterSubgroups.length > 0 && (
-              <div className="portal-form__readonly-grid">
-                {renderFieldList(section.fieldsAfterSubgroups, sectionData)}
-              </div>
-            )}
-            {(section.additionalSubgroups || []).map((sg) => (
-              <div key={sg.key} className="portal-form__readonly-subgroup">
-                <div className="portal-form__readonly-subtitle">{sg.label}</div>
-                <div className="portal-form__readonly-grid">
-                  {renderFieldList(sg.fields, sectionData, sg.key)}
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocumentsChanged }) {
   const [docViewUrl, setDocViewUrl] = useState(null);
   const [docViewName, setDocViewName] = useState('');
@@ -708,8 +634,17 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
   const handleSubmit = () => {
     if (!canSubmit) return;
     // Files are already uploaded to the claim's documents endpoint, so
-    // we don't re-attach them via the email FormData.
-    onSubmit({ subject, body, files: [] });
+    // we don't re-attach them via the email FormData. Persist a structured
+    // formValues so the timeline can render the same submission form
+    // read-only on the provider/hospital side instead of the email body.
+    const formValues = {
+      data_json: submitResult.data_json,
+      notes,
+      patient_name: submitResult.patient_name || '',
+      uhid: submitResult.uhid || '',
+      claim_number: submitResult.claim_number || submitResult.pa_number || '',
+    };
+    onSubmit({ subject, body, files: [], formValues });
   };
 
   return (
@@ -1312,6 +1247,7 @@ function ReconsiderPortalForm({ submitResult, onClose, onSubmit, sending }) {
         reg: doctorRegistration,
         remarks: doctorContact,
       },
+      escalate,
     };
     onSubmit({ subject, body, files, formValues });
   };
@@ -2108,6 +2044,7 @@ export default function PreAuthForm() {
             <CategoryEmails
               emails={enhanceEmails}
               claimCaseId={submitResult.claim_case_id}
+              claim={submitResult}
               emptyText="No enhance requests yet"
             />
           </Accordion>
@@ -2115,6 +2052,7 @@ export default function PreAuthForm() {
             <CategoryEmails
               emails={adrEmails}
               claimCaseId={submitResult.claim_case_id}
+              claim={submitResult}
               emptyText="No additional document requests"
             />
           </Accordion>
@@ -2122,6 +2060,7 @@ export default function PreAuthForm() {
             <CategoryEmails
               emails={reconsiderEmails}
               claimCaseId={submitResult.claim_case_id}
+              claim={submitResult}
               emptyText="No reconsideration requests"
             />
           </Accordion>
@@ -2215,7 +2154,7 @@ function StatusTimeline({ events }) {
 
 // ── Category email list (filtered timeline) ─────────────────────────
 
-function CategoryEmails({ emails, claimCaseId, onReplyClick, emptyText }) {
+function CategoryEmails({ emails, claimCaseId, claim, onReplyClick, emptyText }) {
   if (!emails || emails.length === 0) {
     return <div className="claim-category__empty">{emptyText}</div>;
   }
@@ -2223,6 +2162,7 @@ function CategoryEmails({ emails, claimCaseId, onReplyClick, emptyText }) {
     <ClaimTimeline
       claimEmails={emails}
       claimCaseId={claimCaseId}
+      claim={claim}
       onReplyClick={onReplyClick}
     />
   );

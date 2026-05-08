@@ -1178,6 +1178,28 @@
     font-style: italic;
   }
 
+  // Quote block — used in Reconsider/ADR read-only views to show the
+  // insurer's denial reason or document request alongside the form.
+  &__quote {
+    margin: 0;
+    padding: $space-3 $space-4;
+    border-left: 3px solid $border-color;
+    background: $bg-body;
+    border-radius: 0 $radius-md $radius-md 0;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+
+  &__quote-meta {
+    display: block;
+    margin-top: $space-2;
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    font-style: italic;
+  }
+
   &__section-body {
     display: grid;
     gap: $space-3 $space-4;
@@ -3166,9 +3188,14 @@
 }
 
 .claim-timeline__card-body--form {
-  background: $bg-card;
-  padding: $space-3;
-  border-radius: $radius-md;
+  // The form-style read-only view brings its own visual shell
+  // (portal-form header bar + section borders), so remove the email-body
+  // truncation and the inner "card" background/padding.
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
 }
 
 // ── Per-form readable layouts (reuse portal-form__section / __field) ──

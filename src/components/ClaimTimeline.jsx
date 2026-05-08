@@ -28,7 +28,7 @@ function getTypeModifier(emailType) {
   }
 }
 
-function TimelineEntry({ email, claimCaseId, onReplyClick, isLast }) {
+function TimelineEntry({ email, claimCaseId, claim, onReplyClick, isLast }) {
   const [expanded, setExpanded] = useState(false);
   const [viewUrl, setViewUrl] = useState(null);
   const [viewFilename, setViewFilename] = useState('');
@@ -36,14 +36,18 @@ function TimelineEntry({ email, claimCaseId, onReplyClick, isLast }) {
 
   // Backend may serialise form_values as a JSON string or a parsed object —
   // normalise once. Bad JSON falls back to null so we render the email body.
+  // Form-style view is also gated on the claim being for an onboarded
+  // provider — non-onboarded submissions go out as actual emails to the
+  // insurer, so the email design is the truthful representation there.
   const formValues = useMemo(() => {
+    if (!claim || claim.is_onboarded !== true) return null;
     const raw = email.form_values;
     if (!raw) return null;
     if (typeof raw === 'string') {
       try { return JSON.parse(raw); } catch { return null; }
     }
     return raw;
-  }, [email.form_values]);
+  }, [email.form_values, claim]);
 
 
   const handleView = async (emailId, attId, filename) => {
@@ -88,17 +92,21 @@ function TimelineEntry({ email, claimCaseId, onReplyClick, isLast }) {
             {getTypeLabel(email.email_type)}
           </div>
           <div className="claim-timeline__card">
-        <div className="claim-timeline__card-subject">{email.subject}</div>
-        <div className="claim-timeline__card-meta">
-          <span>From: {email.from_email}</span>
-          <span>To: {email.to_email}</span>
-          <span className={`badge badge--${email.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
-            {email.direction}
-          </span>
-        </div>
+        {!formValues && (
+          <>
+            <div className="claim-timeline__card-subject">{email.subject}</div>
+            <div className="claim-timeline__card-meta">
+              <span>From: {email.from_email}</span>
+              <span>To: {email.to_email}</span>
+              <span className={`badge badge--${email.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
+                {email.direction}
+              </span>
+            </div>
+          </>
+        )}
         {formValues ? (
           <div className="claim-timeline__card-body claim-timeline__card-body--form">
-            <EmailFormValues formValues={formValues} emailType={email.email_type} />
+            <EmailFormValues formValues={formValues} emailType={email.email_type} claim={claim} />
           </div>
         ) : (
           <>
@@ -162,7 +170,7 @@ function TimelineEntry({ email, claimCaseId, onReplyClick, isLast }) {
   );
 }
 
-export default function ClaimTimeline({ claimEmails, claimCaseId, onReplyClick }) {
+export default function ClaimTimeline({ claimEmails, claimCaseId, claim, onReplyClick }) {
   const sorted = [...claimEmails].sort(
     (a, b) => new Date(b.email_date) - new Date(a.email_date)
   );
@@ -176,6 +184,7 @@ export default function ClaimTimeline({ claimEmails, claimCaseId, onReplyClick }
           key={email.id}
           email={email}
           claimCaseId={claimCaseId}
+          claim={claim}
           onReplyClick={idx === 0 && showReplyOnLatest ? onReplyClick : undefined}
           isLast={idx === sorted.length - 1}
         />

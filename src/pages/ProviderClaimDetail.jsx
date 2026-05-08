@@ -118,6 +118,7 @@ export default function ProviderClaimDetail() {
         icd10_code: summary.icd_10,
         submitted_at: cc.created_at || null,
         form_data_json: latestForm?.data_json || null,
+        is_onboarded: cc.is_onboarded === true,
       });
       setClaimEmails(Array.isArray(emailsRes.data) ? emailsRes.data : []);
     } catch {
@@ -324,6 +325,7 @@ export default function ProviderClaimDetail() {
           <CategoryEmails
             emails={submittedEmails}
             claimCaseId={claim.claim_case_id}
+            claim={claim}
             emptyText="No submitted emails"
           />
         </Accordion>
@@ -331,6 +333,7 @@ export default function ProviderClaimDetail() {
           <CategoryEmails
             emails={enhanceSubmittedEmails}
             claimCaseId={claim.claim_case_id}
+            claim={claim}
             emptyText="No enhance submissions"
           />
         </Accordion>
@@ -338,6 +341,7 @@ export default function ProviderClaimDetail() {
           <CategoryEmails
             emails={reconsiderEmails}
             claimCaseId={claim.claim_case_id}
+            claim={claim}
             emptyText="No reconsideration submissions"
           />
         </Accordion>
@@ -345,6 +349,7 @@ export default function ProviderClaimDetail() {
           <CategoryEmails
             emails={adrSubmittedEmails}
             claimCaseId={claim.claim_case_id}
+            claim={claim}
             emptyText="No ADR submissions"
           />
         </Accordion>
@@ -528,9 +533,9 @@ function StatusTimeline({ events }) {
 }
 
 // ── Category email list ─────────────────────────────────────────────
-function CategoryEmails({ emails, claimCaseId, emptyText }) {
+function CategoryEmails({ emails, claimCaseId, claim, emptyText }) {
   if (!emails || emails.length === 0) {
     return <div className="claim-category__empty">{emptyText}</div>;
   }
-  return <ClaimTimeline claimEmails={emails} claimCaseId={claimCaseId} />;
+  return <ClaimTimeline claimEmails={emails} claimCaseId={claimCaseId} claim={claim} />;
 }
