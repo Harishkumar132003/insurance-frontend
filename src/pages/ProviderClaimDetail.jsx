@@ -2,10 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService } from '../services/api';
-import { IconArrowLeft, IconChevronRight, IconSend } from '../components/icons/Icons';
+import { IconArrowLeft, IconChevronRight, IconCheck, IconAlertCircle, IconX, IconFormEdit } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
+import ProviderApproveModal from '../components/ProviderApproveModal';
+import PartDPrintModal from '../components/PartDPrintModal';
 import './Pages.scss';
 
 const SUBMITTED_TYPES = ['SUBMITTED', 'APPLIED'];
@@ -65,15 +67,19 @@ export default function ProviderClaimDetail() {
   const [claim, setClaim] = useState(null);
   const [claimEmails, setClaimEmails] = useState([]);
 
-  // Provider action modal state
-  const [actionOpen, setActionOpen] = useState(false);
-  const [actionStatus, setActionStatus] = useState('APPROVED');
-  const [approvedAmount, setApprovedAmount] = useState('');
-  const [claimNumber, setClaimNumber] = useState('');
-  const [remarks, setRemarks] = useState('');
-  const [documentsList, setDocumentsList] = useState([]);
-  const [newDocLabel, setNewDocLabel] = useState('');
-  const [saving, setSaving] = useState(false);
+  // Per-action modal state. Approve has its own component; Deny / NMI are inline.
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [partDOpen, setPartDOpen] = useState(false);
+
+  const [denyOpen, setDenyOpen] = useState(false);
+  const [denyRemarks, setDenyRemarks] = useState('');
+  const [denySaving, setDenySaving] = useState(false);
+
+  const [nmiOpen, setNmiOpen] = useState(false);
+  const [nmiRemarks, setNmiRemarks] = useState('');
+  const [nmiDocs, setNmiDocs] = useState([]);
+  const [nmiNewDoc, setNmiNewDoc] = useState('');
+  const [nmiSaving, setNmiSaving] = useState(false);
 
   const loadClaimData = async (showLoader = true) => {
     if (!routeClaimCaseId) return;
@@ -85,6 +91,10 @@ export default function ProviderClaimDetail() {
       ]);
       const cc = caseRes.data;
       const summary = cc.summary || {};
+      const header = cc.header_info || {};
+      const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
+        ? cc.form_data[cc.form_data.length - 1]
+        : null;
       setClaim({
         claim_case_id: cc.id,
         status: cc.status,
@@ -96,11 +106,18 @@ export default function ProviderClaimDetail() {
         patient_name: summary.patient_name,
         uhid: summary.uhid,
         insurer_name: summary.provider_name,
-        hospital_name: cc.hospital?.name,
+        hospital_name: header.hospital_name || '',
+        hospital_address: header.hospital_address || '',
+        hospital_rohini_id: header.hospital_rohini_id || '',
+        tpa_name: header.tpa_name || '',
+        insurer_phone: header.tpa_toll_free_phone || '',
+        insurer_fax: header.tpa_toll_free_fax || '',
+        insurer_email: cc.policy_provider_email || header.hospital_email || '',
         requested_amount: summary.requested_amount,
         diagnosis: summary.diagnosis,
         icd10_code: summary.icd_10,
         submitted_at: cc.created_at || null,
+        form_data_json: latestForm?.data_json || null,
       });
       setClaimEmails(Array.isArray(emailsRes.data) ? emailsRes.data : []);
     } catch {
@@ -150,63 +167,67 @@ export default function ProviderClaimDetail() {
     }];
   }, [claim, statusHistory]);
 
-  const openAction = () => {
-    setActionStatus('APPROVED');
-    setApprovedAmount(claim?.approved_amount || claim?.requested_amount || '');
-    setClaimNumber(claim?.claim_number || '');
-    setRemarks('');
-    setDocumentsList([]);
-    setNewDocLabel('');
-    setActionOpen(true);
+  const closeApprove = () => setApproveOpen(false);
+
+  const handleApproveSubmitted = async () => {
+    setApproveOpen(false);
+    await loadClaimData(false);
   };
 
-  const closeAction = () => {
-    setActionOpen(false);
-    setActionStatus('APPROVED');
-    setApprovedAmount('');
-    setClaimNumber('');
-    setRemarks('');
-    setDocumentsList([]);
-    setNewDocLabel('');
+  const closeDeny = () => {
+    setDenyOpen(false);
+    setDenyRemarks('');
   };
 
-  const handleSubmit = async () => {
+  const handleDenySubmit = async () => {
     if (!claim) return;
-    const payload = { status: actionStatus };
-
-    if (actionStatus === 'APPROVED' || actionStatus === 'PARTIALLY_APPROVED') {
-      if (approvedAmount === '' || Number.isNaN(Number(approvedAmount))) {
-        toast.error('Approved amount is required');
-        return;
-      }
-      payload.approved_amount = Number(approvedAmount);
-      if (claimNumber.trim()) payload.claim_number = claimNumber.trim();
-      if (remarks.trim()) payload.remarks = remarks.trim();
-    } else if (actionStatus === 'DENIED') {
-      if (!remarks.trim()) {
-        toast.error('Remarks (denial reason) are required');
-        return;
-      }
-      payload.remarks = remarks.trim();
-    } else if (actionStatus === 'ADR_NMI') {
-      if (!remarks.trim()) {
-        toast.error('Remarks are required');
-        return;
-      }
-      payload.remarks = remarks.trim();
-      payload.documents_list = documentsList;
+    if (!denyRemarks.trim()) {
+      toast.error('Remarks (denial reason) are required');
+      return;
     }
-
-    setSaving(true);
+    setDenySaving(true);
     try {
-      await claimCaseService.providerAction(claim.claim_case_id, payload);
+      await claimCaseService.providerAction(claim.claim_case_id, {
+        status: 'DENIED',
+        remarks: denyRemarks.trim(),
+      });
       toast.success('Response submitted');
-      closeAction();
+      closeDeny();
       await loadClaimData(false);
     } catch {
       // handled by interceptor
     } finally {
-      setSaving(false);
+      setDenySaving(false);
+    }
+  };
+
+  const closeNmi = () => {
+    setNmiOpen(false);
+    setNmiRemarks('');
+    setNmiDocs([]);
+    setNmiNewDoc('');
+  };
+
+  const handleNmiSubmit = async () => {
+    if (!claim) return;
+    if (!nmiRemarks.trim()) {
+      toast.error('Remarks are required');
+      return;
+    }
+    setNmiSaving(true);
+    try {
+      await claimCaseService.providerAction(claim.claim_case_id, {
+        status: 'ADR_NMI',
+        remarks: nmiRemarks.trim(),
+        documents_list: nmiDocs,
+      });
+      toast.success('Response submitted');
+      closeNmi();
+      await loadClaimData(false);
+    } catch {
+      // handled by interceptor
+    } finally {
+      setNmiSaving(false);
     }
   };
 
@@ -279,9 +300,20 @@ export default function ProviderClaimDetail() {
       </div>
 
       {canRespond && (
-        <button className="claim-detail__enhance-btn" onClick={openAction}>
-          <IconSend size={16} /> Response
-        </button>
+        <div className="claim-detail__actions">
+          <button className="btn btn--success" onClick={() => setApproveOpen(true)}>
+            <IconCheck size={16} /> Approve
+          </button>
+          <button className="btn btn--ghost" onClick={() => setNmiOpen(true)}>
+            <IconAlertCircle size={16} /> NMI
+          </button>
+          <button className="btn btn--danger" onClick={() => setDenyOpen(true)}>
+            <IconX size={16} /> Denied
+          </button>
+          <button className="btn btn--ghost" onClick={() => setPartDOpen(true)}>
+            <IconFormEdit size={16} /> Part D
+          </button>
+        </div>
       )}
 
       <div className="claim-detail__accordions">
@@ -318,139 +350,117 @@ export default function ProviderClaimDetail() {
         </Accordion>
       </div>
 
-      {actionOpen && (
-        <Modal title="Response" onClose={closeAction} size="md">
+      {approveOpen && (
+        <ProviderApproveModal
+          claim={claim}
+          onClose={closeApprove}
+          onSubmitted={handleApproveSubmitted}
+        />
+      )}
+
+      {partDOpen && (
+        <PartDPrintModal claim={claim} onClose={() => setPartDOpen(false)} />
+      )}
+
+      {denyOpen && (
+        <Modal title="Denied" onClose={closeDeny}>
           <div className="modal-form">
             <div className="form-group">
               <label>Patient</label>
               <div>{patientName} — {uhid}</div>
             </div>
             <div className="form-group">
-              <label>Status</label>
-              <select value={actionStatus} onChange={(e) => setActionStatus(e.target.value)}>
-                <option value="APPROVED">Approved</option>
-                <option value="PARTIALLY_APPROVED">Partially Approved</option>
-                <option value="DENIED">Denied</option>
-                <option value="ADR_NMI">ADR / Query</option>
-              </select>
+              <label>Remarks <span style={{ color: '#b91c1c' }}>*</span></label>
+              <textarea
+                rows={4}
+                placeholder="Denial reason"
+                value={denyRemarks}
+                onChange={(e) => setDenyRemarks(e.target.value)}
+                required
+              />
             </div>
-
-            {(actionStatus === 'APPROVED' || actionStatus === 'PARTIALLY_APPROVED') && (
-              <>
-                <div className="form-group">
-                  <label>Approved Amount <span style={{ color: '#b91c1c' }}>*</span></label>
-                  <input
-                    type="number"
-                    placeholder={actionStatus === 'PARTIALLY_APPROVED' ? 'Approved sub-total' : 'e.g. 50000'}
-                    value={approvedAmount}
-                    onChange={(e) => setApprovedAmount(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Claim Number</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. CLM-2026-1234"
-                    value={claimNumber}
-                    onChange={(e) => setClaimNumber(e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Remarks{actionStatus === 'PARTIALLY_APPROVED' ? ' (reason for the cut)' : ''}</label>
-                  <textarea
-                    rows={3}
-                    placeholder={actionStatus === 'PARTIALLY_APPROVED' ? 'Why less than requested' : 'Optional notes'}
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
-
-            {actionStatus === 'DENIED' && (
-              <div className="form-group">
-                <label>Remarks <span style={{ color: '#b91c1c' }}>*</span></label>
-                <textarea
-                  rows={4}
-                  placeholder="Denial reason"
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  required
-                />
-              </div>
-            )}
-
-            {actionStatus === 'ADR_NMI' && (
-              <>
-                <div className="form-group">
-                  <label>Remarks <span style={{ color: '#b91c1c' }}>*</span></label>
-                  <textarea
-                    rows={4}
-                    placeholder="What clarification or documents are being requested"
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Required Documents</label>
-                  {documentsList.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                      {documentsList.map((doc, idx) => (
-                        <span key={idx} className="apply-step__attach-chip">
-                          <span>{doc}</span>
-                          <button
-                            type="button"
-                            onClick={() => setDocumentsList((prev) => prev.filter((_, i) => i !== idx))}
-                          >
-                            &times;
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      type="text"
-                      placeholder="e.g. LMP / EDD certificate"
-                      value={newDocLabel}
-                      onChange={(e) => setNewDocLabel(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const v = newDocLabel.trim();
-                          if (v) {
-                            setDocumentsList((prev) => [...prev, v]);
-                            setNewDocLabel('');
-                          }
-                        }
-                      }}
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      onClick={() => {
-                        const v = newDocLabel.trim();
-                        if (v) {
-                          setDocumentsList((prev) => [...prev, v]);
-                          setNewDocLabel('');
-                        }
-                      }}
-                      disabled={!newDocLabel.trim()}
-                    >
-                      + Add
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-
             <div className="modal-actions">
-              <button type="button" className="btn btn--ghost" onClick={closeAction}>Cancel</button>
-              <button type="button" className="btn btn--primary" disabled={saving} onClick={handleSubmit}>
-                {saving ? <Spinner size={16} /> : 'Submit Response'}
+              <button type="button" className="btn btn--ghost" onClick={closeDeny}>Cancel</button>
+              <button type="button" className="btn btn--danger" disabled={denySaving} onClick={handleDenySubmit}>
+                {denySaving ? <Spinner size={16} /> : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {nmiOpen && (
+        <Modal title="NMI" onClose={closeNmi}>
+          <div className="modal-form">
+            <div className="form-group">
+              <label>Patient</label>
+              <div>{patientName} — {uhid}</div>
+            </div>
+            <div className="form-group">
+              <label>Remarks <span style={{ color: '#b91c1c' }}>*</span></label>
+              <textarea
+                rows={4}
+                placeholder="What clarification or documents are being requested"
+                value={nmiRemarks}
+                onChange={(e) => setNmiRemarks(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Required Documents</label>
+              {nmiDocs.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {nmiDocs.map((doc, idx) => (
+                    <span key={idx} className="apply-step__attach-chip">
+                      <span>{doc}</span>
+                      <button
+                        type="button"
+                        onClick={() => setNmiDocs((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="e.g. LMP / EDD certificate"
+                  value={nmiNewDoc}
+                  onChange={(e) => setNmiNewDoc(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const v = nmiNewDoc.trim();
+                      if (v) {
+                        setNmiDocs((prev) => [...prev, v]);
+                        setNmiNewDoc('');
+                      }
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => {
+                    const v = nmiNewDoc.trim();
+                    if (v) {
+                      setNmiDocs((prev) => [...prev, v]);
+                      setNmiNewDoc('');
+                    }
+                  }}
+                  disabled={!nmiNewDoc.trim()}
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn--ghost" onClick={closeNmi}>Cancel</button>
+              <button type="button" className="btn btn--primary" disabled={nmiSaving} onClick={handleNmiSubmit}>
+                {nmiSaving ? <Spinner size={16} /> : 'Submit'}
               </button>
             </div>
           </div>

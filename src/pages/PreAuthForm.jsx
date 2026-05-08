@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
+import { FORM_SECTIONS } from './PreAuthFormPage';
 import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
@@ -521,7 +522,81 @@ function EmailPreview({ subject, to, cc, body }) {
 
 // ── Submit Pre-Auth (initial DRAFT → APPLIED) ───────────────────────
 
-function SubmitPortalForm({ submitResult, onClose, onSubmit, sending }) {
+// Format a single field value for read-only display: booleans → Yes/No,
+// select/radio with object options → option label, empty → em-dash.
+function formatReadValue(value, field) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (field?.type === 'boolean') return value === true ? 'Yes' : value === false ? 'No' : String(value);
+  if (field?.type === 'select' || field?.type === 'radio') {
+    const match = (field.options || []).find((opt) => {
+      if (opt !== null && typeof opt === 'object') return opt.value === value;
+      return String(opt) === String(value);
+    });
+    if (match) return typeof match === 'object' ? match.label : String(match);
+    return String(value);
+  }
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
+// Read-only renderer that mirrors the Pre-Auth form structure (sections,
+// subgroups, fields) using FORM_SECTIONS as the schema. Pulls values from
+// data_json so what the user sees here is exactly what was saved.
+function ReadOnlyForm({ dataJson }) {
+  const dj = dataJson || {};
+
+  const renderFieldList = (fields, sectionData, subgroupKey) => {
+    if (!fields || fields.length === 0) return null;
+    const source = subgroupKey ? (sectionData?.[subgroupKey] || {}) : (sectionData || {});
+    return fields.map((field) => (
+      <div key={field.key} className="info-card__kv">
+        <span className="info-card__kv-label">{field.label}</span>
+        <span className="info-card__kv-value">{formatReadValue(source[field.key], field)}</span>
+      </div>
+    ));
+  };
+
+  return (
+    <div className="portal-form__readonly">
+      {FORM_SECTIONS.map((section) => {
+        const sectionData = dj[section.name] || {};
+        return (
+          <div key={section.name} className="portal-form__readonly-section">
+            <div className="portal-form__readonly-title">{section.label}</div>
+            {section.fields && section.fields.length > 0 && (
+              <div className="portal-form__readonly-grid">
+                {renderFieldList(section.fields, sectionData)}
+              </div>
+            )}
+            {(section.subgroups || []).map((sg) => (
+              <div key={sg.key} className="portal-form__readonly-subgroup">
+                <div className="portal-form__readonly-subtitle">{sg.label}</div>
+                <div className="portal-form__readonly-grid">
+                  {renderFieldList(sg.fields, sectionData, sg.key)}
+                </div>
+              </div>
+            ))}
+            {section.fieldsAfterSubgroups && section.fieldsAfterSubgroups.length > 0 && (
+              <div className="portal-form__readonly-grid">
+                {renderFieldList(section.fieldsAfterSubgroups, sectionData)}
+              </div>
+            )}
+            {(section.additionalSubgroups || []).map((sg) => (
+              <div key={sg.key} className="portal-form__readonly-subgroup">
+                <div className="portal-form__readonly-subtitle">{sg.label}</div>
+                <div className="portal-form__readonly-grid">
+                  {renderFieldList(sg.fields, sectionData, sg.key)}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocumentsChanged }) {
   const [docViewUrl, setDocViewUrl] = useState(null);
   const [docViewName, setDocViewName] = useState('');
   const [docViewType, setDocViewType] = useState('');
@@ -556,49 +631,85 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending }) {
     }
   };
 
-  const [diagnosis, setDiagnosis] = useState(submitResult.diagnosis || '');
-  const [icd10, setIcd10] = useState(submitResult.icd10_code || '');
-  const [treatmentLine, setTreatmentLine] = useState('Surgical');
-  const [treatment, setTreatment] = useState(submitResult.treatment || '');
-  const [anaesthesia, setAnaesthesia] = useState('General Anaesthesia');
-  const [icuRequired, setIcuRequired] = useState(Boolean(submitResult.icu_required));
-  const [admissionMode, setAdmissionMode] = useState(submitResult.admission_mode || 'Planned');
-  const [admissionDate, setAdmissionDate] = useState(submitResult.admission_date || '');
-  const [admissionTime, setAdmissionTime] = useState(submitResult.admission_time || '');
-  const [expectedStay, setExpectedStay] = useState(submitResult.expected_stay ?? '');
-  const [requestedAmount, setRequestedAmount] = useState(submitResult.requested_amount ?? 0);
-  const [files, setFiles] = useState([]);
+  // The form is now read-only — values are sourced from the saved
+  // data_json. The attachments list is an immediate-upload area: each
+  // chosen file is POSTed to /claim-cases/:id/documents right away, and
+  // each chip can be deleted via DELETE /documents/:id.
+  const [localDocs, setLocalDocs] = useState(submitResult.documents || []);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState(null);
+  const fileInputRef = useRef(null);
   const [notes, setNotes] = useState('');
 
-  const canSubmit =
-    diagnosis.trim() &&
-    icd10.trim() &&
-    treatment.trim() &&
-    admissionDate &&
-    Number(expectedStay) > 0 &&
-    Number(requestedAmount) > 0 &&
-    !sending;
+  const refreshLocalDocs = async () => {
+    try {
+      const res = await documentService.list(submitResult.claim_case_id);
+      setLocalDocs(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      // handled by interceptor
+    }
+  };
+
+  const handleAttachClick = () => fileInputRef.current?.click();
+
+  const handleAttachChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingDoc(true);
+    try {
+      const fd = new FormData();
+      fd.append('files', file);
+      await documentService.upload(submitResult.claim_case_id, fd);
+      await refreshLocalDocs();
+      // Bubble up so the parent can refresh the sidebar's Documents card.
+      if (typeof onDocumentsChanged === 'function') onDocumentsChanged();
+    } catch {
+      // handled by interceptor
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDeleteDoc = async (doc) => {
+    setDeletingDocId(doc.id);
+    try {
+      await documentService.delete(submitResult.claim_case_id, doc.id);
+      setLocalDocs((prev) => prev.filter((d) => d.id !== doc.id));
+      if (typeof onDocumentsChanged === 'function') onDocumentsChanged();
+    } catch {
+      // handled by interceptor
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  const canSubmit = !sending;
 
   const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
-  const subject = `[${paId}] Cashless Pre-Auth — ${submitResult.patient_name || ''} — ${submitResult.policy_number || ''}`.trim();
+  const dj = submitResult.data_json || {};
+  const ti = dj.treating_doctor || {};
+  const hosp = dj.hospitalization || {};
+  const insured = dj.patient_insured || {};
+  const subject = `[${paId}] Cashless Pre-Auth — ${submitResult.patient_name || ''} — ${insured.policy_number || ''}`.trim();
   const body =
     `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
     `Please find enclosed the cashless pre-authorisation request (Part C) for our patient ${submitResult.patient_name || '—'} ` +
-    `(UHID: ${submitResult.uhid || '—'}${submitResult.policy_number ? `, Policy: ${submitResult.policy_number}` : ''}).\n\n` +
-    `Diagnosis: ${diagnosis} (ICD-10: ${icd10})\n` +
-    `Proposed Treatment: ${treatment}\n` +
-    `Treatment Line: ${treatmentLine}\n` +
-    `Anaesthesia: ${anaesthesia}\n` +
-    `Admission: ${admissionMode} — ${admissionDate}${admissionTime ? ' ' + admissionTime : ''}\n` +
-    `Expected Stay: ${expectedStay} day(s)${icuRequired ? ' (ICU required)' : ''}\n` +
-    `Requested Amount: ${formatINR(Number(requestedAmount) || 0)}\n\n` +
+    `(UHID: ${submitResult.uhid || '—'}${insured.policy_number ? `, Policy: ${insured.policy_number}` : ''}).\n\n` +
+    `Diagnosis: ${ti.provisional_diagnosis || submitResult.diagnosis || '—'} (ICD-10: ${ti.icd10_code || submitResult.icd10_code || '—'})\n` +
+    `Proposed Treatment: ${ti.surgery_name || ti.treatment_details || '—'}\n` +
+    `Admission: ${hosp.is_emergency ? 'Emergency' : 'Planned'} — ${hosp.admission_date || '—'}${hosp.admission_time ? ' ' + hosp.admission_time : ''}\n` +
+    `Expected Stay: ${hosp.expected_days ?? '—'} day(s)${Number(hosp.icu_days) > 0 ? ' (ICU required)' : ''}\n` +
+    `Requested Amount: ${formatINR(Number(hosp.costs?.total_cost) || Number(submitResult.requested_amount) || 0)}\n\n` +
     (notes ? `Clinical notes: ${notes}\n\n` : '') +
     `All supporting documents are attached. Request your earliest review and authorisation.\n\n` +
     `Regards,\nHospital Insurance Desk`;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files });
+    // Files are already uploaded to the claim's documents endpoint, so
+    // we don't re-attach them via the email FormData.
+    onSubmit({ subject, body, files: [] });
   };
 
   return (
@@ -621,90 +732,67 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending }) {
         </>
       }
     >
-      <PortalSection title="Confirm clinical details" hint="Verified by treating doctor before submission" cols={2}>
-        <Field label="Diagnosis" required span={2}>
-          <input type="text" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
-        </Field>
-        <Field label="ICD-10 Code" required>
-          <input type="text" value={icd10} onChange={(e) => setIcd10(e.target.value)} />
-        </Field>
-        <Field label="Treatment Line" required>
-          <select value={treatmentLine} onChange={(e) => setTreatmentLine(e.target.value)}>
-            <option>Surgical</option>
-            <option>Medical</option>
-            <option>Maternity</option>
-            <option>Day Care</option>
-          </select>
-        </Field>
-        <Field label="Proposed Treatment / Procedure" required span={2}>
-          <textarea rows={2} value={treatment} onChange={(e) => setTreatment(e.target.value)} />
-        </Field>
-        <Field label="Anaesthesia Type">
-          <select value={anaesthesia} onChange={(e) => setAnaesthesia(e.target.value)}>
-            <option>General Anaesthesia</option>
-            <option>Regional / Spinal</option>
-            <option>Local</option>
-            <option>None</option>
-          </select>
-        </Field>
-        <Field label="ICU Required">
-          <label className="portal-form__toggle">
-            <input
-              type="checkbox"
-              checked={icuRequired}
-              onChange={(e) => setIcuRequired(e.target.checked)}
-            />
-            <span>{icuRequired ? 'Yes — ICU bed required' : 'No'}</span>
-          </label>
-        </Field>
-      </PortalSection>
-
-      <PortalSection title="Admission" cols={3}>
-        <Field label="Mode" required>
-          <select value={admissionMode} onChange={(e) => setAdmissionMode(e.target.value)}>
-            <option>Planned</option>
-            <option>Emergency</option>
-          </select>
-        </Field>
-        <Field label="Admission Date" required>
-          <input type="date" value={admissionDate} onChange={(e) => setAdmissionDate(e.target.value)} />
-        </Field>
-        <Field label="Admission Time">
-          <input type="time" value={admissionTime} onChange={(e) => setAdmissionTime(e.target.value)} />
-        </Field>
-        <Field label="Expected Stay (days)" required>
-          <input type="number" value={expectedStay} min="0" onChange={(e) => setExpectedStay(e.target.value)} />
-        </Field>
-        <Field label="Requested Amount (₹)" required span={2}>
-          <input type="number" value={requestedAmount} min="0" onChange={(e) => setRequestedAmount(e.target.value)} />
-        </Field>
+      <PortalSection title="Pre-Auth form summary" hint="Read-only — values from the saved form" cols={1}>
+        <ReadOnlyForm dataJson={submitResult.data_json} />
       </PortalSection>
 
       <PortalSection title="Attachments" hint="Mandatory: signed Part C, ID proof, insurance card" cols={1}>
         <Field span={1}>
-          {/* Documents already attached to the claim (e.g. signed Part C
-              uploaded via the print page) — read-only chips, included with
-              the submission automatically by the backend. */}
-          {Array.isArray(submitResult.documents) && submitResult.documents.length > 0 && (
-            <div className="portal-form__files" style={{ marginBottom: 8 }}>
-              {submitResult.documents.map((doc) => (
-                <button
+          <div className="portal-form__files" style={{ marginBottom: 8 }}>
+            {localDocs.length === 0 && (
+              <span className="portal-form__files-empty">No attachments yet.</span>
+            )}
+            {localDocs.map((doc) => {
+              const name = doc.original_filename || doc.name || 'Document';
+              const isDeleting = deletingDocId === doc.id;
+              return (
+                <span
                   key={doc.id}
-                  type="button"
                   className="apply-step__attach-chip apply-step__attach-chip--editable"
-                  onClick={() => handleViewDoc(doc)}
-                  title="View"
+                  style={{ cursor: 'default' }}
                 >
-                  <span>{doc.original_filename || doc.name || 'Document'}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <FilesList
-            files={files}
-            onAdd={(f) => setFiles((prev) => [...prev, f])}
-            onRemove={(i) => setFiles((prev) => prev.filter((_, ix) => ix !== i))}
-            addLabel="Attach document"
+                  <button
+                    type="button"
+                    onClick={() => handleViewDoc(doc)}
+                    title="View"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      cursor: 'pointer',
+                      color: 'inherit',
+                      font: 'inherit',
+                    }}
+                  >
+                    {name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDoc(doc)}
+                    disabled={isDeleting}
+                    title="Delete"
+                  >
+                    {isDeleting ? '…' : '×'}
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={handleAttachClick}
+            disabled={uploadingDoc}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {uploadingDoc ? <Spinner size={14} /> : <><IconPlus size={14} /> Attach document</>}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            onChange={handleAttachChange}
           />
         </Field>
       </PortalSection>
@@ -779,7 +867,17 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files });
+    const formValues = {
+      claim_number: submitResult.claim_number || submitResult.pa_number || '',
+      patient_name: submitResult.patient_name || '',
+      uhid: submitResult.uhid || '',
+      reason_category: reasonCat,
+      reason_detail: reasonDetail,
+      additional_amount: additionalNum,
+      approved_so_far: approvedSoFar,
+      revised_total: revisedTotal,
+    };
+    onSubmit({ subject, body, files, formValues });
   };
 
   return (
@@ -985,7 +1083,19 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files: allFiles, documentsList });
+    const formValues = {
+      claim_number: submitResult.claim_number || submitResult.pa_number || '',
+      patient_name: submitResult.patient_name || '',
+      uhid: submitResult.uhid || '',
+      items: items.map((it) => ({
+        label: it.label,
+        attached: !!it.attached,
+        filename: it.file ? it.file.name : null,
+      })),
+      documents_list: documentsList,
+      clarification,
+    };
+    onSubmit({ subject, body, files: allFiles, documentsList, formValues });
   };
 
   const insurerQuoteText =
@@ -1188,7 +1298,22 @@ function ReconsiderPortalForm({ submitResult, onClose, onSubmit, sending }) {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files });
+    const formValues = {
+      claim_number: submitResult.claim_number || submitResult.pa_number || '',
+      patient_name: submitResult.patient_name || '',
+      uhid: submitResult.uhid || '',
+      denial_reason: denialEntry?.remarks || '',
+      grounds,
+      justification,
+      amount: Number(requestedAmount) || 0,
+      co_signing_physician: {
+        name: doctorName,
+        specialty: doctorQualification,
+        reg: doctorRegistration,
+        remarks: doctorContact,
+      },
+    };
+    onSubmit({ subject, body, files, formValues });
   };
 
   const denialMeta = denialEntry?.created_at
@@ -1477,9 +1602,15 @@ export default function PreAuthForm() {
   // Hide the raise button when the last status_history entry is a _SUBMITTED state.
   const SUBMITTED_STAGE_STATUSES = ['ADR_SUBMITTED', 'ENHANCE_SUBMITTED', 'RECONSIDER', 'RECONSIDER_SUBMITTED'];
   const statusHistory = submitResult?.status_history || submitResult?.query_logs || [];
-  const latestStageStatus = statusHistory.length > 0
-    ? statusHistory[statusHistory.length - 1]?.status
+  // The API returns status_history newest → oldest, so we can't just take the
+  // tail element — pick the one with the latest created_at to be safe
+  // regardless of API ordering.
+  const latestEntry = statusHistory.length > 0
+    ? statusHistory.reduce((acc, e) => (
+        !acc || new Date(e.created_at || 0) > new Date(acc.created_at || 0) ? e : acc
+      ), null)
     : null;
+  const latestStageStatus = latestEntry?.status || null;
   const alreadyRaised = SUBMITTED_STAGE_STATUSES.includes(latestStageStatus);
   // Claim is still a draft (initial pre-auth email hasn't been sent).
   const isDraft = latestStageStatus === 'DRAFT' || statusHistory.length === 0;
@@ -1694,7 +1825,7 @@ export default function PreAuthForm() {
   // The form auto-composes subject + body from its fields and hands us
   // { subject, body, files }; we package those into the same FormData
   // shape the legacy ApplyStep uses so the backend behaves identically.
-  const handlePortalFormSubmit = async ({ subject, body, files, documentsList }) => {
+  const handlePortalFormSubmit = async ({ subject, body, files, documentsList, formValues }) => {
     if (!subject || !body) {
       toast.error('Could not compose email — missing subject or body');
       return;
@@ -1715,6 +1846,11 @@ export default function PreAuthForm() {
     // single JSON string, parse the matching key.
     if (Array.isArray(documentsList) && documentsList.length > 0) {
       documentsList.forEach((label) => fd.append('documents_list', label));
+    }
+    // Structured form fields (currently only Reconsider sends this) — backend
+    // persists alongside the email so providers can render a readable view.
+    if (formValues && typeof formValues === 'object') {
+      fd.append('form_values', JSON.stringify(formValues));
     }
 
     setPortalSending(true);
@@ -1753,7 +1889,12 @@ export default function PreAuthForm() {
         variant: statusBadgeVariant(entry.status),
         description: entry.remarks || statusLabel(entry.status),
         timestamp: entry.created_at || null,
-        amount: APPROVAL_STATES.has(entry.status) ? submitResult.approved_amount : undefined,
+        // Use the per-round approved_amount on the history entry so each
+        // PARTIALLY_APPROVED / APPROVED row shows what *that* round approved,
+        // not the latest cumulative figure.
+        amount: APPROVAL_STATES.has(entry.status)
+          ? (entry.approved_amount ?? submitResult.approved_amount)
+          : undefined,
       }));
     }
 
@@ -1899,6 +2040,7 @@ export default function PreAuthForm() {
               onClose={closeReplyCompose}
               onSubmit={handlePortalFormSubmit}
               sending={portalSending}
+              onDocumentsChanged={handleRefresh}
             />
           );
         }

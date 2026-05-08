@@ -64,6 +64,15 @@
     }
   }
 
+  &--success {
+    background: $secondary;
+    color: $text-white;
+
+    &:hover:not(:disabled) {
+      background: #0ea372;
+    }
+  }
+
   &--full {
     width: 100%;
   }
@@ -1390,6 +1399,54 @@
     }
   }
 
+  // Read-only summary block (renders FORM_SECTIONS for Submit Pre-Auth view)
+  &__readonly {
+    display: flex;
+    flex-direction: column;
+    gap: $space-4;
+  }
+
+  &__readonly-section {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    padding: $space-3 $space-4;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    background: $bg-card;
+  }
+
+  &__readonly-title {
+    font-size: $font-size-sm;
+    font-weight: 700;
+    color: $text-primary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    border-bottom: 1px dashed $border-color;
+    padding-bottom: $space-2;
+  }
+
+  &__readonly-subgroup { display: flex; flex-direction: column; gap: $space-2; }
+
+  &__readonly-subtitle {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: $space-1;
+  }
+
+  &__readonly-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $space-2 $space-4;
+
+    @include mobile {
+      grid-template-columns: 1fr;
+    }
+  }
+
   // Email preview reveal — shows the auto-composed subject/body
   &__preview {
     border: 1px dashed $border-color;
@@ -2418,6 +2475,22 @@
     &:hover { background: $primary-dark; }
   }
 
+  // Three-button row that replaced the single Response button
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-3;
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: $space-2;
+      padding: 10px 18px;
+      font-size: $font-size-sm;
+      font-weight: 600;
+    }
+  }
+
   // Inline compose wrapper
   &__compose-wrap {
     background: $bg-card;
@@ -3041,4 +3114,184 @@
   font-size: $font-size-xs;
   color: $primary;
   line-height: 1.35;
+}
+
+// ── Email card form-values view (replaces email body when stored) ─
+.email-form-values {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: $space-2 $space-4;
+  margin: 0;
+
+  dt {
+    color: $text-light;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    align-self: start;
+  }
+
+  dd {
+    margin: 0;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    word-break: break-word;
+  }
+
+  dd ul {
+    margin: 0;
+    padding-left: $space-4;
+  }
+
+  &__group {
+    grid-column: 1 / -1;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-top: $space-2;
+  }
+
+  &__group-value {
+    grid-column: 1 / -1;
+  }
+
+  &--nested {
+    margin-top: $space-1;
+    padding-left: $space-3;
+    border-left: 2px solid $border-color;
+  }
+}
+
+.claim-timeline__card-body--form {
+  background: $bg-card;
+  padding: $space-3;
+  border-radius: $radius-md;
+}
+
+// ── Per-form readable layouts (reuse portal-form__section / __field) ──
+.email-form-view {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+
+  // Pull in the spacing/sizing from portal-form sections that aren't on
+  // top-level rules but still expected here.
+  .portal-form__section { display: flex; flex-direction: column; gap: $space-3; }
+
+  &__adr-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+  }
+
+  &__adr-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $space-3;
+    padding: $space-2 $space-3;
+    background: $bg-body;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+  }
+
+  &__adr-label {
+    font-size: $font-size-sm;
+    color: $text-primary;
+  }
+
+  &__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-1;
+    padding: 2px $space-2;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    border-radius: $radius-full;
+    white-space: nowrap;
+
+    &--ok {
+      background: rgba($secondary, 0.12);
+      color: $secondary;
+    }
+
+    &--missing {
+      background: rgba($danger, 0.10);
+      color: $danger;
+    }
+  }
+}
+
+// ── Provider approve modal (PART_D fill + print + submit) ─────────
+.provider-approve {
+  &__group-title {
+    margin: $space-3 0 $space-2 0;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    color: $text-primary;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  &__hint {
+    margin: 0;
+    padding: $space-2 $space-3;
+    background: #fef3c7;
+    color: #b45309;
+    border-radius: $radius-md;
+    font-size: $font-size-xs;
+  }
+
+  &__file-hint {
+    margin: $space-2 0 0 0;
+    font-size: $font-size-xs;
+    color: $text-light;
+  }
+
+  &__file-clear {
+    margin-left: $space-2;
+    background: none;
+    border: none;
+    color: $primary;
+    cursor: pointer;
+    font-size: $font-size-xs;
+    padding: 0;
+    text-decoration: underline;
+  }
+}
+
+// ── Part D fill-and-print modal ───────────────────────────────────
+.part-d-fill {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+
+  &__inputs {
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+  }
+
+  &__group-title {
+    margin: $space-3 0 $space-1 0;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    color: $text-primary;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  &__frame {
+    width: 100%;
+    height: 60vh;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    background: #fff;
+  }
 }

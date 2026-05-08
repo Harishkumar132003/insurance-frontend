@@ -9,7 +9,7 @@ import './Pages.scss';
 
 // ── Static form schema ──────────────────────────────────────────────
 
-const FORM_SECTIONS = [
+export const FORM_SECTIONS = [
   // {
   //   name: 'tpa_insurer_hospital',
   //   label: 'TPA / Insurer / Hospital Details',
@@ -471,19 +471,36 @@ export default function PreAuthFormPage() {
   useEffect(() => {
     if (routeClaimCaseId || aiAppliedRef.current) return;
     if (providers.length === 0) return; // wait for providers to load
+
+    // Provider / UHID carry over from the AI page even when no full
+    // extracted data was returned — apply them first.
+    if (location.state?.aiUhid) setUhid(location.state.aiUhid);
+    const aiPid = location.state?.aiProviderId;
+    let providerSetViaAi = false;
+    if (aiPid) {
+      // Tolerant match: case-insensitive + trimmed, against id, provider_id,
+      // and name (so the AI returning a human-readable name still works).
+      const norm = (v) => String(v ?? '').toLowerCase().trim();
+      const aiKey = norm(aiPid);
+      const match = providers.find((p) =>
+        norm(p.id) === aiKey
+        || norm(p.provider_id) === aiKey
+        || norm(p.name) === aiKey
+      );
+      if (match) {
+        setSelectedProviderId(match.id);
+        providerSetViaAi = true;
+      }
+    }
+
     const aiData = location.state?.aiData;
-    if (!aiData || typeof aiData !== 'object') return;
+    if (!aiData || typeof aiData !== 'object' || Object.keys(aiData).length === 0) return;
     aiAppliedRef.current = true;
 
-    if (location.state?.aiUhid) setUhid(location.state.aiUhid);
-
-    // Match provider by id or provider_id
-    const aiPid = location.state?.aiProviderId;
-    if (aiPid) {
-      const match = providers.find((p) => p.id === aiPid || p.provider_id === aiPid);
-      if (match) setSelectedProviderId(match.id);
-    }
-    if (!selectedProviderId && providers.length > 0) {
+    // Only fall back to the first provider if the AI didn't already pick one.
+    // Reading `selectedProviderId` here is unsafe — its state update from the
+    // match above is queued, not yet visible — so use the local flag instead.
+    if (!providerSetViaAi && !selectedProviderId && providers.length > 0) {
       setSelectedProviderId(providers[0].id);
     }
 

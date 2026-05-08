@@ -39,7 +39,7 @@ function parseProvider(rawProvider) {
       provider_id: '',
       name: '',
       auth: null,
-      steps: [{ ...EMPTY_STEP }],
+      steps: [],
       requiredFields: [],
     };
   }
@@ -55,17 +55,16 @@ function parseProvider(rawProvider) {
       }
     : null;
 
-  const parsedSteps =
-    Array.isArray(provider.steps) && provider.steps.length > 0
-      ? provider.steps.map((s) => ({
-          step: s.step || '',
-          url: s.url || '',
-          method: s.method || 'GET',
-          headers: objToKV(s.headers),
-          body_template: objToKV(s.body_template),
-          response_mapping: objToKV(s.response_mapping),
-        }))
-      : [{ ...EMPTY_STEP }];
+  const parsedSteps = Array.isArray(provider.steps)
+    ? provider.steps.map((s) => ({
+        step: s.step || '',
+        url: s.url || '',
+        method: s.method || 'GET',
+        headers: objToKV(s.headers),
+        body_template: objToKV(s.body_template),
+        response_mapping: objToKV(s.response_mapping),
+      }))
+    : [];
 
   return {
     provider_id: provider.provider_id || '',
@@ -137,10 +136,6 @@ export default function ProviderConfigForm({ provider, onSaved }) {
   const addStep = () => setSteps([...steps, { ...EMPTY_STEP }]);
 
   const removeStep = (index) => {
-    if (steps.length === 1) {
-      toast.error('At least one step is required');
-      return;
-    }
     setSteps(steps.filter((_, i) => i !== index));
   };
 
@@ -297,42 +292,46 @@ export default function ProviderConfigForm({ provider, onSaved }) {
         {/* Steps */}
         <div className="config-builder__section">
           <div className="config-builder__section-header">
-            <h2>API Steps</h2>
+            <h2>API Steps <span className="config-builder__optional">(Optional)</span></h2>
             <button type="button" className="btn btn--primary btn--sm" onClick={addStep}>
               <IconPlus size={14} /> Add Step
             </button>
           </div>
-          <div className="config-builder__steps">
-            {steps.map((step, i) => (
-              <div
-                key={i}
-                draggable={canDrag.current}
-                onDragStart={(e) => {
-                  if (!canDrag.current) { e.preventDefault(); return; }
-                  handleDragStart(i);
-                }}
-                onDragEnter={() => handleDragEnter(i)}
-                onDragEnd={() => { handleDragEnd(); canDrag.current = false; }}
-                onDragOver={(e) => e.preventDefault()}
-                className="config-builder__step-wrapper"
-              >
+          {steps.length === 0 ? (
+            <p className="section-hint">No API steps configured. Add a step to define provider API calls, or leave empty.</p>
+          ) : (
+            <div className="config-builder__steps">
+              {steps.map((step, i) => (
                 <div
-                  className="config-builder__drag-handle"
-                  title="Drag to reorder"
-                  onMouseDown={() => { canDrag.current = true; }}
-                  onMouseUp={() => { canDrag.current = false; }}
-                >⠿</div>
-                <div className="config-builder__step-content">
-                  <StepCard
-                    step={step}
-                    index={i}
-                    onChange={(updated) => updateStep(i, updated)}
-                    onRemove={() => removeStep(i)}
-                  />
+                  key={i}
+                  draggable={canDrag.current}
+                  onDragStart={(e) => {
+                    if (!canDrag.current) { e.preventDefault(); return; }
+                    handleDragStart(i);
+                  }}
+                  onDragEnter={() => handleDragEnter(i)}
+                  onDragEnd={() => { handleDragEnd(); canDrag.current = false; }}
+                  onDragOver={(e) => e.preventDefault()}
+                  className="config-builder__step-wrapper"
+                >
+                  <div
+                    className="config-builder__drag-handle"
+                    title="Drag to reorder"
+                    onMouseDown={() => { canDrag.current = true; }}
+                    onMouseUp={() => { canDrag.current = false; }}
+                  >⠿</div>
+                  <div className="config-builder__step-content">
+                    <StepCard
+                      step={step}
+                      index={i}
+                      onChange={(updated) => updateStep(i, updated)}
+                      onRemove={() => removeStep(i)}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Required Fields */}

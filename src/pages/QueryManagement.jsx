@@ -88,8 +88,9 @@ export default function QueryManagement() {
       setSelectedEmail(email);
       setEmailType(email.email_type || EMAIL_TYPE_OPTIONS[0]);
       setClaimStatus(email.ai_suggested_status || CLAIM_STATUS_OPTIONS[0]);
-      setClaimNumber(email.claim_number || '');
-      setApprovedAmount(email.approved_amount ?? '');
+      // Prefer the human-saved value, fall back to the AI suggestion.
+      setClaimNumber(email.claim_number || email.ai_suggested_claim_number || '');
+      setApprovedAmount(email.approved_amount ?? email.ai_suggested_amount ?? '');
     } else {
       navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } });
     }
@@ -380,6 +381,11 @@ export default function QueryManagement() {
                       value={claimNumber}
                       onChange={(e) => setClaimNumber(e.target.value)}
                     />
+                    {selectedEmail.ai_suggested_claim_number && (
+                      <small className="policy-suggestion">
+                        AI suggested: {selectedEmail.ai_suggested_claim_number}
+                      </small>
+                    )}
                   </div>
                   {(claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED') && (
                     <div className="form-group">
@@ -390,6 +396,11 @@ export default function QueryManagement() {
                         value={approvedAmount}
                         onChange={(e) => setApprovedAmount(e.target.value)}
                       />
+                      {selectedEmail.ai_suggested_amount != null && (
+                        <small className="policy-suggestion">
+                          AI suggested: {selectedEmail.ai_suggested_amount}
+                        </small>
+                      )}
                     </div>
                   )}
                 </>
