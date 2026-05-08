@@ -3116,6 +3116,118 @@
   line-height: 1.35;
 }
 
+// ── Email card form-values view (replaces email body when stored) ─
+.email-form-values {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: $space-2 $space-4;
+  margin: 0;
+
+  dt {
+    color: $text-light;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    align-self: start;
+  }
+
+  dd {
+    margin: 0;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    word-break: break-word;
+  }
+
+  dd ul {
+    margin: 0;
+    padding-left: $space-4;
+  }
+
+  &__group {
+    grid-column: 1 / -1;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-top: $space-2;
+  }
+
+  &__group-value {
+    grid-column: 1 / -1;
+  }
+
+  &--nested {
+    margin-top: $space-1;
+    padding-left: $space-3;
+    border-left: 2px solid $border-color;
+  }
+}
+
+.claim-timeline__card-body--form {
+  background: $bg-card;
+  padding: $space-3;
+  border-radius: $radius-md;
+}
+
+// ── Per-form readable layouts (reuse portal-form__section / __field) ──
+.email-form-view {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+
+  // Pull in the spacing/sizing from portal-form sections that aren't on
+  // top-level rules but still expected here.
+  .portal-form__section { display: flex; flex-direction: column; gap: $space-3; }
+
+  &__adr-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+  }
+
+  &__adr-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $space-3;
+    padding: $space-2 $space-3;
+    background: $bg-body;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+  }
+
+  &__adr-label {
+    font-size: $font-size-sm;
+    color: $text-primary;
+  }
+
+  &__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-1;
+    padding: 2px $space-2;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    border-radius: $radius-full;
+    white-space: nowrap;
+
+    &--ok {
+      background: rgba($secondary, 0.12);
+      color: $secondary;
+    }
+
+    &--missing {
+      background: rgba($danger, 0.10);
+      color: $danger;
+    }
+  }
+}
+
 // ── Provider approve modal (PART_D fill + print + submit) ─────────
 .provider-approve {
   &__group-title {

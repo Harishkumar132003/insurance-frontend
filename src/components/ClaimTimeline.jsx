@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconSend } from './icons/Icons';
 import { claimCaseService } from '../services/api';
 import Modal from './Modal';
+import EmailFormValues from './EmailFormValues';
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -32,6 +33,17 @@ function TimelineEntry({ email, claimCaseId, onReplyClick, isLast }) {
   const [viewUrl, setViewUrl] = useState(null);
   const [viewFilename, setViewFilename] = useState('');
   const [viewContentType, setViewContentType] = useState('');
+
+  // Backend may serialise form_values as a JSON string or a parsed object —
+  // normalise once. Bad JSON falls back to null so we render the email body.
+  const formValues = useMemo(() => {
+    const raw = email.form_values;
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+      try { return JSON.parse(raw); } catch { return null; }
+    }
+    return raw;
+  }, [email.form_values]);
 
 
   const handleView = async (emailId, attId, filename) => {
@@ -84,15 +96,23 @@ function TimelineEntry({ email, claimCaseId, onReplyClick, isLast }) {
             {email.direction}
           </span>
         </div>
-        <div className={`claim-timeline__card-body ${expanded ? 'claim-timeline__card-body--expanded' : ''}`}>
-          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>
-            {email.body}
-          </pre>
-        </div>
-        {email.body && email.body.length > 300 && (
-          <button className="claim-timeline__expand-btn" onClick={() => setExpanded(!expanded)}>
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
+        {formValues ? (
+          <div className="claim-timeline__card-body claim-timeline__card-body--form">
+            <EmailFormValues formValues={formValues} emailType={email.email_type} />
+          </div>
+        ) : (
+          <>
+            <div className={`claim-timeline__card-body ${expanded ? 'claim-timeline__card-body--expanded' : ''}`}>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>
+                {email.body}
+              </pre>
+            </div>
+            {email.body && email.body.length > 300 && (
+              <button className="claim-timeline__expand-btn" onClick={() => setExpanded(!expanded)}>
+                {expanded ? 'Show less' : 'Show more'}
+              </button>
+            )}
+          </>
         )}
         {email.attachments?.length > 0 && (
           <div className="claim-timeline__attachments">

@@ -867,7 +867,17 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files });
+    const formValues = {
+      claim_number: submitResult.claim_number || submitResult.pa_number || '',
+      patient_name: submitResult.patient_name || '',
+      uhid: submitResult.uhid || '',
+      reason_category: reasonCat,
+      reason_detail: reasonDetail,
+      additional_amount: additionalNum,
+      approved_so_far: approvedSoFar,
+      revised_total: revisedTotal,
+    };
+    onSubmit({ subject, body, files, formValues });
   };
 
   return (
@@ -1073,7 +1083,19 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files: allFiles, documentsList });
+    const formValues = {
+      claim_number: submitResult.claim_number || submitResult.pa_number || '',
+      patient_name: submitResult.patient_name || '',
+      uhid: submitResult.uhid || '',
+      items: items.map((it) => ({
+        label: it.label,
+        attached: !!it.attached,
+        filename: it.file ? it.file.name : null,
+      })),
+      documents_list: documentsList,
+      clarification,
+    };
+    onSubmit({ subject, body, files: allFiles, documentsList, formValues });
   };
 
   const insurerQuoteText =
@@ -1276,7 +1298,22 @@ function ReconsiderPortalForm({ submitResult, onClose, onSubmit, sending }) {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ subject, body, files });
+    const formValues = {
+      claim_number: submitResult.claim_number || submitResult.pa_number || '',
+      patient_name: submitResult.patient_name || '',
+      uhid: submitResult.uhid || '',
+      denial_reason: denialEntry?.remarks || '',
+      grounds,
+      justification,
+      amount: Number(requestedAmount) || 0,
+      co_signing_physician: {
+        name: doctorName,
+        specialty: doctorQualification,
+        reg: doctorRegistration,
+        remarks: doctorContact,
+      },
+    };
+    onSubmit({ subject, body, files, formValues });
   };
 
   const denialMeta = denialEntry?.created_at
@@ -1788,7 +1825,7 @@ export default function PreAuthForm() {
   // The form auto-composes subject + body from its fields and hands us
   // { subject, body, files }; we package those into the same FormData
   // shape the legacy ApplyStep uses so the backend behaves identically.
-  const handlePortalFormSubmit = async ({ subject, body, files, documentsList }) => {
+  const handlePortalFormSubmit = async ({ subject, body, files, documentsList, formValues }) => {
     if (!subject || !body) {
       toast.error('Could not compose email — missing subject or body');
       return;
@@ -1809,6 +1846,11 @@ export default function PreAuthForm() {
     // single JSON string, parse the matching key.
     if (Array.isArray(documentsList) && documentsList.length > 0) {
       documentsList.forEach((label) => fd.append('documents_list', label));
+    }
+    // Structured form fields (currently only Reconsider sends this) — backend
+    // persists alongside the email so providers can render a readable view.
+    if (formValues && typeof formValues === 'object') {
+      fd.append('form_values', JSON.stringify(formValues));
     }
 
     setPortalSending(true);
