@@ -871,6 +871,20 @@ export default function PreAuthFormPage() {
     }
   };
 
+  const handleViewLocalFile = (file) => {
+    const extMap = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+      webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+      pdf: 'application/pdf',
+    };
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const contentType = file.type || extMap[ext] || '';
+    const url = window.URL.createObjectURL(file);
+    setDocViewUrl(url);
+    setDocViewName(file.name);
+    setDocViewType(contentType);
+  };
+
   const closeDocView = () => {
     if (docViewUrl) window.URL.revokeObjectURL(docViewUrl);
     setDocViewUrl(null);
@@ -1077,7 +1091,7 @@ export default function PreAuthFormPage() {
                     <div className="apply-step__attach-area" style={{ marginTop: 12 }}>
                       {files.map((file, idx) => (
                         <div key={idx} className="apply-step__attach-chip">
-                          <span>{file.name}</span>
+                          <span style={{ cursor: 'pointer' }} onClick={() => handleViewLocalFile(file)}>{file.name}</span>
                           <button type="button" onClick={() => setFiles((prev) => prev.filter((_, i) => i !== idx))}>&times;</button>
                         </div>
                       ))}
