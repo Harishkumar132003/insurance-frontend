@@ -9,8 +9,8 @@ import { IconRefresh } from '../components/icons/Icons';
 import { useToast } from '../components/Toast';
 import './Pages.scss';
 
-const CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ADR_NMI'];
-const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'ADR_NMI'];
+const CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI'];
+const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'ADR_NMI'];
 
 export default function QueryManagement() {
   const navigate = useNavigate();

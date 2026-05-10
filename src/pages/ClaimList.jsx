@@ -10,7 +10,7 @@ const FILTERS = [
   { key: 'all', label: 'All', match: () => true },
   { key: 'approved', label: 'Approved', match: (c) => c.status === 'APPROVED' || c.status === 'PARTIALLY_APPROVED' },
   { key: 'adr', label: 'ADR Pending', match: (c) => c.status === 'ADR_NMI' },
-  { key: 'denied', label: 'Denied', match: (c) => c.status === 'DENIED' },
+  { key: 'denied', label: 'Denied', match: (c) => c.status === 'DENIED' || c.status === 'ENHANCEMENT_DENIED' },
 ];
 
 const STATUS_PILL = {
@@ -18,6 +18,7 @@ const STATUS_PILL = {
   PARTIALLY_APPROVED: { label: 'Partially Approved', variant: 'info' },
   ADR_NMI: { label: 'ADR Pending', variant: 'warning' },
   DENIED: { label: 'Denied', variant: 'danger' },
+  ENHANCEMENT_DENIED: { label: 'Enhancement Denied', variant: 'danger' },
 };
 
 function formatINR(amount) {
@@ -41,15 +42,25 @@ export default function ClaimList() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Search state — debounced so we don't fire a request on every keystroke.
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     let cancelled = false;
-    claimCaseService.getAll()
+    setLoading(true);
+    const params = search ? { q: search } : undefined;
+    claimCaseService.getAll(params)
       .then((res) => { if (!cancelled) setClaims(Array.isArray(res.data) ? res.data : []); })
       .catch(() => { if (!cancelled) setClaims([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [search]);
 
   const counts = useMemo(() => {
     const map = {};
@@ -67,6 +78,26 @@ export default function ClaimList() {
       <div className="preauth-tracker__header">
         <h1 className="preauth-tracker__title">Pre-Auth Tracker</h1>
         <p className="preauth-tracker__subtitle">Track, enhance, and manage all pre-authorization requests</p>
+      </div>
+
+      <div className="preauth-tracker__search">
+        <input
+          type="search"
+          className="preauth-tracker__search-input"
+          placeholder="Search by UHID or patient name…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
+        {searchInput && (
+          <button
+            type="button"
+            className="preauth-tracker__search-clear"
+            onClick={() => setSearchInput('')}
+            aria-label="Clear search"
+          >
+            ×
+          </button>
+        )}
       </div>
 
       <div className="preauth-tracker__filters">

@@ -2,11 +2,13 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
-import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle, IconMail } from '../components/icons/Icons';
+import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle, IconMail, IconFormEdit, IconEdit } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
 import ReadOnlyForm from '../components/ReadOnlyForm';
+import EmailFormValues from '../components/EmailFormValues';
+import { useAuth, ROLES } from '../context/AuthContext';
 import './Pages.scss';
 
 const ENHANCE_TYPES = ['ENHANCE', 'ENHANCEMENT', 'ENHANCE_REQUEST', 'ENHANCE_RESPONSE'];
@@ -25,6 +27,7 @@ function statusBadgeVariant(status) {
     case 'APPROVED': return 'success';
     case 'PARTIALLY_APPROVED': return 'info';
     case 'DENIED': return 'danger';
+    case 'ENHANCEMENT_DENIED': return 'danger';
     case 'ADR_NMI': return 'warning';
     case 'SUBMITTED': return 'info';
     case 'DRAFT': return 'default';
@@ -157,7 +160,9 @@ function ApplyStep({ submitResult, onSendSuccess, useQueryEndpoint }) {
     try {
       const sendFn = useQueryEndpoint ? emailService.query : emailService.send;
       const res = await sendFn(fd);
-      toast.success('Email sent successfully');
+      // Onboarded providers get the submission directly in their queue (no
+      // outbound email), so phrase the toast accordingly.
+      toast.success(submitResult.is_onboarded ? 'Submitted successfully' : 'Email sent successfully');
       onSendSuccess(res.data);
     } catch {
       // handled
@@ -979,6 +984,26 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
   const [items, setItems] = useState(initialItems);
   const [extraFiles, setExtraFiles] = useState([]);
   const [clarification, setClarification] = useState('');
+  // Inline modal for "Add another requested item" — replaces window.prompt
+  // so the input lives inside the page styling (and works on browsers that
+  // suppress the native prompt dialog).
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [newItemLabel, setNewItemLabel] = useState('');
+
+  const openAddItem = () => {
+    setNewItemLabel('');
+    setShowAddItem(true);
+  };
+  const closeAddItem = () => {
+    setShowAddItem(false);
+    setNewItemLabel('');
+  };
+  const confirmAddItem = () => {
+    const label = newItemLabel.trim();
+    if (!label) return;
+    setItems((prev) => [...prev, { label, attached: false, file: null }]);
+    closeAddItem();
+  };
 
   const setItem = (idx, patch) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -1100,6 +1125,15 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
                   </span>
                 )}
               </label>
+              <button
+                type="button"
+                className="portal-form__adr-remove"
+                onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}
+                title="Remove this item"
+                aria-label={`Remove ${it.label}`}
+              >
+                <IconX size={14} />
+              </button>
               {it.attached && (
                 <div className="portal-form__adr-file">
                   {it.file ? (
@@ -1128,12 +1162,7 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
           <button
             type="button"
             className="apply-step__attach-btn portal-form__adr-add"
-            onClick={() => {
-              const label = window.prompt('Document the insurer asked for:');
-              if (label && label.trim()) {
-                setItems((prev) => [...prev, { label: label.trim(), attached: false, file: null }]);
-              }
-            }}
+            onClick={openAddItem}
           >
             <IconPlus size={12} /> Add another requested item
           </button>
@@ -1178,6 +1207,46 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
         cc={submitResult.cc_emails}
         body={body}
       />
+
+      {showAddItem && (
+        <Modal title="Add requested item" onClose={closeAddItem}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <label style={{ fontSize: 13, color: '#374151' }}>
+              Document the insurer asked for
+            </label>
+            <input
+              type="text"
+              autoFocus
+              placeholder="e.g. Aadhar card, Discharge summary"
+              value={newItemLabel}
+              onChange={(e) => setNewItemLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  confirmAddItem();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  closeAddItem();
+                }
+              }}
+              style={{ padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14 }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button type="button" className="btn btn--ghost" onClick={closeAddItem}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={confirmAddItem}
+                disabled={!newItemLabel.trim()}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </PortalShell>
   );
 }
@@ -1397,6 +1466,8 @@ export default function PreAuthForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
+  const { user } = useAuth();
+  const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
   const backPath = location.state?.from || '/claim-list';
   const { claimCaseId: routeClaimCaseId } = useParams();
   const [loadingCase, setLoadingCase] = useState(false);
@@ -1410,14 +1481,27 @@ export default function PreAuthForm() {
   const [replyEmailType, setReplyEmailType] = useState(null);
   const [portalSending, setPortalSending] = useState(false);
 
-  // Status-timeline → "View Email" modal state
+  // Status-timeline → "View Email / Form / Documents" modal state.
+  // viewMode determines what we render inside the modal — the same email
+  // payload powers all four views (email body, structured form, requested
+  // docs list, submitted docs list).
   const [viewedEmail, setViewedEmail] = useState(null);
+  const [viewMode, setViewMode] = useState('email');
   const [loadingViewedEmail, setLoadingViewedEmail] = useState(false);
+  // Identifies which row+button is currently fetching, so the StatusTimeline
+  // can render an inline spinner on that exact button (and disable the rest)
+  // until the modal data arrives.
+  const [pendingAction, setPendingAction] = useState(null); // { emailId, mode }
   // Attachment preview within the email modal
   const [emailAttView, setEmailAttView] = useState(null); // { url, filename, contentType }
+  // Attachment id currently being fetched, so the clicked chip can show
+  // an inline spinner while waiting for the blob to arrive.
+  const [loadingAttachmentId, setLoadingAttachmentId] = useState(null);
 
-  const handleViewStatusEmail = async (emailId) => {
+  const fetchAndShowEmail = async (emailId, mode) => {
     if (!emailId || !routeClaimCaseId) return;
+    setViewMode(mode);
+    setPendingAction({ emailId, mode });
     setLoadingViewedEmail(true);
     setViewedEmail({ loading: true });
     try {
@@ -1427,8 +1511,12 @@ export default function PreAuthForm() {
       setViewedEmail(null);
     } finally {
       setLoadingViewedEmail(false);
+      setPendingAction(null);
     }
   };
+
+  const handleViewStatusEmail = (emailId) => fetchAndShowEmail(emailId, 'email');
+  const handleStatusAction = (mode, emailId) => fetchAndShowEmail(emailId, mode);
 
   const closeViewedEmail = () => {
     setViewedEmail(null);
@@ -1438,6 +1526,7 @@ export default function PreAuthForm() {
 
   const viewEmailAttachment = async (att) => {
     if (!viewedEmail?.id) return;
+    setLoadingAttachmentId(att.id);
     try {
       const res = await claimCaseService.viewAttachment(
         routeClaimCaseId, viewedEmail.id, att.id,
@@ -1451,6 +1540,8 @@ export default function PreAuthForm() {
       });
     } catch {
       // handled by interceptor
+    } finally {
+      setLoadingAttachmentId(null);
     }
   };
 
@@ -1534,7 +1625,11 @@ export default function PreAuthForm() {
       });
       const count = cc.unread_count || 0;
       setUnreadCount(count);
-      if (count > 0) setShowUnreadPopup(true);
+      // The "Uncategorized Emails" prompt is meant for the hospital-admin
+      // workflow (where the user manually categorises incoming insurer
+      // emails). Provider users don't have the categorise screen, so don't
+      // pop it up for them.
+      if (count > 0 && !isInsuranceProvider) setShowUnreadPopup(true);
       setClaimEmails(Array.isArray(emailsRes.data) ? emailsRes.data : []);
     } catch {
       // handled by interceptor
@@ -1558,10 +1653,13 @@ export default function PreAuthForm() {
   };
 
   const raiseActionByStatus = {
-    APPROVED:           { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
-    PARTIALLY_APPROVED: { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
-    DENIED:             { label: 'Reconsider',     emailType: 'RECONSIDER' },
-    ADR_NMI:            { label: 'ADR Submit',     emailType: 'ADR_SUBMITTED' },
+    APPROVED:            { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
+    PARTIALLY_APPROVED:  { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
+    // Insurer denied a previous enhancement; hospital re-files via the
+    // same Enhance Submit form.
+    ENHANCEMENT_DENIED:  { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
+    DENIED:              { label: 'Reconsider',     emailType: 'RECONSIDER' },
+    ADR_NMI:             { label: 'ADR Submit',     emailType: 'ADR_SUBMITTED' },
   };
   const raiseAction = raiseActionByStatus[submitResult?.claim_status] || { label: 'Raise Enhance', emailType: 'ENHANCE_SUBMITTED' };
 
@@ -1853,7 +1951,9 @@ export default function PreAuthForm() {
       // backend categorises it as a query against an existing claim.
       const sendFn = replyEmailType === 'APPLIED' ? emailService.send : emailService.query;
       await sendFn(fd);
-      toast.success('Email sent successfully');
+      // Onboarded providers receive the submission directly in their queue
+      // (no outbound email), so the toast wording reflects that.
+      toast.success(submitResult.is_onboarded ? 'Submitted successfully' : 'Email sent successfully');
       await handleTimelineReplySuccess();
     } catch {
       // axios interceptor surfaces the error toast
@@ -1877,22 +1977,36 @@ export default function PreAuthForm() {
       // Sort oldest → newest so the timeline reads top-to-bottom chronologically.
       const sorted = [...statusHistory]
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      return sorted.map((entry) => ({
-        status: statusLabel(entry.status),
-        variant: statusBadgeVariant(entry.status),
-        description: entry.remarks || statusLabel(entry.status),
-        timestamp: entry.created_at || null,
-        // Use the per-round approved_amount on the history entry so each
-        // PARTIALLY_APPROVED / APPROVED row shows what *that* round approved,
-        // not the latest cumulative figure.
-        amount: APPROVAL_STATES.has(entry.status)
-          ? (entry.approved_amount ?? submitResult.approved_amount)
-          : undefined,
-        // Each status entry may link to the email that triggered/recorded
-        // the transition. The View Email button only renders when this is
-        // present.
-        emailId: entry.email_id ?? null,
-      }));
+      return sorted.map((entry, i) => {
+        // For ADR_NMI entries: find the next ADR_SUBMITTED entry that
+        // (chronologically) responded to it, so the row can offer a
+        // "View Submitted Documents" shortcut alongside "View Requested".
+        let submittedEmailId = null;
+        if (entry.status === 'ADR_NMI') {
+          const nextSubmitted = sorted
+            .slice(i + 1)
+            .find((e) => e.status === 'ADR_SUBMITTED');
+          submittedEmailId = nextSubmitted?.email_id ?? null;
+        }
+        return {
+          status: statusLabel(entry.status),
+          variant: statusBadgeVariant(entry.status),
+          description: entry.remarks || statusLabel(entry.status),
+          timestamp: entry.created_at || null,
+          // Use the per-round approved_amount on the history entry so each
+          // PARTIALLY_APPROVED / APPROVED row shows what *that* round approved,
+          // not the latest cumulative figure.
+          amount: APPROVAL_STATES.has(entry.status)
+            ? (entry.approved_amount ?? submitResult.approved_amount)
+            : undefined,
+          // Each status entry may link to the email that triggered/recorded
+          // the transition. The View Email button only renders when this is
+          // present.
+          emailId: entry.email_id ?? null,
+          rawStatus: entry.status,
+          submittedEmailId,
+        };
+      });
     }
 
     // Fallback when status_history is missing
@@ -1903,7 +2017,7 @@ export default function PreAuthForm() {
       timestamp: submitResult.submitted_at || claimEmails[claimEmails.length - 1]?.email_date || null,
     }];
     const terminal = claimEmails
-      .filter((e) => ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'APPROVED', 'PARTIALLY_APPROVED', 'DENIED'].includes(e.email_type))
+      .filter((e) => ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED'].includes(e.email_type))
       .sort((a, b) => new Date(b.email_date) - new Date(a.email_date))[0];
     if (submitResult.claim_status) {
       const isPartial = submitResult.claim_status === 'PARTIALLY_APPROVED';
@@ -1996,6 +2110,16 @@ export default function PreAuthForm() {
             <button
               type="button"
               className="btn btn--ghost"
+              onClick={() => navigate(`/pre-auth/${routeClaimCaseId}`, {
+                state: { from: `/claim-list/${routeClaimCaseId}` },
+              })}
+              title="Edit the pre-auth form"
+            >
+              <IconEdit size={16} /> Edit
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
               onClick={handlePrintPartC}
               disabled={printingPartC}
             >
@@ -2024,7 +2148,8 @@ export default function PreAuthForm() {
         const useEnhanceForm =
           replyEmailType === 'ENHANCE_SUBMITTED' &&
           (submitResult.claim_status === 'APPROVED' ||
-            submitResult.claim_status === 'PARTIALLY_APPROVED');
+            submitResult.claim_status === 'PARTIALLY_APPROVED' ||
+            submitResult.claim_status === 'ENHANCEMENT_DENIED');
         const useAdrForm = replyEmailType === 'ADR_SUBMITTED';
         const useReconsiderForm =
           replyEmailType === 'RECONSIDER' &&
@@ -2098,31 +2223,15 @@ export default function PreAuthForm() {
       {/* Two-column layout: accordions on the left, info cards on the right */}
       <div className="claim-detail__layout">
         <div className="claim-detail__accordions">
-          <Accordion number={1} title="Status Timeline" defaultOpen>
-            <StatusTimeline events={statusEvents} onViewEmail={handleViewStatusEmail} />
-          </Accordion>
-          <Accordion number={2} title={`Enhance Requests (${enhanceEmails.length})`}>
-            <CategoryEmails
-              emails={enhanceEmails}
-              claimCaseId={submitResult.claim_case_id}
-              claim={submitResult}
-              emptyText="No enhance requests yet"
-            />
-          </Accordion>
-          <Accordion number={3} title={`Additional Document Requests (${adrEmails.length})`}>
-            <CategoryEmails
-              emails={adrEmails}
-              claimCaseId={submitResult.claim_case_id}
-              claim={submitResult}
-              emptyText="No additional document requests"
-            />
-          </Accordion>
-          <Accordion number={4} title={`Reconsideration Requests (${reconsiderEmails.length})`}>
-            <CategoryEmails
-              emails={reconsiderEmails}
-              claimCaseId={submitResult.claim_case_id}
-              claim={submitResult}
-              emptyText="No reconsideration requests"
+          <Accordion title="Status Timeline" defaultOpen>
+            <StatusTimeline
+              events={statusEvents}
+              // For onboarded providers the email design is replaced by the
+              // form-style view everywhere (per the timeline gating in
+              // ClaimTimeline), so a "View Email" button would be misleading.
+              onViewEmail={submitResult.is_onboarded ? undefined : handleViewStatusEmail}
+              onAction={handleStatusAction}
+              pendingAction={pendingAction}
             />
           </Accordion>
         </div>
@@ -2130,69 +2239,175 @@ export default function PreAuthForm() {
         <ClaimSidebar submitResult={submitResult} />
       </div>
 
-      {viewedEmail && (
-        <Modal
-          title={viewedEmail.subject || 'Email'}
-          onClose={closeViewedEmail}
-          size="lg"
-        >
-          {loadingViewedEmail ? (
-            <div style={{ padding: 32, display: 'flex', justifyContent: 'center' }}>
-              <Spinner />
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div
-                className="claim-timeline__card-meta"
-                style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: '#6b7280', paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}
-              >
-                <span>From: {viewedEmail.from_email}</span>
-                <span>To: {viewedEmail.to_email}</span>
-                {viewedEmail.direction && (
-                  <span className={`badge badge--${viewedEmail.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
-                    {viewedEmail.direction}
-                  </span>
-                )}
-                {viewedEmail.email_date && (
-                  <span>
-                    {new Date(viewedEmail.email_date).toLocaleString('en-IN', {
-                      year: 'numeric', month: '2-digit', day: '2-digit',
-                      hour: '2-digit', minute: '2-digit', hour12: false,
-                    }).replace(',', '')}
-                  </span>
-                )}
+      {viewedEmail && (() => {
+        const modalTitle = (() => {
+          if (viewMode === 'form') return 'Submitted Form';
+          if (viewMode === 'requested-docs') return 'Documents Requested by Insurer';
+          if (viewMode === 'submitted-docs') return 'Documents Submitted to Insurer';
+          return viewedEmail.subject || 'Email';
+        })();
+        // Documents requested can come from form_values.documents_list (if the
+        // hospital reviewer edited them in QueryManagement) or from the AI's
+        // ai_documents_list. The form_values items[] of an ADR_SUBMITTED reply
+        // also exposes a checklist with attached/missing flags + filenames.
+        const requestedDocs = (() => {
+          const fv = viewedEmail.form_values;
+          if (fv && Array.isArray(fv.documents_list) && fv.documents_list.length) {
+            return fv.documents_list;
+          }
+          if (Array.isArray(viewedEmail.ai_documents_list)) {
+            return viewedEmail.ai_documents_list;
+          }
+          return [];
+        })();
+        const submittedItems = Array.isArray(viewedEmail?.form_values?.items)
+          ? viewedEmail.form_values.items
+          : [];
+        return (
+          <Modal title={modalTitle} onClose={closeViewedEmail} size="lg">
+            {loadingViewedEmail ? (
+              <div style={{ padding: 32, display: 'flex', justifyContent: 'center' }}>
+                <Spinner />
               </div>
-              <div style={{ maxHeight: '50vh', overflow: 'auto', background: '#f9fafb', padding: 12, borderRadius: 6 }}>
-                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 14, lineHeight: 1.6 }}>
-                  {viewedEmail.body || '(no body)'}
-                </pre>
-              </div>
-              {Array.isArray(viewedEmail.attachments) && viewedEmail.attachments.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                    Attachments ({viewedEmail.attachments.length})
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {viewedEmail.attachments.map((att) => (
-                      <button
-                        key={att.id}
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        onClick={() => viewEmailAttachment(att)}
-                      >
-                        {att.original_filename}
-                        {typeof att.file_size === 'number' && (
-                          <> ({(att.file_size / 1024).toFixed(1)} KB)</>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div
+                  className="claim-timeline__card-meta"
+                  style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: '#6b7280', paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}
+                >
+                  <span>From: {viewedEmail.from_email}</span>
+                  <span>To: {viewedEmail.to_email}</span>
+                  {viewedEmail.direction && (
+                    <span className={`badge badge--${viewedEmail.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
+                      {viewedEmail.direction}
+                    </span>
+                  )}
+                  {viewedEmail.email_date && (
+                    <span>
+                      {new Date(viewedEmail.email_date).toLocaleString('en-IN', {
+                        year: 'numeric', month: '2-digit', day: '2-digit',
+                        hour: '2-digit', minute: '2-digit', hour12: false,
+                      }).replace(',', '')}
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
-        </Modal>
-      )}
+
+                {viewMode === 'email' && (
+                  <div style={{ maxHeight: '50vh', overflow: 'auto', background: '#f9fafb', padding: 12, borderRadius: 6 }}>
+                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 14, lineHeight: 1.6 }}>
+                      {viewedEmail.body || '(no body)'}
+                    </pre>
+                  </div>
+                )}
+
+                {viewMode === 'form' && (
+                  viewedEmail.form_values ? (
+                    <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+                      <EmailFormValues
+                        formValues={viewedEmail.form_values}
+                        emailType={viewedEmail.email_type}
+                        claim={submitResult}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: 6 }}>
+                      No structured form data was saved for this entry.
+                    </div>
+                  )
+                )}
+
+                {viewMode === 'requested-docs' && (
+                  requestedDocs.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                        Insurer requested ({requestedDocs.length})
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
+                        {requestedDocs.map((doc, i) => (
+                          <li key={`${doc}-${i}`} style={{ fontSize: 14 }}>{doc}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: 6 }}>
+                      No requested-document list captured for this entry.
+                    </div>
+                  )
+                )}
+
+                {viewMode === 'submitted-docs' && (
+                  (submittedItems.length > 0 || viewedEmail.form_values?.clarification) && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {submittedItems.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+                            Checklist ({submittedItems.filter((it) => it.attached).length} of {submittedItems.length} attached)
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {submittedItems.map((it, i) => (
+                              <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#f9fafb', borderRadius: 6 }}>
+                                <span style={{ fontSize: 14, color: '#111827' }}>{it.label}</span>
+                                {it.attached ? (
+                                  <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                                    ✓ {it.filename || 'Attached'}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>
+                                    Missing
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {viewedEmail.form_values?.clarification && (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+                            Clarification
+                          </div>
+                          <div style={{ fontSize: 14, padding: 10, background: '#f9fafb', borderRadius: 6 }}>
+                            {viewedEmail.form_values.clarification}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+
+                {Array.isArray(viewedEmail.attachments) && viewedEmail.attachments.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      Attachments ({viewedEmail.attachments.length})
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {viewedEmail.attachments.map((att) => {
+                        const isLoading = loadingAttachmentId === att.id;
+                        return (
+                          <button
+                            key={att.id}
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={() => viewEmailAttachment(att)}
+                            disabled={loadingAttachmentId !== null}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          >
+                            {isLoading && <Spinner size={12} />}
+                            {att.original_filename}
+                            {typeof att.file_size === 'number' && (
+                              <> ({(att.file_size / 1024).toFixed(1)} KB)</>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       {emailAttView && (
         <Modal title={emailAttView.filename} onClose={closeEmailAttView} size="lg">
@@ -2213,7 +2428,7 @@ export default function PreAuthForm() {
         </Modal>
       )}
 
-      {showUnreadPopup && (
+      {showUnreadPopup && !isInsuranceProvider && (
         <Modal title="Uncategorized Emails" onClose={() => setShowUnreadPopup(false)}>
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <p style={{ fontSize: '1rem', marginBottom: 24 }}>
@@ -2244,7 +2459,7 @@ function Accordion({ number, title, defaultOpen = false, children }) {
   return (
     <div className={`claim-accordion ${open ? 'claim-accordion--open' : ''}`}>
       <button className="claim-accordion__head" onClick={() => setOpen((o) => !o)}>
-        <span className="claim-accordion__num">{number}</span>
+        {number != null && <span className="claim-accordion__num">{number}</span>}
         <span className="claim-accordion__title">{title}</span>
         <span className="claim-accordion__chev">
           <IconChevronRight size={18} />
@@ -2257,10 +2472,15 @@ function Accordion({ number, title, defaultOpen = false, children }) {
 
 // ── Status Timeline ─────────────────────────────────────────────────
 
-function StatusTimeline({ events, onViewEmail }) {
+function StatusTimeline({ events, onViewEmail, onAction, pendingAction }) {
   if (!events || events.length === 0) {
     return <div className="claim-status-timeline__empty">No timeline events</div>;
   }
+  // Helper: is the (emailId, mode) pair the one currently being fetched?
+  const isPending = (emailId, mode) =>
+    !!pendingAction && pendingAction.emailId === emailId && pendingAction.mode === mode;
+  // Helper: any fetch in flight (so we can disable sibling buttons too).
+  const anyPending = !!pendingAction;
   return (
     <div className="claim-status-timeline">
       {events.map((ev, idx) => (
@@ -2278,16 +2498,66 @@ function StatusTimeline({ events, onViewEmail }) {
               {ev.amount != null && ev.amount !== '' && (
                 <span className="claim-status-timeline__amount">{formatINR(ev.amount)}</span>
               )}
-              {ev.emailId && onViewEmail && (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm claim-status-timeline__view-email"
-                  onClick={() => onViewEmail(ev.emailId)}
-                  title="View the email associated with this status change"
-                >
-                  <IconMail size={12} /> View Email
-                </button>
-              )}
+              <div className="claim-status-timeline__row-actions">
+                {ev.emailId && onViewEmail && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => onViewEmail(ev.emailId)}
+                    title="View the email associated with this status change"
+                    disabled={anyPending}
+                  >
+                    {isPending(ev.emailId, 'email') ? <Spinner size={12} /> : <IconMail size={12} />} View Email
+                  </button>
+                )}
+                {ev.emailId && onAction && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => onAction('form', ev.emailId)}
+                    title="View the submitted form for this entry"
+                    disabled={anyPending}
+                  >
+                    {isPending(ev.emailId, 'form') ? <Spinner size={12} /> : <IconFormEdit size={12} />} View Form
+                  </button>
+                )}
+                {ev.rawStatus === 'ADR_NMI' && ev.emailId && onAction && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => onAction('requested-docs', ev.emailId)}
+                    title="View the documents the insurer requested"
+                    disabled={anyPending}
+                  >
+                    {isPending(ev.emailId, 'requested-docs') && <Spinner size={12} />} Requested Documents
+                  </button>
+                )}
+                {ev.emailId && onAction && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => onAction('submitted-docs', ev.emailId)}
+                    title="View documents associated with this entry"
+                    disabled={anyPending}
+                  >
+                    {isPending(ev.emailId, 'submitted-docs') && <Spinner size={12} />} Submitted Documents
+                  </button>
+                )}
+                {/* For ADR_NMI rows, also expose a shortcut to the
+                    follow-up ADR_SUBMITTED's documents (when one exists),
+                    so the user doesn't have to scroll to the next row. */}
+                {ev.rawStatus === 'ADR_NMI' && ev.submittedEmailId && onAction && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => onAction('submitted-docs', ev.submittedEmailId)}
+                    title="View the documents the hospital submitted in response"
+                    disabled={anyPending}
+                  >
+                    {isPending(ev.submittedEmailId, 'submitted-docs') && <Spinner size={12} />} Response Documents
+                  </button>
+                )}
+              </div>
             </div>
             {ev.description && <div className="claim-status-timeline__desc">{ev.description}</div>}
             {ev.timestamp && (
