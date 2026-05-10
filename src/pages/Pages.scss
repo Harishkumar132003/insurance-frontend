@@ -2854,6 +2854,14 @@
     color: #16a34a;
   }
 
+  // Push the View Email button to the right of the row head.
+  &__view-email {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
   &__desc {
     font-size: $font-size-sm;
     color: $text-primary;

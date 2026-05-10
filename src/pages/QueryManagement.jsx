@@ -30,6 +30,10 @@ export default function QueryManagement() {
   const [claimStatus, setClaimStatus] = useState('');
   const [claimNumber, setClaimNumber] = useState('');
   const [approvedAmount, setApprovedAmount] = useState('');
+  // ADR-only: editable list of insurer-requested documents (chips). Seeded
+  // from the email's ai_documents_list; sent back as documents_list.
+  const [documentsList, setDocumentsList] = useState([]);
+  const [newDocLabel, setNewDocLabel] = useState('');
   const [saving, setSaving] = useState(false);
   const [viewUrl, setViewUrl] = useState(null);
   const [viewFilename, setViewFilename] = useState('');
@@ -91,6 +95,8 @@ export default function QueryManagement() {
       // Prefer the human-saved value, fall back to the AI suggestion.
       setClaimNumber(email.claim_number || email.ai_suggested_claim_number || '');
       setApprovedAmount(email.approved_amount ?? email.ai_suggested_amount ?? '');
+      setDocumentsList(Array.isArray(email.ai_documents_list) ? [...email.ai_documents_list] : []);
+      setNewDocLabel('');
     } else {
       navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } });
     }
@@ -126,6 +132,12 @@ export default function QueryManagement() {
         payload.claim_status = claimStatus;
         payload.claim_number = claimNumber || undefined;
         payload.approved_amount = (claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED') && approvedAmount !== '' ? Number(approvedAmount) : null;
+        // ADR-only: send the edited insurer-requested documents.
+        if (claimStatus === 'ADR_NMI' || emailType === 'ADR_NMI') {
+          payload.documents_list = documentsList
+            .map((d) => String(d).trim())
+            .filter(Boolean);
+        }
       }
       await claimCaseService.updateExtractedData(selectedEmail.claim_case_id, selectedEmail.id, payload);
       toast.success('Extracted data updated');
@@ -136,6 +148,17 @@ export default function QueryManagement() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const addDocument = () => {
+    const label = newDocLabel.trim();
+    if (!label) return;
+    setDocumentsList((prev) => (prev.includes(label) ? prev : [...prev, label]));
+    setNewDocLabel('');
+  };
+
+  const removeDocument = (idx) => {
+    setDocumentsList((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const formatDate = (dateStr) => {
@@ -399,6 +422,59 @@ export default function QueryManagement() {
                       {selectedEmail.ai_suggested_amount != null && (
                         <small className="policy-suggestion">
                           AI suggested: {selectedEmail.ai_suggested_amount}
+                        </small>
+                      )}
+                    </div>
+                  )}
+                  {(claimStatus === 'ADR_NMI' || emailType === 'ADR_NMI') && (
+                    <div className="form-group">
+                      <label>Documents Requested</label>
+                      <div className="apply-step__attach-area" style={{ marginBottom: 8 }}>
+                        {documentsList.length === 0 ? (
+                          <span style={{ color: '#6b7280', fontSize: 13 }}>
+                            No documents added yet
+                          </span>
+                        ) : (
+                          documentsList.map((doc, idx) => (
+                            <span key={`${doc}-${idx}`} className="apply-step__attach-chip apply-step__attach-chip--editable">
+                              <span>{doc}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeDocument(idx)}
+                                title="Remove"
+                              >
+                                &times;
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          type="text"
+                          placeholder="Add document (e.g. Aadhar card)"
+                          value={newDocLabel}
+                          onChange={(e) => setNewDocLabel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addDocument();
+                            }
+                          }}
+                          style={{ flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={addDocument}
+                          disabled={!newDocLabel.trim()}
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {Array.isArray(selectedEmail.ai_documents_list) && selectedEmail.ai_documents_list.length > 0 && (
+                        <small className="policy-suggestion">
+                          AI suggested: {selectedEmail.ai_documents_list.join(', ')}
                         </small>
                       )}
                     </div>

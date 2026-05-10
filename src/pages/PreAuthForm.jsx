@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
-import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle } from '../components/icons/Icons';
+import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle, IconMail } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
@@ -1410,16 +1410,64 @@ export default function PreAuthForm() {
   const [replyEmailType, setReplyEmailType] = useState(null);
   const [portalSending, setPortalSending] = useState(false);
 
+  // Status-timeline → "View Email" modal state
+  const [viewedEmail, setViewedEmail] = useState(null);
+  const [loadingViewedEmail, setLoadingViewedEmail] = useState(false);
+  // Attachment preview within the email modal
+  const [emailAttView, setEmailAttView] = useState(null); // { url, filename, contentType }
+
+  const handleViewStatusEmail = async (emailId) => {
+    if (!emailId || !routeClaimCaseId) return;
+    setLoadingViewedEmail(true);
+    setViewedEmail({ loading: true });
+    try {
+      const res = await claimCaseService.getEmailDetail(routeClaimCaseId, emailId);
+      setViewedEmail(res.data);
+    } catch {
+      setViewedEmail(null);
+    } finally {
+      setLoadingViewedEmail(false);
+    }
+  };
+
+  const closeViewedEmail = () => {
+    setViewedEmail(null);
+    if (emailAttView?.url) window.URL.revokeObjectURL(emailAttView.url);
+    setEmailAttView(null);
+  };
+
+  const viewEmailAttachment = async (att) => {
+    if (!viewedEmail?.id) return;
+    try {
+      const res = await claimCaseService.viewAttachment(
+        routeClaimCaseId, viewedEmail.id, att.id,
+      );
+      const contentType = res.headers?.['content-type'] || att.content_type || '';
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: contentType }));
+      setEmailAttView({
+        url,
+        filename: att.original_filename || 'attachment',
+        contentType,
+      });
+    } catch {
+      // handled by interceptor
+    }
+  };
+
+  const closeEmailAttView = () => {
+    if (emailAttView?.url) window.URL.revokeObjectURL(emailAttView.url);
+    setEmailAttView(null);
+  };
+
   // Load claim case + emails
   const loadClaimData = async (showLoader = true) => {
     if (!routeClaimCaseId) return;
     if (showLoader) setLoadingCase(true);
     try {
-      const [caseRes, emailsRes, docsRes, subsRes] = await Promise.all([
+      const [caseRes, emailsRes, docsRes] = await Promise.all([
         claimCaseService.getById(routeClaimCaseId),
         claimCaseService.getAllEmails(routeClaimCaseId, { is_read: true }).catch(() => ({ data: [] })),
         documentService.list(routeClaimCaseId).catch(() => ({ data: [] })),
-        claimCaseService.getSubmissions(routeClaimCaseId).catch(() => ({ data: { files: [] } })),
       ]);
       const cc = caseRes.data;
       const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
@@ -1483,9 +1531,6 @@ export default function PreAuthForm() {
         documents: Array.isArray(docsRes.data) && docsRes.data.length > 0
           ? docsRes.data
           : (Array.isArray(cc.documents) ? cc.documents : []),
-        // Flat list of email-attached files for the Documents card —
-        // sourced from GET /claim-cases/:id/submissions.
-        submission_files: Array.isArray(subsRes?.data?.files) ? subsRes.data.files : [],
       });
       const count = cc.unread_count || 0;
       setUnreadCount(count);
@@ -1739,6 +1784,15 @@ export default function PreAuthForm() {
       doc.open();
       doc.write(html);
       doc.close();
+      // The "Save as PDF" filename comes from the document title. Browsers
+      // diverge on which title they use — Chrome on Linux/Windows uses the
+      // PARENT page's title, others use the iframe's. Set both, restoring
+      // the parent's afterwards so the app's normal title isn't left
+      // mutated.
+      const printTitle = submitResult?.claim_case_id || 'pre-auth-form';
+      const originalParentTitle = document.title;
+      doc.title = printTitle;
+      document.title = printTitle;
 
       // Print only after onload, so the doc is fully parsed and all fields
       // exist before the print dialog opens. Populating synchronously first
@@ -1749,6 +1803,9 @@ export default function PreAuthForm() {
         populate();
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
+        // Restore the parent title once the dialog is dismissed (or after
+        // a brief delay if the print call is async on this browser).
+        setTimeout(() => { document.title = originalParentTitle; }, 1000);
       };
     } catch {
       // axios interceptor surfaces the toast on API errors
@@ -1831,6 +1888,10 @@ export default function PreAuthForm() {
         amount: APPROVAL_STATES.has(entry.status)
           ? (entry.approved_amount ?? submitResult.approved_amount)
           : undefined,
+        // Each status entry may link to the email that triggered/recorded
+        // the transition. The View Email button only renders when this is
+        // present.
+        emailId: entry.email_id ?? null,
       }));
     }
 
@@ -2038,7 +2099,7 @@ export default function PreAuthForm() {
       <div className="claim-detail__layout">
         <div className="claim-detail__accordions">
           <Accordion number={1} title="Status Timeline" defaultOpen>
-            <StatusTimeline events={statusEvents} />
+            <StatusTimeline events={statusEvents} onViewEmail={handleViewStatusEmail} />
           </Accordion>
           <Accordion number={2} title={`Enhance Requests (${enhanceEmails.length})`}>
             <CategoryEmails
@@ -2068,6 +2129,89 @@ export default function PreAuthForm() {
 
         <ClaimSidebar submitResult={submitResult} />
       </div>
+
+      {viewedEmail && (
+        <Modal
+          title={viewedEmail.subject || 'Email'}
+          onClose={closeViewedEmail}
+          size="lg"
+        >
+          {loadingViewedEmail ? (
+            <div style={{ padding: 32, display: 'flex', justifyContent: 'center' }}>
+              <Spinner />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div
+                className="claim-timeline__card-meta"
+                style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: '#6b7280', paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}
+              >
+                <span>From: {viewedEmail.from_email}</span>
+                <span>To: {viewedEmail.to_email}</span>
+                {viewedEmail.direction && (
+                  <span className={`badge badge--${viewedEmail.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
+                    {viewedEmail.direction}
+                  </span>
+                )}
+                {viewedEmail.email_date && (
+                  <span>
+                    {new Date(viewedEmail.email_date).toLocaleString('en-IN', {
+                      year: 'numeric', month: '2-digit', day: '2-digit',
+                      hour: '2-digit', minute: '2-digit', hour12: false,
+                    }).replace(',', '')}
+                  </span>
+                )}
+              </div>
+              <div style={{ maxHeight: '50vh', overflow: 'auto', background: '#f9fafb', padding: 12, borderRadius: 6 }}>
+                <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 14, lineHeight: 1.6 }}>
+                  {viewedEmail.body || '(no body)'}
+                </pre>
+              </div>
+              {Array.isArray(viewedEmail.attachments) && viewedEmail.attachments.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Attachments ({viewedEmail.attachments.length})
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {viewedEmail.attachments.map((att) => (
+                      <button
+                        key={att.id}
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => viewEmailAttachment(att)}
+                      >
+                        {att.original_filename}
+                        {typeof att.file_size === 'number' && (
+                          <> ({(att.file_size / 1024).toFixed(1)} KB)</>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {emailAttView && (
+        <Modal title={emailAttView.filename} onClose={closeEmailAttView} size="lg">
+          <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+            {emailAttView.contentType.startsWith('image/') ? (
+              <img src={emailAttView.url} alt={emailAttView.filename} style={{ maxWidth: '100%', height: 'auto' }} />
+            ) : emailAttView.contentType === 'application/pdf' ? (
+              <iframe src={emailAttView.url} title={emailAttView.filename} style={{ width: '100%', height: '70vh', border: 'none' }} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: 24 }}>
+                <p>Preview not available for this file type.</p>
+                <a href={emailAttView.url} download={emailAttView.filename} className="btn btn--primary" style={{ marginTop: 12 }}>
+                  Download
+                </a>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {showUnreadPopup && (
         <Modal title="Uncategorized Emails" onClose={() => setShowUnreadPopup(false)}>
@@ -2113,7 +2257,7 @@ function Accordion({ number, title, defaultOpen = false, children }) {
 
 // ── Status Timeline ─────────────────────────────────────────────────
 
-function StatusTimeline({ events }) {
+function StatusTimeline({ events, onViewEmail }) {
   if (!events || events.length === 0) {
     return <div className="claim-status-timeline__empty">No timeline events</div>;
   }
@@ -2133,6 +2277,16 @@ function StatusTimeline({ events }) {
               </span>
               {ev.amount != null && ev.amount !== '' && (
                 <span className="claim-status-timeline__amount">{formatINR(ev.amount)}</span>
+              )}
+              {ev.emailId && onViewEmail && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm claim-status-timeline__view-email"
+                  onClick={() => onViewEmail(ev.emailId)}
+                  title="View the email associated with this status change"
+                >
+                  <IconMail size={12} /> View Email
+                </button>
               )}
             </div>
             {ev.description && <div className="claim-status-timeline__desc">{ev.description}</div>}
@@ -2193,67 +2347,6 @@ function InfoCard({ title, headerRight, children }) {
 }
 
 function ClaimSidebar({ submitResult }) {
-  const [docViewUrl, setDocViewUrl] = useState(null);
-  const [docViewName, setDocViewName] = useState('');
-  const [docViewType, setDocViewType] = useState('');
-
-  const closeDocView = () => {
-    if (docViewUrl) window.URL.revokeObjectURL(docViewUrl);
-    setDocViewUrl(null);
-    setDocViewName('');
-    setDocViewType('');
-  };
-
-  // Documents card is sourced from GET /claim-cases/:id/submissions — a flat
-  // list of every email-attached file with its direction (SENT/RECEIVED).
-  const documents = useMemo(() => {
-    return (submitResult.submission_files || []).map((f) => ({
-      id: `f-${f.id}`,
-      name: f.filename || 'Attachment',
-      size: f.file_size || null,
-      source: f.direction === 'RECEIVED' ? 'Insurer Response' : 'Submission',
-      emailId: f.email_id,
-      rawId: f.id,
-      contentType: f.content_type,
-    }));
-  }, [submitResult.submission_files]);
-
-  const openView = (item) => async () => {
-    try {
-      const res = await claimCaseService.viewAttachment(
-        submitResult.claim_case_id,
-        item.emailId,
-        item.rawId,
-      );
-      // Trust the filename extension over the server's Content-Type — backends
-      // sometimes mislabel attachments (e.g. returning application/pdf for a
-      // .png). Header is used only when the extension is unrecognized.
-      const ext = (item.name.split('.').pop() || '').toLowerCase();
-      const extMap = {
-        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-        webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
-        pdf: 'application/pdf',
-      };
-      const headerCT = res.headers?.['content-type'] || res.headers?.['Content-Type'] || '';
-      const contentType = extMap[ext] || item.contentType || headerCT || '';
-      const url = window.URL.createObjectURL(new Blob([res.data], { type: contentType }));
-      setDocViewUrl(url);
-      setDocViewName(item.name);
-      setDocViewType(contentType);
-    } catch {
-      // handled by interceptor
-    }
-  };
-
-  // Group by source label for the design's "Submission / Sent / Received" sections.
-  const grouped = useMemo(() => {
-    const buckets = { Submission: [], 'Insurer Response': [] };
-    documents.forEach((d) => {
-      if (buckets[d.source]) buckets[d.source].push(d);
-    });
-    return buckets;
-  }, [documents]);
-
   return (
     <aside className="claim-detail__sidebar">
       <InfoCard title="Insurer & Policy">
@@ -2270,72 +2363,6 @@ function ClaimSidebar({ submitResult }) {
         <KV label="Reg. No." value={submitResult.doctor_registration} />
         <KV label="Contact" value={submitResult.doctor_contact} />
       </InfoCard>
-
-      <InfoCard
-        title="Documents"
-        headerRight={`${documents.length} file${documents.length === 1 ? '' : 's'}`}
-      >
-        {documents.length === 0 ? (
-          <div className="info-card__empty">No documents</div>
-        ) : (
-          <div className="info-card__doc-groups">
-            {['Submission', 'Insurer Response'].map((label) => {
-              const items = grouped[label];
-              if (!items || items.length === 0) return null;
-              return (
-                <div key={label} className="info-card__doc-group">
-                  <div className="info-card__doc-group-label">{label}</div>
-                  <div className="info-card__doc-list">
-                    {items.map((item) => {
-                      const ext = (item.name.split('.').pop() || '').toLowerCase();
-                      const kind = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext) ? 'img' : 'pdf';
-                      const sizeLabel = typeof item.size === 'number'
-                        ? `${(item.size / 1024).toFixed(1)} KB`
-                        : (item.size || null);
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          className="info-card__doc"
-                          onClick={openView(item)}
-                          title="View"
-                        >
-                          <span className={`info-card__doc-icon info-card__doc-icon--${kind}`}>
-                            {kind.toUpperCase()}
-                          </span>
-                          <span className="info-card__doc-meta">
-                            <span className="info-card__doc-name">{item.name}</span>
-                            {sizeLabel && <span className="info-card__doc-size">{sizeLabel}</span>}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </InfoCard>
-
-      {docViewUrl && (
-        <Modal title={docViewName} onClose={closeDocView} size="lg">
-          <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-            {docViewType.startsWith('image/') ? (
-              <img src={docViewUrl} alt={docViewName} style={{ maxWidth: '100%', height: 'auto' }} />
-            ) : docViewType === 'application/pdf' ? (
-              <iframe src={docViewUrl} title={docViewName} style={{ width: '100%', height: '70vh', border: 'none' }} />
-            ) : (
-              <div style={{ textAlign: 'center', padding: 24 }}>
-                <p>Preview not available for this file type.</p>
-                <a href={docViewUrl} download={docViewName} className="btn btn--primary" style={{ marginTop: 12 }}>
-                  Download
-                </a>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
     </aside>
   );
 }
