@@ -9,6 +9,31 @@ import './Pages.scss';
 
 // ── Static form schema ──────────────────────────────────────────────
 
+// Common surgeries with their ICD-10-PCS codes. The pair is bidirectionally
+// linked in the form — picking a surgery_name autofills surgery_icd_code,
+// and vice versa (see setValue's cross-field sync).
+export const SURGERY_OPTIONS = [
+  { surgery_name: 'Appendectomy',                          icd_10_pcs_code: '0DTJ0ZZ' },
+  { surgery_name: 'Coronary Artery Bypass Graft (CABG)',   icd_10_pcs_code: '02100Z9' },
+  { surgery_name: 'Knee Replacement',                      icd_10_pcs_code: '0SRC0J9' },
+  { surgery_name: 'Hip Replacement',                       icd_10_pcs_code: '0SR90J9' },
+  { surgery_name: 'Cesarean Section',                      icd_10_pcs_code: '10D00Z1' },
+  { surgery_name: 'Cholecystectomy',                       icd_10_pcs_code: '0FT40ZZ' },
+  { surgery_name: 'Hysterectomy',                          icd_10_pcs_code: '0UT90ZZ' },
+  { surgery_name: 'Mastectomy',                            icd_10_pcs_code: '0HTT0ZZ' },
+  { surgery_name: 'Tonsillectomy',                         icd_10_pcs_code: '0CTPXZZ' },
+  { surgery_name: 'Cataract Surgery',                      icd_10_pcs_code: '08RJ3JZ' },
+];
+
+const SURGERY_NAME_OPTIONS = SURGERY_OPTIONS.map((s) => ({
+  value: s.surgery_name,
+  label: s.surgery_name,
+}));
+const SURGERY_ICD_OPTIONS = SURGERY_OPTIONS.map((s) => ({
+  value: s.icd_10_pcs_code,
+  label: `${s.icd_10_pcs_code} — ${s.surgery_name}`,
+}));
+
 export const FORM_SECTIONS = [
   // {
   //   name: 'tpa_insurer_hospital',
@@ -77,8 +102,8 @@ export const FORM_SECTIONS = [
     fieldsAfterSubgroups: [
       { key: 'treatment_details', label: 'Treatment Details', type: 'textarea' },
       { key: 'drug_route', label: 'Drug Route', type: 'text' },
-      { key: 'surgery_name', label: 'Surgery Name', type: 'text' },
-      { key: 'surgery_icd_code', label: 'Surgery ICD Code', type: 'text' },
+      { key: 'surgery_name', label: 'Surgery Name', type: 'select', options: SURGERY_NAME_OPTIONS },
+      { key: 'surgery_icd_code', label: 'Surgery ICD Code', type: 'select', options: SURGERY_ICD_OPTIONS },
       { key: 'other_treatment', label: 'Other Treatment', type: 'text' },
       { key: 'injury_cause', label: 'Injury Cause', type: 'text' },
       // Toggle that gates the Accident Details subgroup below.
@@ -252,19 +277,53 @@ function FieldInput({ field, value, onChange }) {
   }
 
   if (type === 'select') {
-    const selected = value === true ? 'true' : value === false ? 'false' : '';
+    // Detect legacy boolean Yes/No selects (options carry boolean values) vs
+    // plain string selects so booleans round-trip correctly while string
+    // options can also be used (e.g. surgery list).
+    const isBoolOptions = (options || []).some(
+      (opt) => opt && typeof opt === 'object' && typeof opt.value === 'boolean',
+    );
+    if (isBoolOptions) {
+      const selected = value === true ? 'true' : value === false ? 'false' : '';
+      return (
+        <select
+          value={selected}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(key, v === 'true' ? true : v === 'false' ? false : null);
+          }}
+        >
+          <option value="">Select…</option>
+          {(options || []).map((opt) => (
+            <option key={String(opt.value)} value={String(opt.value)}>{opt.label}</option>
+          ))}
+        </select>
+      );
+    }
+    const currentValue = value == null ? '' : String(value);
+    // If the saved value isn't in the options (e.g. a draft saved when this
+    // field was a free-text input), preserve it as a stand-in option so the
+    // user doesn't silently lose their data.
+    const optionValues = (options || []).map((opt) =>
+      String(typeof opt === 'object' ? opt.value : opt),
+    );
+    const showCustomOption = currentValue && !optionValues.includes(currentValue);
     return (
       <select
-        value={selected}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(key, v === 'true' ? true : v === 'false' ? false : null);
-        }}
+        value={currentValue}
+        onChange={(e) => onChange(key, e.target.value || '')}
       >
         <option value="">Select…</option>
-        {(options || []).map((opt) => (
-          <option key={String(opt.value)} value={String(opt.value)}>{opt.label}</option>
-        ))}
+        {(options || []).map((opt) => {
+          const optValue = typeof opt === 'object' ? opt.value : opt;
+          const optLabel = typeof opt === 'object' ? opt.label : opt;
+          return (
+            <option key={String(optValue)} value={String(optValue)}>{optLabel}</option>
+          );
+        })}
+        {showCustomOption && (
+          <option value={currentValue}>{currentValue} (custom)</option>
+        )}
       </select>
     );
   }
@@ -617,6 +676,16 @@ export default function PreAuthFormPage() {
         section[subgroupKey] = subgroup;
       } else {
         section[key] = value;
+        // Two-way link: surgery_name ↔ surgery_icd_code in treating_doctor.
+        if (sectionName === 'treating_doctor') {
+          if (key === 'surgery_name' && value) {
+            const match = SURGERY_OPTIONS.find((s) => s.surgery_name === value);
+            if (match) section.surgery_icd_code = match.icd_10_pcs_code;
+          } else if (key === 'surgery_icd_code' && value) {
+            const match = SURGERY_OPTIONS.find((s) => s.icd_10_pcs_code === value);
+            if (match) section.surgery_name = match.surgery_name;
+          }
+        }
       }
       return { ...prev, [sectionName]: section };
     });

@@ -1344,6 +1344,10 @@
     border-radius: $radius-md;
     padding: $space-3;
     background: $bg-card;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $space-2;
   }
 
   &__adr-check {
@@ -1353,6 +1357,8 @@
     cursor: pointer;
     font-size: $font-size-sm;
     color: $text-primary;
+    flex: 1;
+    min-width: 0;
 
     input[type="checkbox"] {
       width: 16px;
@@ -1363,6 +1369,25 @@
   }
 
   &__adr-label { flex: 1; }
+
+  &__adr-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: none;
+    border-radius: $radius-full;
+    color: $text-secondary;
+    cursor: pointer;
+    transition: background $transition-fast, color $transition-fast;
+
+    &:hover {
+      background: rgba($danger, 0.10);
+      color: $danger;
+    }
+  }
 
   &__adr-tag {
     display: inline-flex;
@@ -1383,7 +1408,8 @@
     }
   }
 
-  &__adr-file { margin-top: $space-2; padding-left: 24px; }
+  // Wraps to a new line under the checklist row (full width via flex-basis).
+  &__adr-file { flex-basis: 100%; margin-top: $space-2; padding-left: 24px; }
 
   &__adr-add {
     align-self: flex-start;
@@ -2854,7 +2880,16 @@
     color: #16a34a;
   }
 
-  // Push the View Email button to the right of the row head.
+  // Push the row-action buttons (View Email / Form / Documents) to the right.
+  &__row-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  // Legacy alias kept for any older markup that still uses it.
   &__view-email {
     margin-left: auto;
     display: inline-flex;
@@ -2912,6 +2947,51 @@
     margin: 0;
     font-size: $font-size-sm;
     color: $text-secondary;
+  }
+
+  &__search {
+    position: relative;
+    max-width: 480px;
+    width: 100%;
+  }
+
+  &__search-input {
+    width: 100%;
+    padding: 8px 36px 8px 14px;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-full;
+    outline: none;
+    transition: border-color $transition-fast, box-shadow $transition-fast;
+
+    &::placeholder { color: $text-secondary; }
+    &:focus {
+      border-color: $primary;
+      box-shadow: 0 0 0 3px rgba($primary, 0.12);
+    }
+  }
+
+  &__search-clear {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: $text-secondary;
+    border-radius: $radius-full;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+
+    &:hover { background: rgba(0, 0, 0, 0.06); color: $text-primary; }
   }
 
   &__filters {
