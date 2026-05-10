@@ -81,11 +81,15 @@ export const FORM_SECTIONS = [
       { key: 'surgery_icd_code', label: 'Surgery ICD Code', type: 'text' },
       { key: 'other_treatment', label: 'Other Treatment', type: 'text' },
       { key: 'injury_cause', label: 'Injury Cause', type: 'text' },
+      // Toggle that gates the Accident Details subgroup below.
+      { key: 'has_accident', label: 'Was this an accident?', type: 'boolean' },
     ],
     additionalSubgroups: [
       {
         key: 'accident_details',
         label: 'Accident Details',
+        // Only render when the sibling has_accident toggle is on.
+        showWhen: 'has_accident',
         fields: [
           { key: 'is_rta', label: 'Is RTA?', type: 'boolean' },
           { key: 'injury_date', label: 'Injury Date', type: 'date' },
@@ -98,6 +102,8 @@ export const FORM_SECTIONS = [
       {
         key: 'maternity',
         label: 'Maternity',
+        // Only render when the patient's gender is Female (lives in another section).
+        showWhen: { section: 'patient_insured', key: 'gender', equals: 'Female' },
         fields: [
           { key: 'expected_delivery_date', label: 'Expected Delivery Date', type: 'date' },
         ],
@@ -772,6 +778,14 @@ export default function PreAuthFormPage() {
     iframeDoc.open();
     iframeDoc.write(htmlContent);
     iframeDoc.close();
+    // The "Save as PDF" filename comes from the document title. Browsers
+    // diverge on which title they use — Chrome on Linux/Windows uses the
+    // PARENT page's title, others use the iframe's. Set both, restoring
+    // the parent's afterwards.
+    const printTitle = routeClaimCaseId || 'pre-auth-form';
+    const originalParentTitle = document.title;
+    iframeDoc.title = printTitle;
+    document.title = printTitle;
     iframe.onload = () => {
       iframeDoc.querySelectorAll('[data-field]').forEach((el) => {
         const field = el.getAttribute('data-field');
@@ -786,6 +800,7 @@ export default function PreAuthFormPage() {
         }
       });
       iframe.contentWindow.print();
+      setTimeout(() => { document.title = originalParentTitle; }, 1000);
     };
   };
 
@@ -940,15 +955,33 @@ export default function PreAuthFormPage() {
       );
     });
 
+  // Subgroup-level visibility: `showWhen` may be either a string (refers to a
+  // sibling field in the same section, truthy check) or an object
+  // `{ section, key, equals }` for cross-section conditions.
+  const shouldShowSubgroup = (sg, sectionName) => {
+    if (!sg.showWhen) return true;
+    if (typeof sg.showWhen === 'string') {
+      return !!getValue(sectionName, sg.showWhen);
+    }
+    if (typeof sg.showWhen === 'object') {
+      const { section, key, equals } = sg.showWhen;
+      const v = getValue(section || sectionName, key);
+      return equals === undefined ? !!v : v === equals;
+    }
+    return true;
+  };
+
   const renderSubgroups = (subgroups, sectionName) =>
-    (subgroups || []).map((sg) => (
-      <div key={sg.key} className="preauth-subgroup">
-        <h4 className="preauth-subgroup__title">{sg.label}</h4>
-        <div className="preauth-section__fields">
-          {renderFields(sg.fields, sectionName, sg.key)}
+    (subgroups || [])
+      .filter((sg) => shouldShowSubgroup(sg, sectionName))
+      .map((sg) => (
+        <div key={sg.key} className="preauth-subgroup">
+          <h4 className="preauth-subgroup__title">{sg.label}</h4>
+          <div className="preauth-section__fields">
+            {renderFields(sg.fields, sectionName, sg.key)}
+          </div>
         </div>
-      </div>
-    ));
+      ));
 
   return (
     <div>

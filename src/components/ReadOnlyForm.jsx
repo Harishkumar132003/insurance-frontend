@@ -17,6 +17,22 @@ export function formatReadValue(value, field) {
   return String(value);
 }
 
+// Subgroup-level visibility (read-only mirror of PreAuthFormPage's
+// shouldShowSubgroup): supports both same-section ('has_accident') and
+// cross-section ({ section, key, equals }) showWhen specs.
+function shouldShowSubgroup(sg, sectionData, dj) {
+  if (!sg.showWhen) return true;
+  if (typeof sg.showWhen === 'string') {
+    return !!sectionData?.[sg.showWhen];
+  }
+  if (typeof sg.showWhen === 'object') {
+    const { section, key, equals } = sg.showWhen;
+    const v = (dj?.[section] || {})[key];
+    return equals === undefined ? !!v : v === equals;
+  }
+  return true;
+}
+
 // Read-only renderer that mirrors the Pre-Auth form structure (sections,
 // subgroups, fields) using FORM_SECTIONS as the schema. Pulls values from
 // data_json so what the user sees here is exactly what was saved.
@@ -46,27 +62,31 @@ export default function ReadOnlyForm({ dataJson }) {
                 {renderFieldList(section.fields, sectionData)}
               </div>
             )}
-            {(section.subgroups || []).map((sg) => (
-              <div key={sg.key} className="portal-form__readonly-subgroup">
-                <div className="portal-form__readonly-subtitle">{sg.label}</div>
-                <div className="portal-form__readonly-grid">
-                  {renderFieldList(sg.fields, sectionData, sg.key)}
+            {(section.subgroups || [])
+              .filter((sg) => shouldShowSubgroup(sg, sectionData, dj))
+              .map((sg) => (
+                <div key={sg.key} className="portal-form__readonly-subgroup">
+                  <div className="portal-form__readonly-subtitle">{sg.label}</div>
+                  <div className="portal-form__readonly-grid">
+                    {renderFieldList(sg.fields, sectionData, sg.key)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
             {section.fieldsAfterSubgroups && section.fieldsAfterSubgroups.length > 0 && (
               <div className="portal-form__readonly-grid">
                 {renderFieldList(section.fieldsAfterSubgroups, sectionData)}
               </div>
             )}
-            {(section.additionalSubgroups || []).map((sg) => (
-              <div key={sg.key} className="portal-form__readonly-subgroup">
-                <div className="portal-form__readonly-subtitle">{sg.label}</div>
-                <div className="portal-form__readonly-grid">
-                  {renderFieldList(sg.fields, sectionData, sg.key)}
+            {(section.additionalSubgroups || [])
+              .filter((sg) => shouldShowSubgroup(sg, sectionData, dj))
+              .map((sg) => (
+                <div key={sg.key} className="portal-form__readonly-subgroup">
+                  <div className="portal-form__readonly-subtitle">{sg.label}</div>
+                  <div className="portal-form__readonly-grid">
+                    {renderFieldList(sg.fields, sectionData, sg.key)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         );
       })}
