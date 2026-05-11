@@ -1977,7 +1977,9 @@ export default function PreAuthForm() {
       // Statuses that come from the insurer's side (RECEIVED emails — AI-parsed
       // for non-onboarded providers). These never carry a structured form.
       const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
-      // Sort oldest → newest so the timeline reads top-to-bottom chronologically.
+      // Sort oldest → newest first so the ADR_NMI → ADR_SUBMITTED look-ahead
+      // works on chronological order; the array is reversed afterwards so the
+      // timeline reads newest-first (latest at top, DRAFT at the bottom).
       const sorted = [...statusHistory]
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       return sorted.map((entry, i) => {
@@ -2013,7 +2015,7 @@ export default function PreAuthForm() {
           // emails are AI-parsed text with no structured form.
           isReceivedSide: RECEIVED_SIDE.has(entry.status),
         };
-      });
+      }).reverse();
     }
 
     // Fallback when status_history is missing
@@ -2036,7 +2038,8 @@ export default function PreAuthForm() {
         timestamp: terminal?.email_date || null,
       });
     }
-    return events;
+    // Newest-first to match the status_history branch above.
+    return events.reverse();
   }, [submitResult, claimEmails, statusHistory]);
 
   if (loadingCase || !submitResult) {
