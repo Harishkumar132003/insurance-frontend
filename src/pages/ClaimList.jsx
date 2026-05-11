@@ -4,21 +4,29 @@ import { claimCaseService } from '../services/api';
 import { useAuth, ROLES } from '../context/AuthContext';
 import EmptyState from '../components/EmptyState';
 import Spinner from '../components/Spinner';
+import { IconPlus, IconMail } from '../components/icons/Icons';
 import './Pages.scss';
 
 const FILTERS = [
   { key: 'all', label: 'All', match: () => true },
+  { key: 'submitted', label: 'Submitted', match: (c) => c.status === 'SUBMITTED' },
   { key: 'approved', label: 'Approved', match: (c) => c.status === 'APPROVED' || c.status === 'PARTIALLY_APPROVED' },
   { key: 'adr', label: 'ADR Pending', match: (c) => c.status === 'ADR_NMI' },
   { key: 'denied', label: 'Denied', match: (c) => c.status === 'DENIED' || c.status === 'ENHANCEMENT_DENIED' },
 ];
 
 const STATUS_PILL = {
-  APPROVED: { label: 'Approved', variant: 'success' },
-  PARTIALLY_APPROVED: { label: 'Partially Approved', variant: 'info' },
-  ADR_NMI: { label: 'ADR Pending', variant: 'warning' },
-  DENIED: { label: 'Denied', variant: 'danger' },
-  ENHANCEMENT_DENIED: { label: 'Enhancement Denied', variant: 'danger' },
+  DRAFT:               { label: 'Draft',               variant: 'default' },
+  SUBMITTED:           { label: 'Submitted',           variant: 'info' },
+  ENHANCE_SUBMITTED:   { label: 'Enhance Requested',   variant: 'info' },
+  RECONSIDER:          { label: 'Reconsider Requested', variant: 'info' },
+  RECONSIDER_SUBMITTED:{ label: 'Reconsider Requested', variant: 'info' },
+  ADR_SUBMITTED:       { label: 'ADR Submitted',       variant: 'info' },
+  APPROVED:            { label: 'Approved',            variant: 'success' },
+  PARTIALLY_APPROVED:  { label: 'Partially Approved',  variant: 'purple' },
+  ADR_NMI:             { label: 'ADR Pending',         variant: 'warning' },
+  DENIED:              { label: 'Denied',              variant: 'danger' },
+  ENHANCEMENT_DENIED:  { label: 'Enhancement Denied',  variant: 'danger' },
 };
 
 function formatINR(amount) {
@@ -28,11 +36,26 @@ function formatINR(amount) {
   return num.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 }
 
-function formatDate(str) {
-  if (!str) return '—';
+// "Submitted 2d ago" for recent dates, falls back to "21 Apr 2026" for older.
+function formatSubmittedAgo(str) {
+  if (!str) return null;
   const d = new Date(str);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return null;
+  const diffMs = Date.now() - d.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays <= 0) return 'Submitted today';
+  if (diffDays === 1) return 'Submitted 1d ago';
+  if (diffDays < 30) return `Submitted ${diffDays}d ago`;
+  return `Submitted ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+}
+
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M14 14l4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export default function ClaimList() {
@@ -76,15 +99,31 @@ export default function ClaimList() {
   return (
     <div className="preauth-tracker">
       <div className="preauth-tracker__header">
-        <h1 className="preauth-tracker__title">Pre-Auth Tracker</h1>
-        <p className="preauth-tracker__subtitle">Track, enhance, and manage all pre-authorization requests</p>
+        <div className="preauth-tracker__header-text">
+          <h1 className="preauth-tracker__title">Pre-Auth Tracker</h1>
+          <p className="preauth-tracker__subtitle">
+            Track, enhance, and manage all pre-authorisation requests sent to insurers and TPAs.
+          </p>
+        </div>
+        {!isInsuranceProvider && (
+          <div className="preauth-tracker__header-actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => navigate('/pre-auth')}
+            >
+              <IconPlus size={16} /> New Pre-Auth
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="preauth-tracker__search">
+        <span className="preauth-tracker__search-ico"><SearchIcon /></span>
         <input
           type="search"
           className="preauth-tracker__search-input"
-          placeholder="Search by UHID or patient name…"
+          placeholder="Search by PA number, patient, UHID, insurer, diagnosis…"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
@@ -107,7 +146,8 @@ export default function ClaimList() {
             className={`preauth-tracker__filter ${activeFilter === tab.key ? 'preauth-tracker__filter--active' : ''}`}
             onClick={() => setActiveFilter(tab.key)}
           >
-            {tab.label} ({counts[tab.key] || 0})
+            {tab.label}
+            <span className="preauth-tracker__filter-count">{counts[tab.key] || 0}</span>
           </button>
         ))}
       </div>
@@ -120,16 +160,23 @@ export default function ClaimList() {
         <div className="preauth-tracker__list">
           {filtered.map((claim) => {
             const id = claim.claim_case_id || claim.id;
-            const uhid = claim.summary?.uhid || claim.uhid || '';
-            const paNumber =   uhid || id;
-            const patientName = claim.summary?.patient_name || claim.patient_name || '—';
-            const insurer = claim.summary?.provider_name || claim.provider_name || '—';
-            const diagnosis = claim.summary?.diagnosis || claim.diagnosis || '';
-            const requested = claim.summary?.requested_amount ?? claim.requested_amount ?? claim.amount;
-            const date = formatDate(claim.created_at);
+            const uhid = claim.uhid || claim.summary?.uhid || '';
+            const paNumber = claim.claim_number || claim.pa_number || uhid || id;
+            const patientName = claim.patient_name || claim.summary?.patient_name || '—';
+            const age = claim.age ?? claim.summary?.age ?? null;
+            const gender = claim.gender || claim.summary?.gender || null;
+            const insurer = claim.provider_name || claim.summary?.provider_name || '—';
+            const diagnosis = claim.diagnosis || claim.summary?.diagnosis || '';
+            const icd10 = claim.icd_10 || claim.summary?.icd_10 || '';
+            const requested = claim.amount ?? claim.requested_amount ?? claim.summary?.requested_amount;
+            const approved = claim.approved_amount;
+            const submittedAgo = formatSubmittedAgo(claim.created_at || claim.submitted_at);
             const status = claim.status;
             const pill = STATUS_PILL[status] || { label: (status || '—').replace(/_/g, ' '), variant: 'default' };
             const adrOverdue = claim.adr_overdue === true || claim.is_adr_overdue === true;
+            const unread = claim.unread_count || 0;
+            const showApproved = (approved != null && approved !== '') &&
+              (status === 'APPROVED' || status === 'PARTIALLY_APPROVED' || status === 'ENHANCE_SUBMITTED' || status === 'ENHANCEMENT_DENIED');
 
             return (
               <div
@@ -140,28 +187,51 @@ export default function ClaimList() {
                   { state: { from: '/claim-list' } }
                 )}
               >
-                <div className="preauth-card__row preauth-card__row--head">
-                  <div className="preauth-card__title-wrap">
+                {/* Left: identity */}
+                <div className="preauth-card__col preauth-card__col--id">
+                  <div className="preauth-card__idline">
                     <span className="preauth-card__pa">{paNumber}</span>
-                    {adrOverdue && <span className="preauth-card__overdue">ADR OVERDUE</span>}
+                    {uhid && String(uhid) !== String(paNumber) && (
+                      <span className="preauth-card__uhid">· UHID-{uhid}</span>
+                    )}
                   </div>
-                  <span className={`preauth-card__status preauth-card__status--${pill.variant}`}>
-                    <span className="preauth-card__status-dot" />
-                    {pill.label}
-                  </span>
+                  <div className="preauth-card__name">{patientName}</div>
+                  <div className="preauth-card__id-meta">
+                    {(age != null || gender) && (
+                      <span className="preauth-card__chip">
+                        {age != null ? `${age}y` : ''}{age != null && gender ? ' · ' : ''}{gender || ''}
+                      </span>
+                    )}
+                    <span className="preauth-card__insurer">{insurer}</span>
+                  </div>
                 </div>
 
-                <div className="preauth-card__row preauth-card__patient">
-                  {patientName}{uhid ? ` — ${uhid}` : ''}
+                {/* Middle: diagnosis */}
+                <div className="preauth-card__col preauth-card__col--diag">
+                  {diagnosis && <div className="preauth-card__diag">{diagnosis}</div>}
+                  {icd10 && <div className="preauth-card__icd">ICD-10: {icd10}</div>}
                 </div>
 
-                <div className="preauth-card__row preauth-card__meta">
-                  <span className="preauth-card__insurer">{insurer}</span>
-                  {diagnosis && <span className="preauth-card__diag">{diagnosis}</span>}
-                  <span className="preauth-card__amount">{formatINR(requested)}</span>
-                  <span className="preauth-card__date">{date}</span>
+                {/* Right: amounts + status */}
+                <div className="preauth-card__col preauth-card__col--right">
+                  <div className="preauth-card__amount">{formatINR(requested)}</div>
+                  {showApproved && (
+                    <div className="preauth-card__approved">Approved: {formatINR(approved)}</div>
+                  )}
+                  {submittedAgo && <div className="preauth-card__ago">{submittedAgo}</div>}
+                  <div className="preauth-card__badges">
+                    {adrOverdue && <span className="preauth-card__overdue">ADR OVERDUE</span>}
+                    <span className={`preauth-card__status preauth-card__status--${pill.variant}`}>
+                      <span className="preauth-card__status-dot" />
+                      {pill.label}
+                    </span>
+                    {unread > 0 && (
+                      <span className="preauth-card__unread">
+                        <IconMail size={12} /> {unread} new
+                      </span>
+                    )}
+                  </div>
                 </div>
-
               </div>
             );
           })}
