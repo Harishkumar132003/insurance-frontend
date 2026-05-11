@@ -55,6 +55,22 @@
     }
   }
 
+  // Like --ghost but with a solid white surface + subtle shadow, so the
+  // button stays clearly visible on tinted/grey page backgrounds.
+  &--outline {
+    background: $bg-card;
+    color: $text-primary;
+    border: 1px solid $border-color;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+    font-weight: 600;
+
+    &:hover:not(:disabled) {
+      border-color: $primary;
+      color: $primary;
+      box-shadow: 0 2px 6px rgba($primary, 0.12);
+    }
+  }
+
   &--danger {
     background: $danger;
     color: $text-white;

@@ -34,6 +34,7 @@ function formatINR(amount) {
 function statusBadgeVariant(status) {
   switch (status) {
     case 'APPROVED': return 'success';
+    case 'ENHANCEMENT_APPROVED': return 'success';
     case 'PARTIALLY_APPROVED': return 'info';
     case 'DENIED': return 'danger';
     case 'ENHANCEMENT_DENIED': return 'danger';
@@ -214,11 +215,11 @@ export default function ProviderClaimDetail() {
   const statusEvents = useMemo(() => {
     if (!claim) return [];
     if (Array.isArray(statusHistory) && statusHistory.length > 0) {
-      const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+      const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED']);
       // Insurer-side outcomes (RECEIVED emails). Used to gate the
-      // "Submitted Documents" button — only APPROVED / PARTIALLY_APPROVED
-      // carry docs worth viewing there.
-      const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
+      // "Attachments" button — only APPROVED / PARTIALLY_APPROVED /
+      // ENHANCEMENT_APPROVED carry docs worth viewing there.
+      const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
       // Sort oldest → newest first so the ADR_NMI → ADR_SUBMITTED look-ahead
       // works chronologically; reversed afterwards so the timeline reads
       // newest-first (latest at top).
@@ -397,16 +398,16 @@ export default function ProviderClaimDetail() {
 
       {canRespond && (
         <div className="claim-detail__actions">
-          <button className="btn btn--success" onClick={() => setApproveOpen(true)}>
+          <button className="btn btn--outline" onClick={() => setApproveOpen(true)}>
             <IconCheck size={16} /> Approve
           </button>
-          <button className="btn btn--ghost" onClick={() => setNmiOpen(true)}>
-            <IconAlertCircle size={16} /> NMI
+          <button className="btn btn--outline" onClick={() => setNmiOpen(true)}>
+            <IconAlertCircle size={16} /> Request Additional Documents
           </button>
-          <button className="btn btn--danger" onClick={() => setDenyOpen(true)}>
+          <button className="btn btn--outline" onClick={() => setDenyOpen(true)}>
             <IconX size={16} /> Denied
           </button>
-          <button className="btn btn--ghost" onClick={() => setPartDOpen(true)}>
+          <button className="btn btn--outline" onClick={() => setPartDOpen(true)}>
             <IconFormEdit size={16} /> Part D
           </button>
         </div>
@@ -466,7 +467,7 @@ export default function ProviderClaimDetail() {
       )}
 
       {nmiOpen && (
-        <Modal title="NMI" onClose={closeNmi}>
+        <Modal title="Request Additional Documents" onClose={closeNmi}>
           <div className="modal-form">
             <div className="form-group">
               <label>Patient</label>
@@ -753,7 +754,7 @@ function StatusTimeline({ events, onAction, pendingAction, claimOnboarded }) {
   const isPending = (emailId, mode) =>
     !!pendingAction && pendingAction.emailId === emailId && pendingAction.mode === mode;
   const anyPending = !!pendingAction;
-  const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+  const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED']);
   // For onboarded claims, hide "Submitted Documents" on insurer-side
   // (RECEIVED) outcomes unless the outcome is an approval.
   const showSubmittedDocs = (ev) =>

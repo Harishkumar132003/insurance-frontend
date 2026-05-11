@@ -25,6 +25,7 @@ function formatINR(amount) {
 function statusBadgeVariant(status) {
   switch (status) {
     case 'APPROVED': return 'success';
+    case 'ENHANCEMENT_APPROVED': return 'success';
     case 'PARTIALLY_APPROVED': return 'info';
     case 'DENIED': return 'danger';
     case 'ENHANCEMENT_DENIED': return 'danger';
@@ -1653,13 +1654,14 @@ export default function PreAuthForm() {
   };
 
   const raiseActionByStatus = {
-    APPROVED:            { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
-    PARTIALLY_APPROVED:  { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
-    // Insurer denied a previous enhancement; hospital re-files via the
-    // same Enhance Submit form.
-    ENHANCEMENT_DENIED:  { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
-    DENIED:              { label: 'Reconsider',     emailType: 'RECONSIDER' },
-    ADR_NMI:             { label: 'ADR Submit',     emailType: 'ADR_SUBMITTED' },
+    APPROVED:             { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
+    PARTIALLY_APPROVED:   { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
+    // Insurer approved/denied a previous enhancement; the hospital can
+    // re-file another enhancement via the same Enhance Submit form.
+    ENHANCEMENT_APPROVED: { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
+    ENHANCEMENT_DENIED:   { label: 'Enhance Submit', emailType: 'ENHANCE_SUBMITTED' },
+    DENIED:               { label: 'Reconsider',     emailType: 'RECONSIDER' },
+    ADR_NMI:              { label: 'ADR Submit',     emailType: 'ADR_SUBMITTED' },
   };
   const raiseAction = raiseActionByStatus[submitResult?.claim_status] || { label: 'Raise Enhance', emailType: 'ENHANCE_SUBMITTED' };
 
@@ -1973,10 +1975,10 @@ export default function PreAuthForm() {
     if (!submitResult) return [];
 
     if (Array.isArray(statusHistory) && statusHistory.length > 0) {
-      const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+      const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED']);
       // Statuses that come from the insurer's side (RECEIVED emails — AI-parsed
       // for non-onboarded providers). These never carry a structured form.
-      const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
+      const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
       // Sort oldest → newest first so the ADR_NMI → ADR_SUBMITTED look-ahead
       // works on chronological order; the array is reversed afterwards so the
       // timeline reads newest-first (latest at top, DRAFT at the bottom).
@@ -2026,7 +2028,7 @@ export default function PreAuthForm() {
       timestamp: submitResult.submitted_at || claimEmails[claimEmails.length - 1]?.email_date || null,
     }];
     const terminal = claimEmails
-      .filter((e) => ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED'].includes(e.email_type))
+      .filter((e) => ['APPROVAL', 'PARTIAL_APPROVAL', 'ENHANCEMENT_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED'].includes(e.email_type))
       .sort((a, b) => new Date(b.email_date) - new Date(a.email_date))[0];
     if (submitResult.claim_status) {
       const isPartial = submitResult.claim_status === 'PARTIALLY_APPROVED';
@@ -2159,6 +2161,7 @@ export default function PreAuthForm() {
           replyEmailType === 'ENHANCE_SUBMITTED' &&
           (submitResult.claim_status === 'APPROVED' ||
             submitResult.claim_status === 'PARTIALLY_APPROVED' ||
+            submitResult.claim_status === 'ENHANCEMENT_APPROVED' ||
             submitResult.claim_status === 'ENHANCEMENT_DENIED');
         const useAdrForm = replyEmailType === 'ADR_SUBMITTED';
         const useReconsiderForm =
@@ -2498,7 +2501,7 @@ function StatusTimeline({
     !!pendingAction && pendingAction.emailId === emailId && pendingAction.mode === mode;
   // Helper: any fetch in flight (so we can disable sibling buttons too).
   const anyPending = !!pendingAction;
-  const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+  const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED']);
   // Whether to render the "View Form" button for a given entry. On the
   // hospital-side timeline, RECEIVED-side rows (insurer/provider decisions)
   // never get a "View Form" button — regardless of whether the provider is

@@ -1005,7 +1005,7 @@ export default function PreAuthFormPage() {
         showSuggestion = fieldValue === true;
         suggestionText = (typeof suggestion === 'string' && suggestion.trim())
           ? suggestion
-          : 'Suggested by policy';
+          : '';
       } else {
         showSuggestion = typeof suggestion === 'string' && suggestion.trim().length > 0;
       }

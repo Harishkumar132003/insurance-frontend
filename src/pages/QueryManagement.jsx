@@ -9,8 +9,8 @@ import { IconRefresh } from '../components/icons/Icons';
 import { useToast } from '../components/Toast';
 import './Pages.scss';
 
-const CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI'];
-const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'ADR_NMI'];
+const CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI'];
+const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'ENHANCEMENT_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'ADR_NMI'];
 
 export default function QueryManagement() {
   const navigate = useNavigate();
@@ -131,7 +131,7 @@ export default function QueryManagement() {
       if (selectedEmail.is_latest) {
         payload.claim_status = claimStatus;
         payload.claim_number = claimNumber || undefined;
-        payload.approved_amount = (claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED') && approvedAmount !== '' ? Number(approvedAmount) : null;
+        payload.approved_amount = (claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED' || claimStatus === 'ENHANCEMENT_APPROVED') && approvedAmount !== '' ? Number(approvedAmount) : null;
         // ADR-only: send the edited insurer-requested documents.
         if (claimStatus === 'ADR_NMI' || emailType === 'ADR_NMI') {
           payload.documents_list = documentsList
@@ -410,9 +410,9 @@ export default function QueryManagement() {
                       </small>
                     )}
                   </div>
-                  {(claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED') && (
+                  {(claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED' || claimStatus === 'ENHANCEMENT_APPROVED') && (
                     <div className="form-group">
-                      <label>Approved Amount</label>
+                      <label>{claimStatus === 'ENHANCEMENT_APPROVED' ? 'Enhancement Amount' : 'Approved Amount'}</label>
                       <input
                         type="number"
                         placeholder="e.g. 50000"
