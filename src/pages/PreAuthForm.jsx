@@ -1974,6 +1974,9 @@ export default function PreAuthForm() {
 
     if (Array.isArray(statusHistory) && statusHistory.length > 0) {
       const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+      // Statuses that come from the insurer's side (RECEIVED emails — AI-parsed
+      // for non-onboarded providers). These never carry a structured form.
+      const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
       // Sort oldest → newest so the timeline reads top-to-bottom chronologically.
       const sorted = [...statusHistory]
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -2005,6 +2008,10 @@ export default function PreAuthForm() {
           emailId: entry.email_id ?? null,
           rawStatus: entry.status,
           submittedEmailId,
+          // True for insurer-side outcomes (RECEIVED emails). Used to hide
+          // the "View Form" button for non-onboarded claims, where these
+          // emails are AI-parsed text with no structured form.
+          isReceivedSide: RECEIVED_SIDE.has(entry.status),
         };
       });
     }
@@ -2232,6 +2239,10 @@ export default function PreAuthForm() {
               onViewEmail={submitResult.is_onboarded ? undefined : handleViewStatusEmail}
               onAction={handleStatusAction}
               pendingAction={pendingAction}
+              // Non-onboarded claims: the insurer's RECEIVED emails are
+              // AI-parsed text, not structured forms — hide "View Form" there.
+              suppressFormForReceived={!submitResult.is_onboarded}
+              claimOnboarded={submitResult.is_onboarded === true}
             />
           </Accordion>
         </div>
@@ -2271,26 +2282,30 @@ export default function PreAuthForm() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div
-                  className="claim-timeline__card-meta"
-                  style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: '#6b7280', paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}
-                >
-                  <span>From: {viewedEmail.from_email}</span>
-                  <span>To: {viewedEmail.to_email}</span>
-                  {viewedEmail.direction && (
-                    <span className={`badge badge--${viewedEmail.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
-                      {viewedEmail.direction}
-                    </span>
-                  )}
-                  {viewedEmail.email_date && (
-                    <span>
-                      {new Date(viewedEmail.email_date).toLocaleString('en-IN', {
-                        year: 'numeric', month: '2-digit', day: '2-digit',
-                        hour: '2-digit', minute: '2-digit', hour12: false,
-                      }).replace(',', '')}
-                    </span>
-                  )}
-                </div>
+                {/* From/To/direction/date is only relevant in the raw-email
+                    view; the form / documents views hide it. */}
+                {viewMode === 'email' && (
+                  <div
+                    className="claim-timeline__card-meta"
+                    style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: '#6b7280', paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}
+                  >
+                    <span>From: {viewedEmail.from_email}</span>
+                    <span>To: {viewedEmail.to_email}</span>
+                    {viewedEmail.direction && (
+                      <span className={`badge badge--${viewedEmail.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
+                        {viewedEmail.direction}
+                      </span>
+                    )}
+                    {viewedEmail.email_date && (
+                      <span>
+                        {new Date(viewedEmail.email_date).toLocaleString('en-IN', {
+                          year: 'numeric', month: '2-digit', day: '2-digit',
+                          hour: '2-digit', minute: '2-digit', hour12: false,
+                        }).replace(',', '')}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {viewMode === 'email' && (
                   <div style={{ maxHeight: '50vh', overflow: 'auto', background: '#f9fafb', padding: 12, borderRadius: 6 }}>
@@ -2472,7 +2487,10 @@ function Accordion({ number, title, defaultOpen = false, children }) {
 
 // ── Status Timeline ─────────────────────────────────────────────────
 
-function StatusTimeline({ events, onViewEmail, onAction, pendingAction }) {
+function StatusTimeline({
+  events, onViewEmail, onAction, pendingAction,
+  suppressFormForReceived, claimOnboarded,
+}) {
   if (!events || events.length === 0) {
     return <div className="claim-status-timeline__empty">No timeline events</div>;
   }
@@ -2481,6 +2499,17 @@ function StatusTimeline({ events, onViewEmail, onAction, pendingAction }) {
     !!pendingAction && pendingAction.emailId === emailId && pendingAction.mode === mode;
   // Helper: any fetch in flight (so we can disable sibling buttons too).
   const anyPending = !!pendingAction;
+  const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+  // Whether to render the "View Form" button for a given entry.
+  const showViewForm = (ev) =>
+    !!ev.emailId && !!onAction && !(suppressFormForReceived && ev.isReceivedSide);
+  // Whether to render the "Submitted Documents" button for a given entry.
+  // For onboarded claims, hide it on insurer-side (RECEIVED) outcomes unless
+  // the outcome is APPROVED / PARTIALLY_APPROVED (those carry the auth
+  // letter / supporting docs the hospital cares about).
+  const showSubmittedDocs = (ev) =>
+    !!ev.emailId && !!onAction &&
+    !(claimOnboarded && ev.isReceivedSide && !APPROVAL_OUTCOMES.has(ev.rawStatus));
   return (
     <div className="claim-status-timeline">
       {events.map((ev, idx) => (
@@ -2510,7 +2539,7 @@ function StatusTimeline({ events, onViewEmail, onAction, pendingAction }) {
                     {isPending(ev.emailId, 'email') ? <Spinner size={12} /> : <IconMail size={12} />} View Email
                   </button>
                 )}
-                {ev.emailId && onAction && (
+                {showViewForm(ev) && (
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
@@ -2532,7 +2561,7 @@ function StatusTimeline({ events, onViewEmail, onAction, pendingAction }) {
                     {isPending(ev.emailId, 'requested-docs') && <Spinner size={12} />} Requested Documents
                   </button>
                 )}
-                {ev.emailId && onAction && (
+                {showSubmittedDocs(ev) && (
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
@@ -2540,21 +2569,8 @@ function StatusTimeline({ events, onViewEmail, onAction, pendingAction }) {
                     title="View documents associated with this entry"
                     disabled={anyPending}
                   >
-                    {isPending(ev.emailId, 'submitted-docs') && <Spinner size={12} />} Submitted Documents
-                  </button>
-                )}
-                {/* For ADR_NMI rows, also expose a shortcut to the
-                    follow-up ADR_SUBMITTED's documents (when one exists),
-                    so the user doesn't have to scroll to the next row. */}
-                {ev.rawStatus === 'ADR_NMI' && ev.submittedEmailId && onAction && (
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => onAction('submitted-docs', ev.submittedEmailId)}
-                    title="View the documents the hospital submitted in response"
-                    disabled={anyPending}
-                  >
-                    {isPending(ev.submittedEmailId, 'submitted-docs') && <Spinner size={12} />} Response Documents
+                    {isPending(ev.emailId, 'submitted-docs') && <Spinner size={12} />}
+                    {ev.rawStatus === 'ADR_SUBMITTED' ? ' Response Documents' : ' Submitted Documents'}
                   </button>
                 )}
               </div>

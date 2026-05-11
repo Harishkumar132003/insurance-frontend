@@ -393,6 +393,81 @@ function ADRView({ formValues, claim }) {
   );
 }
 
+// ── Provider decision view ─────────────────────────────────────────
+// Renders the form the insurer/provider filled in when deciding on a claim
+// (Approve / Partially approve / Deny / Enhancement-deny / ADR request).
+// Identified by `formValues.decision` being present.
+const DECISION_LABEL = {
+  APPROVED: 'Approved',
+  PARTIALLY_APPROVED: 'Partially Approved',
+  DENIED: 'Denied',
+  ENHANCEMENT_DENIED: 'Enhancement Denied',
+  ADR_NMI: 'Additional Documents Requested',
+};
+const DECISION_ACCENT = {
+  APPROVED: 'info',
+  PARTIALLY_APPROVED: 'info',
+  DENIED: 'danger',
+  ENHANCEMENT_DENIED: 'danger',
+  ADR_NMI: 'warning',
+};
+
+function ProviderDecisionView({ formValues, claim }) {
+  const c = claim || {};
+  const decision = formValues.decision || '';
+  const isApproval = decision === 'APPROVED' || decision === 'PARTIALLY_APPROVED';
+  const isAdr = decision === 'ADR_NMI';
+  const docs = Array.isArray(formValues.documents_list) ? formValues.documents_list : [];
+  const paId = paIdFrom(formValues, claim);
+  const insurer = c.insurer_name || '';
+
+  return (
+    <Shell
+      title="Provider Decision"
+      subtitle={`${insurer || 'Insurer'}${paId ? ` · ${paId}` : ''}`}
+      accent={DECISION_ACCENT[decision] || 'info'}
+    >
+      <Section title="Decision" cols={2}>
+        <ReadField label="Outcome" value={DECISION_LABEL[decision] || (decision || '—').replace(/_/g, ' ')} />
+        <ReadField label="Claim / authorisation number" value={formValues.claim_number} />
+        {isApproval && (
+          <ReadField
+            label="Approved (this round)"
+            value={
+              <span style={{ color: '#16a34a', fontWeight: 700 }}>
+                {formatINR(formValues.approved_amount)}
+              </span>
+            }
+          />
+        )}
+        {isApproval && formValues.cumulative_approved_amount != null && (
+          <ReadField label="Total approved (cumulative)" value={formatINR(formValues.cumulative_approved_amount)} />
+        )}
+      </Section>
+
+      {isAdr && (
+        <Section title="Documents requested" hint={`${docs.length} item${docs.length === 1 ? '' : 's'}`} cols={1}>
+          <div style={{ gridColumn: 'span 1' }}>
+            {docs.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
+                {docs.map((d, i) => <li key={`${d}-${i}`} style={{ fontSize: 14 }}>{d}</li>)}
+              </ul>
+            ) : (
+              <ReadField label="" value={formValues.documents_requested || ''} />
+            )}
+          </div>
+        </Section>
+      )}
+
+      {(formValues.remarks || formValues.query_details) && (
+        <Section title={isAdr ? 'Query details / remarks' : 'Remarks'} cols={1}>
+          <ReadField label="" value={formValues.remarks || formValues.query_details} />
+        </Section>
+      )}
+    </Shell>
+  );
+}
+
 // ── Generic fallback (unknown email_type) ──────────────────────────
 function GenericRow({ k, v }) {
   const label = humanize(k);
@@ -448,6 +523,9 @@ function GenericView({ formValues }) {
 
 export default function EmailFormValues({ formValues, emailType, claim }) {
   if (!formValues || typeof formValues !== 'object') return null;
+  // Provider-decision forms (Approve / Deny / ADR request) are tagged with a
+  // `decision` field — they take precedence over the email_type routing.
+  if (formValues.decision) return <ProviderDecisionView formValues={formValues} claim={claim} />;
   if (SUBMITTED_TYPES.includes(emailType)) return <SubmitView formValues={formValues} claim={claim} />;
   if (RECONSIDER_TYPES.includes(emailType)) return <ReconsiderView formValues={formValues} claim={claim} />;
   if (ENHANCE_TYPES.includes(emailType)) return <EnhanceView formValues={formValues} claim={claim} />;

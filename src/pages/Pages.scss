@@ -2928,12 +2928,27 @@
 .preauth-tracker {
   display: flex;
   flex-direction: column;
-  gap: $space-5;
+  gap: $space-4;
 
   &__header {
     display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: $space-4;
+    flex-wrap: wrap;
+  }
+
+  &__header-text {
+    display: flex;
     flex-direction: column;
     gap: $space-1;
+  }
+
+  &__header-actions {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    flex-shrink: 0;
   }
 
   &__title {
@@ -2951,18 +2966,27 @@
 
   &__search {
     position: relative;
-    max-width: 480px;
     width: 100%;
+  }
+
+  &__search-ico {
+    position: absolute;
+    top: 50%;
+    left: 14px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    color: $text-secondary;
+    pointer-events: none;
   }
 
   &__search-input {
     width: 100%;
-    padding: 8px 36px 8px 14px;
+    padding: 10px 36px 10px 38px;
     font-size: $font-size-sm;
     color: $text-primary;
     background: $bg-card;
     border: 1px solid $border-color;
-    border-radius: $radius-full;
+    border-radius: $radius-md;
     outline: none;
     transition: border-color $transition-fast, box-shadow $transition-fast;
 
@@ -3001,12 +3025,15 @@
   }
 
   &__filter {
-    padding: 6px 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: 6px 14px;
     background: $bg-card;
     border: 1px solid $border-color;
-    border-radius: $radius-full;
+    border-radius: $radius-md;
     font-size: $font-size-sm;
-    font-weight: 500;
+    font-weight: 600;
     color: $text-primary;
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -3019,17 +3046,35 @@
       color: $text-white;
 
       &:hover { color: $text-white; background: $primary-dark; border-color: $primary-dark; }
+
+      .preauth-tracker__filter-count {
+        background: rgba($text-white, 0.22);
+        color: $text-white;
+      }
     }
+  }
+
+  &__filter-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: $radius-full;
+    background: #eef0f4;
+    color: $text-secondary;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
   }
 
   &__list {
     display: flex;
     flex-direction: column;
     gap: $space-3;
-    max-width: 960px;
     width: 100%;
-    margin: 0 auto;
-    max-height: calc(100vh - 240px);
+    max-height: calc(100vh - 280px);
     overflow-y: auto;
     padding-right: $space-2;
   }
@@ -3043,8 +3088,8 @@
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
   display: flex;
-  flex-direction: column;
-  gap: $space-2;
+  align-items: flex-start;
+  gap: $space-5;
 
   &:hover {
     border-color: $primary;
@@ -3052,35 +3097,117 @@
   }
 
   &--overdue {
-    border-color: #fecaca;
+    border-left: 3px solid $danger;
     &:hover { border-color: $danger; }
   }
 
-  &__row {
+  // ── Columns ──
+  &__col {
     display: flex;
-    align-items: center;
-    gap: $space-3;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
 
-    &--head {
-      justify-content: space-between;
+    &--id    { flex: 0 0 30%; }
+    &--diag  { flex: 1 1 auto; padding-top: 2px; }
+    &--right {
+      flex: 0 0 auto;
+      align-items: flex-end;
+      text-align: right;
+      margin-left: auto;
     }
   }
 
-  &__title-wrap {
-    display: inline-flex;
-    align-items: center;
-    gap: $space-3;
+  // ── Left column ──
+  &__idline {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-xs;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: $text-secondary;
   }
 
-  &__pa {
-    font-size: $font-size-lg;
+  &__pa { color: $text-primary; }
+  &__uhid { color: $text-secondary; font-weight: 600; }
+
+  &__name {
+    font-size: $font-size-base;
     font-weight: 700;
     color: $text-primary;
   }
 
-  &__overdue {
+  &__id-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: $space-2;
+    font-size: $font-size-xs;
+    color: $text-secondary;
+  }
+
+  &__chip {
     display: inline-block;
+    padding: 2px 8px;
+    background: #f3f4f6;
+    border-radius: $radius-sm;
+    font-size: 11px;
+    font-weight: 600;
+    color: $text-secondary;
+  }
+
+  &__insurer {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+  }
+
+  // ── Middle column ──
+  &__diag {
+    font-size: $font-size-sm;
+    color: $text-primary;
+    font-weight: 500;
+  }
+
+  &__icd {
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: $font-size-xs;
+    color: $text-secondary;
+  }
+
+  // ── Right column ──
+  &__amount {
+    font-size: $font-size-base;
+    font-weight: 700;
+    color: $text-primary;
+  }
+
+  &__approved {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: #16a34a;
+  }
+
+  &__ago {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+  }
+
+  &__badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  &__overdue {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     padding: 2px 8px;
     background: #fee2e2;
     color: #b91c1c;
@@ -3089,6 +3216,8 @@
     letter-spacing: 0.04em;
     border-radius: $radius-sm;
     text-transform: uppercase;
+
+    &::before { content: '⚠'; font-size: 0.7rem; }
   }
 
   &__status {
@@ -3099,9 +3228,11 @@
     border-radius: $radius-full;
     font-size: $font-size-xs;
     font-weight: 600;
+    white-space: nowrap;
 
     &--success { background: #dcfce7; color: #16a34a; }
     &--info    { background: #dbeafe; color: #2563eb; }
+    &--purple  { background: #ede9fe; color: #7c3aed; }
     &--warning { background: #fef3c7; color: #b45309; }
     &--danger  { background: #fee2e2; color: #b91c1c; }
     &--default { background: #f3f4f6; color: $text-secondary; }
@@ -3113,32 +3244,30 @@
     background: currentColor;
   }
 
-  &__patient {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-  }
-
-  &__meta {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-    gap: $space-4;
-  }
-
-  &__insurer {
-    font-weight: 600;
-    color: $text-primary;
-  }
-
-  &__tag {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: $radius-sm;
+  &__unread {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    border-radius: $radius-full;
     font-size: $font-size-xs;
     font-weight: 600;
+    white-space: nowrap;
+  }
 
-    &--enhance    { background: rgba($primary, 0.1); color: $primary; }
-    &--adr        { background: #fee2e2; color: #b91c1c; }
-    &--reconsider { background: #fef3c7; color: #b45309; }
+  @media (max-width: 760px) {
+    flex-direction: column;
+    gap: $space-3;
+
+    &__col--id, &__col--diag, &__col--right {
+      flex: 1 1 100%;
+      align-items: flex-start;
+      text-align: left;
+      margin-left: 0;
+    }
+    &__badges { justify-content: flex-start; }
   }
 }
 

@@ -215,6 +215,10 @@ export default function ProviderClaimDetail() {
     if (!claim) return [];
     if (Array.isArray(statusHistory) && statusHistory.length > 0) {
       const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+      // Insurer-side outcomes (RECEIVED emails). Used to gate the
+      // "Submitted Documents" button — only APPROVED / PARTIALLY_APPROVED
+      // carry docs worth viewing there.
+      const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
       const sorted = [...statusHistory]
         .filter((entry) => entry.status !== 'DRAFT')
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -237,6 +241,7 @@ export default function ProviderClaimDetail() {
           emailId: entry.email_id ?? null,
           rawStatus: entry.status,
           submittedEmailId,
+          isReceivedSide: RECEIVED_SIDE.has(entry.status),
         };
       });
     }
@@ -410,6 +415,10 @@ export default function ProviderClaimDetail() {
             events={statusEvents}
             onAction={handleStatusAction}
             pendingAction={pendingAction}
+            // Provider-queue claims are always onboarded; hide
+            // "Submitted Documents" on insurer-side outcomes that aren't
+            // an approval.
+            claimOnboarded={claim?.is_onboarded !== false}
           />
         </Accordion>
       </div>
@@ -559,25 +568,31 @@ export default function ProviderClaimDetail() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div
-                  style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: '#6b7280', paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}
-                >
-                  <span>From: {viewedEmail.from_email}</span>
-                  <span>To: {viewedEmail.to_email}</span>
-                  {viewedEmail.direction && (
-                    <span className={`badge badge--${viewedEmail.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
-                      {viewedEmail.direction}
-                    </span>
-                  )}
-                  {viewedEmail.email_date && (
-                    <span>
-                      {new Date(viewedEmail.email_date).toLocaleString('en-IN', {
-                        year: 'numeric', month: '2-digit', day: '2-digit',
-                        hour: '2-digit', minute: '2-digit', hour12: false,
-                      }).replace(',', '')}
-                    </span>
-                  )}
-                </div>
+                {/* From/To/direction/date is only relevant in the raw-email
+                    view; the form / documents views hide it. (The provider
+                    page never opens 'email' mode, so this is effectively
+                    always hidden here — kept for parity.) */}
+                {viewMode === 'email' && (
+                  <div
+                    style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: '#6b7280', paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}
+                  >
+                    <span>From: {viewedEmail.from_email}</span>
+                    <span>To: {viewedEmail.to_email}</span>
+                    {viewedEmail.direction && (
+                      <span className={`badge badge--${viewedEmail.direction === 'SENT' ? 'success' : 'info'} badge--sm`}>
+                        {viewedEmail.direction}
+                      </span>
+                    )}
+                    {viewedEmail.email_date && (
+                      <span>
+                        {new Date(viewedEmail.email_date).toLocaleString('en-IN', {
+                          year: 'numeric', month: '2-digit', day: '2-digit',
+                          hour: '2-digit', minute: '2-digit', hour12: false,
+                        }).replace(',', '')}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {viewMode === 'form' && (
                   viewedEmail.form_values ? (
@@ -728,13 +743,23 @@ function Accordion({ number, title, defaultOpen = false, children }) {
 }
 
 // ── Status Timeline ─────────────────────────────────────────────────
-function StatusTimeline({ events, onAction, pendingAction }) {
+function StatusTimeline({ events, onAction, pendingAction, claimOnboarded }) {
   if (!events || events.length === 0) {
     return <div className="claim-status-timeline__empty">No timeline events</div>;
   }
   const isPending = (emailId, mode) =>
     !!pendingAction && pendingAction.emailId === emailId && pendingAction.mode === mode;
   const anyPending = !!pendingAction;
+  const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
+  // For onboarded claims, hide "Submitted Documents" on insurer-side
+  // (RECEIVED) outcomes unless the outcome is an approval.
+  const showSubmittedDocs = (ev) =>
+    !!ev.emailId && !!onAction &&
+    !(claimOnboarded && ev.isReceivedSide && !APPROVAL_OUTCOMES.has(ev.rawStatus));
+  // "View Form" — shows everywhere EXCEPT approve / partially-approve rows
+  // (those carry the Part D PDF, surfaced via "Submitted Documents").
+  const showViewForm = (ev) =>
+    !!ev.emailId && !!onAction && !APPROVAL_OUTCOMES.has(ev.rawStatus);
   return (
     <div className="claim-status-timeline">
       {events.map((ev, idx) => (
@@ -753,18 +778,18 @@ function StatusTimeline({ events, onAction, pendingAction }) {
                 <span className="claim-status-timeline__amount">{formatINR(ev.amount)}</span>
               )}
               <div className="claim-status-timeline__row-actions">
-                {ev.emailId && onAction && (
+                {showViewForm(ev) && (
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
                     onClick={() => onAction('form', ev.emailId)}
-                    title="View the submitted form for this entry"
+                    title="View the form for this entry"
                     disabled={anyPending}
                   >
                     {isPending(ev.emailId, 'form') ? <Spinner size={12} /> : <IconFormEdit size={12} />} View Form
                   </button>
                 )}
-                {ev.emailId && onAction && (
+                {showSubmittedDocs(ev) && (
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
@@ -772,7 +797,8 @@ function StatusTimeline({ events, onAction, pendingAction }) {
                     title="View documents associated with this entry"
                     disabled={anyPending}
                   >
-                    {isPending(ev.emailId, 'submitted-docs') && <Spinner size={12} />} Submitted Documents
+                    {isPending(ev.emailId, 'submitted-docs') && <Spinner size={12} />}
+                    {ev.rawStatus === 'ADR_SUBMITTED' ? ' Response Documents' : ' Submitted Documents'}
                   </button>
                 )}
                 {ev.rawStatus === 'ADR_NMI' && ev.emailId && onAction && (
@@ -784,17 +810,6 @@ function StatusTimeline({ events, onAction, pendingAction }) {
                     disabled={anyPending}
                   >
                     {isPending(ev.emailId, 'requested-docs') && <Spinner size={12} />} Requested Documents
-                  </button>
-                )}
-                {ev.rawStatus === 'ADR_NMI' && ev.submittedEmailId && onAction && (
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => onAction('submitted-docs', ev.submittedEmailId)}
-                    title="View the documents the hospital submitted in response"
-                    disabled={anyPending}
-                  >
-                    {isPending(ev.submittedEmailId, 'submitted-docs') && <Spinner size={12} />} Response Documents
                   </button>
                 )}
               </div>
