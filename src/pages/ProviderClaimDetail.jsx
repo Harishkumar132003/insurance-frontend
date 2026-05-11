@@ -219,6 +219,9 @@ export default function ProviderClaimDetail() {
       // "Submitted Documents" button — only APPROVED / PARTIALLY_APPROVED
       // carry docs worth viewing there.
       const RECEIVED_SIDE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI']);
+      // Sort oldest → newest first so the ADR_NMI → ADR_SUBMITTED look-ahead
+      // works chronologically; reversed afterwards so the timeline reads
+      // newest-first (latest at top).
       const sorted = [...statusHistory]
         .filter((entry) => entry.status !== 'DRAFT')
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -243,7 +246,7 @@ export default function ProviderClaimDetail() {
           submittedEmailId,
           isReceivedSide: RECEIVED_SIDE.has(entry.status),
         };
-      });
+      }).reverse();
     }
     return [{
       status: statusLabel(claim.claim_status) || 'Submitted',
