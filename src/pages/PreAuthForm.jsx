@@ -2239,9 +2239,6 @@ export default function PreAuthForm() {
               onViewEmail={submitResult.is_onboarded ? undefined : handleViewStatusEmail}
               onAction={handleStatusAction}
               pendingAction={pendingAction}
-              // Non-onboarded claims: the insurer's RECEIVED emails are
-              // AI-parsed text, not structured forms — hide "View Form" there.
-              suppressFormForReceived={!submitResult.is_onboarded}
               claimOnboarded={submitResult.is_onboarded === true}
             />
           </Accordion>
@@ -2488,8 +2485,7 @@ function Accordion({ number, title, defaultOpen = false, children }) {
 // ── Status Timeline ─────────────────────────────────────────────────
 
 function StatusTimeline({
-  events, onViewEmail, onAction, pendingAction,
-  suppressFormForReceived, claimOnboarded,
+  events, onViewEmail, onAction, pendingAction, claimOnboarded,
 }) {
   if (!events || events.length === 0) {
     return <div className="claim-status-timeline__empty">No timeline events</div>;
@@ -2500,9 +2496,13 @@ function StatusTimeline({
   // Helper: any fetch in flight (so we can disable sibling buttons too).
   const anyPending = !!pendingAction;
   const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED']);
-  // Whether to render the "View Form" button for a given entry.
+  // Whether to render the "View Form" button for a given entry. On the
+  // hospital-side timeline, RECEIVED-side rows (insurer/provider decisions)
+  // never get a "View Form" button — regardless of whether the provider is
+  // onboarded — since the relevant artefact there is the decision itself
+  // (status pill) and any attached docs ("Submitted Documents"), not a form.
   const showViewForm = (ev) =>
-    !!ev.emailId && !!onAction && !(suppressFormForReceived && ev.isReceivedSide);
+    !!ev.emailId && !!onAction && !ev.isReceivedSide;
   // Whether to render the "Submitted Documents" button for a given entry.
   // For onboarded claims, hide it on insurer-side (RECEIVED) outcomes unless
   // the outcome is APPROVED / PARTIALLY_APPROVED (those carry the auth
@@ -2570,7 +2570,7 @@ function StatusTimeline({
                     disabled={anyPending}
                   >
                     {isPending(ev.emailId, 'submitted-docs') && <Spinner size={12} />}
-                    {ev.rawStatus === 'ADR_SUBMITTED' ? ' Response Documents' : ' Submitted Documents'}
+                    {ev.rawStatus === 'ADR_SUBMITTED' ? ' Response Documents' : ' Attachments'}
                   </button>
                 )}
               </div>

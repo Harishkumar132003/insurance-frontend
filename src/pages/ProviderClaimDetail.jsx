@@ -756,10 +756,11 @@ function StatusTimeline({ events, onAction, pendingAction, claimOnboarded }) {
   const showSubmittedDocs = (ev) =>
     !!ev.emailId && !!onAction &&
     !(claimOnboarded && ev.isReceivedSide && !APPROVAL_OUTCOMES.has(ev.rawStatus));
-  // "View Form" — shows everywhere EXCEPT approve / partially-approve rows
-  // (those carry the Part D PDF, surfaced via "Submitted Documents").
+  // "View Form" — only the hospital's own submission rows (SUBMITTED,
+  // ENHANCE_SUBMITTED, RECONSIDER, ADR_SUBMITTED) carry a structured form.
+  // RECEIVED-side rows (insurer/provider decisions) never show it.
   const showViewForm = (ev) =>
-    !!ev.emailId && !!onAction && !APPROVAL_OUTCOMES.has(ev.rawStatus);
+    !!ev.emailId && !!onAction && !ev.isReceivedSide;
   return (
     <div className="claim-status-timeline">
       {events.map((ev, idx) => (
@@ -798,7 +799,7 @@ function StatusTimeline({ events, onAction, pendingAction, claimOnboarded }) {
                     disabled={anyPending}
                   >
                     {isPending(ev.emailId, 'submitted-docs') && <Spinner size={12} />}
-                    {ev.rawStatus === 'ADR_SUBMITTED' ? ' Response Documents' : ' Submitted Documents'}
+                    {ev.rawStatus === 'ADR_SUBMITTED' ? ' Response Documents' : ' Attachments'}
                   </button>
                 )}
                 {ev.rawStatus === 'ADR_NMI' && ev.emailId && onAction && (
