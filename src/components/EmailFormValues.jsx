@@ -400,6 +400,7 @@ function ADRView({ formValues, claim }) {
 const DECISION_LABEL = {
   APPROVED: 'Approved',
   PARTIALLY_APPROVED: 'Partially Approved',
+  ENHANCEMENT_APPROVED: 'Enhancement Approved',
   DENIED: 'Denied',
   ENHANCEMENT_DENIED: 'Enhancement Denied',
   ADR_NMI: 'Additional Documents Requested',
@@ -407,6 +408,7 @@ const DECISION_LABEL = {
 const DECISION_ACCENT = {
   APPROVED: 'info',
   PARTIALLY_APPROVED: 'info',
+  ENHANCEMENT_APPROVED: 'info',
   DENIED: 'danger',
   ENHANCEMENT_DENIED: 'danger',
   ADR_NMI: 'warning',
@@ -415,7 +417,7 @@ const DECISION_ACCENT = {
 function ProviderDecisionView({ formValues, claim }) {
   const c = claim || {};
   const decision = formValues.decision || '';
-  const isApproval = decision === 'APPROVED' || decision === 'PARTIALLY_APPROVED';
+  const isApproval = decision === 'APPROVED' || decision === 'PARTIALLY_APPROVED' || decision === 'ENHANCEMENT_APPROVED';
   const isAdr = decision === 'ADR_NMI';
   const docs = Array.isArray(formValues.documents_list) ? formValues.documents_list : [];
   const paId = paIdFrom(formValues, claim);

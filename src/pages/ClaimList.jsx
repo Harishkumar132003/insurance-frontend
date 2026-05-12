@@ -10,7 +10,7 @@ import './Pages.scss';
 const FILTERS = [
   { key: 'all', label: 'All', match: () => true },
   { key: 'submitted', label: 'Submitted', match: (c) => c.status === 'SUBMITTED' },
-  { key: 'approved', label: 'Approved', match: (c) => c.status === 'APPROVED' || c.status === 'PARTIALLY_APPROVED' },
+  { key: 'approved', label: 'Approved', match: (c) => c.status === 'APPROVED' || c.status === 'PARTIALLY_APPROVED' || c.status === 'ENHANCEMENT_APPROVED' },
   { key: 'adr', label: 'ADR Pending', match: (c) => c.status === 'ADR_NMI' },
   { key: 'denied', label: 'Denied', match: (c) => c.status === 'DENIED' || c.status === 'ENHANCEMENT_DENIED' },
 ];
@@ -24,6 +24,7 @@ const STATUS_PILL = {
   ADR_SUBMITTED:       { label: 'ADR Submitted',       variant: 'info' },
   APPROVED:            { label: 'Approved',            variant: 'success' },
   PARTIALLY_APPROVED:  { label: 'Partially Approved',  variant: 'purple' },
+  ENHANCEMENT_APPROVED:{ label: 'Enhancement Approved', variant: 'success' },
   ADR_NMI:             { label: 'ADR Pending',         variant: 'warning' },
   DENIED:              { label: 'Denied',              variant: 'danger' },
   ENHANCEMENT_DENIED:  { label: 'Enhancement Denied',  variant: 'danger' },
@@ -176,7 +177,7 @@ export default function ClaimList() {
             const adrOverdue = claim.adr_overdue === true || claim.is_adr_overdue === true;
             const unread = claim.unread_count || 0;
             const showApproved = (approved != null && approved !== '') &&
-              (status === 'APPROVED' || status === 'PARTIALLY_APPROVED' || status === 'ENHANCE_SUBMITTED' || status === 'ENHANCEMENT_DENIED');
+              (status === 'APPROVED' || status === 'PARTIALLY_APPROVED' || status === 'ENHANCEMENT_APPROVED' || status === 'ENHANCE_SUBMITTED' || status === 'ENHANCEMENT_DENIED');
 
             return (
               <div
