@@ -72,7 +72,7 @@ export default function ProviderClaimDetail() {
 
   // Per-action modal state. Approve has its own component; Deny / NMI are inline.
   const [approveOpen, setApproveOpen] = useState(false);
-  const [partDOpen, setPartDOpen] = useState(false);
+  const [partD, setPartD] = useState({ open: false, emailId: null });
 
   const [denyOpen, setDenyOpen] = useState(false);
   const [denyRemarks, setDenyRemarks] = useState('');
@@ -166,6 +166,7 @@ export default function ProviderClaimDetail() {
         claim_case_id: cc.id,
         status: cc.status,
         claim_status: cc.claim_status,
+        main_status: cc.main_status ?? null,
         claim_number: cc.claim_number || '',
         approved_amount: cc.approved_amount ?? '',
         query_logs: cc.query_logs || [],
@@ -241,7 +242,12 @@ export default function ProviderClaimDetail() {
           variant: statusBadgeVariant(entry.status),
           description: entry.remarks || statusLabel(entry.status),
           timestamp: entry.created_at || null,
-          amount: APPROVAL_STATES.has(entry.status) ? claim.approved_amount : undefined,
+          // Per-round approved amount on the history entry so each
+          // PARTIALLY_APPROVED / APPROVED / ENHANCEMENT_APPROVED row shows
+          // what *that* round approved, not the latest cumulative figure.
+          amount: APPROVAL_STATES.has(entry.status)
+            ? (entry.approved_amount ?? claim.approved_amount)
+            : undefined,
           emailId: entry.email_id ?? null,
           rawStatus: entry.status,
           submittedEmailId,
@@ -311,12 +317,18 @@ export default function ProviderClaimDetail() {
       toast.error('Remarks are required');
       return;
     }
+    // Include whatever's still sitting in the "Required Documents" input
+    // even if the user didn't press "+ Add" before submitting.
+    const pendingDoc = nmiNewDoc.trim();
+    const documentsList = pendingDoc && !nmiDocs.includes(pendingDoc)
+      ? [...nmiDocs, pendingDoc]
+      : nmiDocs;
     setNmiSaving(true);
     try {
       await claimCaseService.providerAction(claim.claim_case_id, {
         status: 'ADR_NMI',
         remarks: nmiRemarks.trim(),
-        documents_list: nmiDocs,
+        documents_list: documentsList,
       });
       toast.success('Response submitted');
       closeNmi();
@@ -356,6 +368,18 @@ export default function ProviderClaimDetail() {
         .at(-1)?.status
     : claim.status;
   const canRespond = AWAITING_PROVIDER_STATUSES.has(latestStageStatus);
+  // The claim has at least one approval round → a Part-D letter exists/can be
+  // created. The "Part D" button in the action bar opens it (latest approval).
+  const hasApproval = statusHistory.some((e) =>
+    ['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED'].includes(e.status));
+  // Cumulative approved amount has reached (or exceeded) the requested amount
+  // → nothing more to authorise, so hide the action bar to prevent further
+  // approve / enhance / deny actions.
+  const reqNum = Number(requestedAmount);
+  const apprNum = Number(approvedDisplay);
+  const fullyApproved =
+    Number.isFinite(reqNum) && reqNum > 0 &&
+    Number.isFinite(apprNum) && apprNum >= reqNum;
 
   return (
     <div className="claim-detail">
@@ -369,9 +393,9 @@ export default function ProviderClaimDetail() {
             {patientName} — {uhid} — {insurerName}
           </p>
         </div>
-        <span className={`claim-detail__status-pill claim-detail__status-pill--${statusBadgeVariant(claim.claim_status)}`}>
+        <span className={`claim-detail__status-pill claim-detail__status-pill--${statusBadgeVariant(claim.main_status || claim.claim_status)}`}>
           <span className="claim-detail__status-dot" />
-          {statusLabel(claim.claim_status)}
+          {statusLabel(claim.main_status || claim.claim_status)}
         </span>
       </div>
 
@@ -396,7 +420,7 @@ export default function ProviderClaimDetail() {
         </div>
       </div>
 
-      {canRespond && (
+      {canRespond && !fullyApproved && (
         <div className="claim-detail__actions">
           <button className="btn btn--outline" onClick={() => setApproveOpen(true)}>
             <IconCheck size={16} /> Approve
@@ -407,9 +431,15 @@ export default function ProviderClaimDetail() {
           <button className="btn btn--outline" onClick={() => setDenyOpen(true)}>
             <IconX size={16} /> Denied
           </button>
-          <button className="btn btn--outline" onClick={() => setPartDOpen(true)}>
-            <IconFormEdit size={16} /> Part D
-          </button>
+          {hasApproval && (
+            <button
+              className="btn btn--outline"
+              onClick={() => setPartD({ open: true, emailId: null })}
+              title="Edit / generate the Part-D authorization letter (latest approval)"
+            >
+              <IconFormEdit size={16} /> Part D
+            </button>
+          )}
         </div>
       )}
 
@@ -435,8 +465,14 @@ export default function ProviderClaimDetail() {
         />
       )}
 
-      {partDOpen && (
-        <PartDPrintModal claim={claim} onClose={() => setPartDOpen(false)} />
+      {partD.open && (
+        <PartDPrintModal
+          claim={claim}
+          claimCaseId={claim.claim_case_id}
+          emailId={partD.emailId}
+          onClose={() => setPartD({ open: false, emailId: null })}
+          onSaved={() => loadClaimData(false)}
+        />
       )}
 
       {denyOpen && (

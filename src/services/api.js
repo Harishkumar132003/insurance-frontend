@@ -160,6 +160,22 @@ export const claimCaseService = {
     api.patch(`/claim-cases/${claimCaseId}/emails/${emailId}/extracted-data`, data),
   markEmailRead: (claimCaseId, emailId) =>
     api.patch(`/claim-cases/${claimCaseId}/emails/${emailId}/read`),
+  // Part-D authorization letter for an approval round. GET returns a saved
+  // row or a prefilled stub (is_persisted=false). PUT accepts a plain JSON
+  // object (field values only) or a FormData (field values + `file` = the
+  // rendered PDF + optional `email_id`).
+  getPartD: (claimCaseId, emailId) =>
+    api.get(`/claim-cases/${claimCaseId}/part-d`, {
+      params: emailId != null ? { email_id: emailId } : {},
+    }),
+  putPartD: (claimCaseId, data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    return api.put(
+      `/claim-cases/${claimCaseId}/part-d`,
+      data,
+      isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined,
+    );
+  },
 };
 
 // Documents

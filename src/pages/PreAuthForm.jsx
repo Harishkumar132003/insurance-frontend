@@ -1576,6 +1576,7 @@ export default function PreAuthForm() {
         form_data_id: latestForm?.id,
         status: cc.status,
         claim_status: cc.claim_status,
+        main_status: cc.main_status ?? null,
         claim_number: cc.claim_number || '',
         approved_amount: cc.approved_amount ?? '',
         query_logs: cc.query_logs || [],
@@ -1695,7 +1696,15 @@ export default function PreAuthForm() {
   const alreadyRaised = SUBMITTED_STAGE_STATUSES.includes(latestStageStatus);
   // Claim is still a draft (initial pre-auth email hasn't been sent).
   const isDraft = latestStageStatus === 'DRAFT' || statusHistory.length === 0;
-  const showRaiseBtn = !isDraft && Boolean(raiseActionByStatus[submitResult?.claim_status]) && !alreadyRaised;
+  // Cumulative approved amount has reached (or exceeded) the requested amount
+  // → nothing more to authorise, so hide the Enhance/Raise button.
+  const reqAmt = Number(submitResult?.requested_amount);
+  const apprAmt = Number(submitResult?.approved_amount);
+  const fullyApproved =
+    Number.isFinite(reqAmt) && reqAmt > 0 &&
+    Number.isFinite(apprAmt) && apprAmt >= reqAmt;
+  const showRaiseBtn = !isDraft && !fullyApproved
+    && Boolean(raiseActionByStatus[submitResult?.claim_status]) && !alreadyRaised;
 
   const handleSubmitPreAuth = () => {
     setShowReplyCompose(true);
@@ -2080,9 +2089,9 @@ export default function PreAuthForm() {
             {patientName} — {uhid} — {insurerName}
           </p>
         </div>
-        <span className={`claim-detail__status-pill claim-detail__status-pill--${statusBadgeVariant(submitResult.claim_status)}`}>
+        <span className={`claim-detail__status-pill claim-detail__status-pill--${statusBadgeVariant(submitResult.main_status || submitResult.claim_status)}`}>
           <span className="claim-detail__status-dot" />
-          {statusLabel(submitResult.claim_status)}
+          {statusLabel(submitResult.main_status || submitResult.claim_status)}
         </span>
       </div>
 

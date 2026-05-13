@@ -1,40 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import html2pdf from 'html2pdf.js';
 import Modal from './Modal';
 import Spinner from './Spinner';
 import { useToast } from './Toast';
 import { formTemplateService, claimCaseService } from '../services/api';
-import { buildPartDFlat, renderTemplate } from './partDTemplate';
-
-// Bake computed styles into inline `style` attributes so html2pdf's clone (which
-// drops the iframe's stylesheets) still renders correctly. Mirrors the trick in
-// PreAuthPrint.handleUploadSignedCopy.
-function inlineComputedStyles(root, win) {
-  const nodes = [root, ...root.querySelectorAll('*')];
-  nodes.forEach((el) => {
-    if (!(el instanceof win.HTMLElement) && !(el instanceof win.SVGElement)) return;
-    const computed = win.getComputedStyle(el);
-    let cssText = '';
-    for (let i = 0; i < computed.length; i += 1) {
-      const prop = computed[i];
-      cssText += `${prop}:${computed.getPropertyValue(prop)};`;
-    }
-    el.setAttribute('style', cssText);
-  });
-}
-
-const IFRAME_ID = 'provider-approve-print-frame';
-
-function ensureHiddenIframe() {
-  let iframe = document.getElementById(IFRAME_ID);
-  if (!iframe) {
-    iframe = document.createElement('iframe');
-    iframe.id = IFRAME_ID;
-    iframe.style.cssText = 'position:fixed;width:0;height:0;border:none;left:-9999px;';
-    document.body.appendChild(iframe);
-  }
-  return iframe;
-}
+import { renderPartDPdfBlob } from './partDTemplate';
 
 export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
   const toast = useToast();
@@ -68,63 +37,27 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const writeAndPopulate = (iframe, onReady) => {
-    const flat = buildPartDFlat({ claim, approveAmount, claimNumber, remarks });
-    const html = renderTemplate(htmlRef.current, flat);
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
-    const apply = () => onReady(doc);
-    if (doc.readyState === 'complete') apply();
-    else iframe.onload = apply;
-  };
-
-  const capturePdfBlob = async (iframe) => {
-    const iframeDoc = iframe.contentDocument;
-    const iframeWin = iframe.contentWindow;
-    if (!iframeDoc?.body || !iframeWin) throw new Error('Template not ready');
-
-    inlineComputedStyles(iframeDoc.body, iframeWin);
-    const contentWidth = Math.max(
-      iframeDoc.body.scrollWidth,
-      iframeDoc.documentElement.scrollWidth,
-      794,
-    );
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = [
-      'position:fixed', 'left:0', 'top:0', `width:${contentWidth}px`,
-      'background:#fff', 'color:#000', 'opacity:0', 'pointer-events:none',
-      'z-index:-1', 'margin:0', 'padding:0',
-    ].join(';');
-    const bodyStyle = iframeDoc.body.getAttribute('style') || '';
-    wrapper.setAttribute('style', `${bodyStyle};${wrapper.getAttribute('style')}`);
-    Array.from(iframeDoc.body.children).forEach((child) => {
-      wrapper.appendChild(child.cloneNode(true));
-    });
-    document.body.appendChild(wrapper);
-    try {
-      const blob = await html2pdf()
-        .set({
-          margin: 10,
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            windowWidth: contentWidth,
-            width: contentWidth,
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'legacy'] },
-        })
-        .from(wrapper)
-        .outputPdf('blob');
-      return blob;
-    } finally {
-      if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-    }
-  };
+  // Approved amount + claim number are not edited here — they come from the
+  // current Part-D record (or the claim's stub when none exists yet) and are
+  // shown read-only. Best-effort fetch; on 404 (no approval round yet) we keep
+  // the claim-based defaults seeded above.
+  useEffect(() => {
+    if (!claim?.claim_case_id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await claimCaseService.getPartD(claim.claim_case_id);
+        if (cancelled || !res?.data) return;
+        const d = res.data;
+        if (d.approved_amount != null) setApproveAmount(String(d.approved_amount));
+        if (d.claim_number != null && d.claim_number !== '') setClaimNumber(d.claim_number);
+      } catch {
+        // 404 / error — keep the claim-based defaults; no toast (best-effort).
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claim?.claim_case_id]);
 
   const handleSubmit = async () => {
     if (!claim) return;
@@ -145,10 +78,13 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
       if (uploadedFile) {
         fileToSend = uploadedFile;
       } else {
-        const iframe = ensureHiddenIframe();
-        const ready = new Promise((resolve) => writeAndPopulate(iframe, resolve));
-        await ready;
-        const blob = await capturePdfBlob(iframe);
+        const blob = await renderPartDPdfBlob({
+          htmlTemplate: htmlRef.current,
+          claim,
+          approveAmount,
+          claimNumber,
+          remarks,
+        });
         const filename = `part-d-${claim.claim_number || claim.claim_case_id}.pdf`;
         fileToSend = new File([blob], filename, { type: 'application/pdf' });
       }
@@ -183,24 +119,15 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
         </div>
 
         <div className="form-group">
-          <label>Approved Amount <span style={{ color: '#b91c1c' }}>*</span></label>
-          <input
-            type="number"
-            placeholder="e.g. 50000"
-            value={approveAmount}
-            onChange={(e) => setApproveAmount(e.target.value)}
-            required
-          />
+          <label>Approved Amount</label>
+          <input type="number" value={approveAmount} disabled readOnly />
+          <p className="provider-approve__file-hint">Set in the Part-D form.</p>
         </div>
 
         <div className="form-group">
           <label>Claim Number</label>
-          <input
-            type="text"
-            placeholder="e.g. CLM-2026-1234"
-            value={claimNumber}
-            onChange={(e) => setClaimNumber(e.target.value)}
-          />
+          <input type="text" value={claimNumber} disabled readOnly />
+          <p className="provider-approve__file-hint">Set in the Part-D form.</p>
         </div>
 
         <div className="form-group">
