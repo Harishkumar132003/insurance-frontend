@@ -73,22 +73,16 @@ export default function PreAuthPrint() {
     let cancelled = false;
     const load = async () => {
       try {
-        // Same template-fetch flow as PreAuthFormPage: list → fetch first by id.
-        // No /provider/first endpoint exists on the backend, so we don't call it.
-        const [claimRes, listRes] = await Promise.all([
+        // Always fetch the PRE_AUTH template — never let a PART_D one win by
+        // sort order. `/first?form_type=PRE_AUTH` returns the full template
+        // including html_content, so we don't need a follow-up getById.
+        const [claimRes, tplRes] = await Promise.all([
           claimCaseService.getById(claimCaseId),
-          formTemplateService.getAll(),
+          formTemplateService.getFirstByType('PRE_AUTH').catch(() => null),
         ]);
         if (cancelled) return;
         const cc = claimRes.data;
-        const templates = Array.isArray(listRes?.data) ? listRes.data : [];
-        const first = templates[0] || null;
-        let html = '';
-        if (first?.id) {
-          const tplRes = await formTemplateService.getById(first.id);
-          if (cancelled) return;
-          html = tplRes?.data?.html_content || '';
-        }
+        const html = tplRes?.data?.html_content || '';
         const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
           ? cc.form_data[cc.form_data.length - 1]
           : null;

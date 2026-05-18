@@ -129,7 +129,7 @@ export const ccEmailService = {
 
 // Form templates
 export const formTemplateService = {
-  getAll: () => api.get('/form-templates'),
+  getAll: (formType) => api.get('/form-templates', { params: formType ? { form_type: formType } : undefined }),
   getById: (id) => api.get(`/form-templates/${id}`),
   getByProvider: () => api.get(`/form-templates/provider/first`),
   getFirstByType: (formType) =>
