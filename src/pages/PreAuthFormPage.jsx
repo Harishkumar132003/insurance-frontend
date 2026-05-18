@@ -437,8 +437,6 @@ export default function PreAuthFormPage() {
   const [loadingCase, setLoadingCase] = useState(false);
   const [formDataId, setFormDataId] = useState(null);
   const [files, setFiles] = useState([]);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [modalFiles, setModalFiles] = useState([]);
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [existingDocs, setExistingDocs] = useState([]);
   const [docViewUrl, setDocViewUrl] = useState(null);
@@ -830,7 +828,7 @@ export default function PreAuthFormPage() {
     setShowTemplateModal(true);
     setLoadingTemplates(true);
     try {
-      const res = await formTemplateService.getAll();
+      const res = await formTemplateService.getAll('PRE_AUTH');
       setTemplateList(Array.isArray(res.data) ? res.data : []);
     } catch {
       toast.error('Failed to load templates');
@@ -939,15 +937,15 @@ export default function PreAuthFormPage() {
     }
   };
 
-  const handleModalUpload = async () => {
-    if (modalFiles.length === 0) return;
+  const handleUploadFiles = async (pickedFiles) => {
+    if (!pickedFiles || pickedFiles.length === 0) return;
 
     if (isEdit) {
       // Edit mode: upload immediately via documents API
       setUploadingDocs(true);
       try {
         const fd = new FormData();
-        modalFiles.forEach((file) => fd.append('files', file));
+        pickedFiles.forEach((file) => fd.append('files', file));
         await documentService.upload(routeClaimCaseId, fd);
         const docsRes = await documentService.list(routeClaimCaseId);
         setExistingDocs(Array.isArray(docsRes.data) ? docsRes.data : []);
@@ -959,10 +957,8 @@ export default function PreAuthFormPage() {
       }
     } else {
       // New mode: collect files to send with form submit
-      setFiles((prev) => [...prev, ...modalFiles]);
+      setFiles((prev) => [...prev, ...pickedFiles]);
     }
-    setModalFiles([]);
-    setShowUploadModal(false);
   };
 
   const handleDeleteDoc = async (docId) => {
@@ -1207,9 +1203,29 @@ export default function PreAuthFormPage() {
               </h3>
               {openSections['documents'] && (
                 <>
-                  <button type="button" className="btn btn--primary" onClick={() => setShowUploadModal(true)}>
-                    Upload Documents
-                  </button>
+                  <label
+                    className="btn btn--primary"
+                    style={{
+                      cursor: uploadingDocs ? 'wait' : 'pointer',
+                      pointerEvents: uploadingDocs ? 'none' : 'auto',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {uploadingDocs ? <Spinner size={16} /> : 'Upload Documents'}
+                    <input
+                      type="file"
+                      hidden
+                      multiple
+                      disabled={uploadingDocs}
+                      onChange={(e) => {
+                        const picked = Array.from(e.target.files || []);
+                        if (picked.length) handleUploadFiles(picked);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   {isEdit && existingDocs.length > 0 && (
                     <div style={{ marginTop: 16 }}>
                       {existingDocs.map((doc) => (
@@ -1249,40 +1265,6 @@ export default function PreAuthFormPage() {
             </div>
           </form>
         </>
-      )}
-
-      {showUploadModal && (
-        <Modal title="Upload Documents" onClose={() => { setShowUploadModal(false); setModalFiles([]); }}>
-          <div className="form-group">
-            <label>Click to select files</label>
-            <input
-              type="file"
-              multiple
-              onChange={(e) => {
-                setModalFiles(Array.from(e.target.files));
-                e.target.value = '';
-              }}
-            />
-          </div>
-          {modalFiles.length > 0 && (
-            <div className="apply-step__attach-area" style={{ marginTop: 8, marginBottom: 16 }}>
-              {modalFiles.map((file, idx) => (
-                <div key={idx} className="apply-step__attach-chip">
-                  <span>{file.name}</span>
-                  <button type="button" onClick={() => setModalFiles((prev) => prev.filter((_, i) => i !== idx))}>&times;</button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
-            <button className="btn btn--ghost" onClick={() => { setShowUploadModal(false); setModalFiles([]); }}>
-              Cancel
-            </button>
-            <button className="btn btn--primary" disabled={modalFiles.length === 0 || uploadingDocs} onClick={handleModalUpload}>
-              {uploadingDocs ? <Spinner size={16} /> : 'Upload'}
-            </button>
-          </div>
-        </Modal>
       )}
 
       {docViewUrl && (

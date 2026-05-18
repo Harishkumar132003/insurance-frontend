@@ -802,6 +802,13 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
     submitResult.data_json?.hospitalization?.costs?.total_cost
     ?? submitResult.requested_amount;
 
+  // Enhancement ceiling = originally requested − already approved. When the
+  // original-request figure is unavailable (legacy cases) we treat it as
+  // "no ceiling known" rather than blocking the user.
+  const requestedNum = Number(submittedRequestedAmount) || 0;
+  const maxEnhancement = requestedNum > 0 ? Math.max(requestedNum - approvedSoFar, 0) : null;
+  const exceedsCap = maxEnhancement !== null && additionalNum > maxEnhancement;
+
   const latestApproval = (() => {
     const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED']);
     const history = Array.isArray(submitResult.status_history) ? submitResult.status_history : [];
@@ -817,7 +824,7 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
     }).replace(',', '')
     : null;
 
-  const canSubmit = additionalNum > 0 && reasonDetail.trim().length > 0 && !sending;
+  const canSubmit = additionalNum > 0 && reasonDetail.trim().length > 0 && !sending && !exceedsCap;
 
   const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
   const subject = `[${paId}] Enhancement Request — ${submitResult.patient_name || ''}`.trim();
@@ -931,7 +938,18 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
             onChange={(e) => setAdditional(e.target.value)}
             placeholder="e.g. 70000"
             min="0"
+            max={maxEnhancement ?? undefined}
           />
+          {maxEnhancement !== null && (
+            <small
+              className="policy-suggestion"
+              style={exceedsCap ? { color: '#b91c1c' } : undefined}
+            >
+              {exceedsCap
+                ? `Cannot exceed remaining gap of ${formatINR(maxEnhancement)}`
+                : `Maximum: ${formatINR(maxEnhancement)} (originally requested ${formatINR(requestedNum)} − approved ${formatINR(approvedSoFar)})`}
+            </small>
+          )}
         </Field>
         <ReadField
           label="Revised total"
@@ -1765,14 +1783,11 @@ export default function PreAuthForm() {
     if (!submitResult) return;
     setPrintingPartC(true);
     try {
-      const listRes = await formTemplateService.getAll();
-      const templates = Array.isArray(listRes?.data) ? listRes.data : [];
-      const first = templates[0];
-      if (!first?.id) {
+      const tplRes = await formTemplateService.getFirstByType('PRE_AUTH');
+      if (!tplRes?.data?.id) {
         toast.error('No form template available for this claim');
         return;
       }
-      const tplRes = await formTemplateService.getById(first.id);
       const html = tplRes?.data?.html_content || '';
       if (!html) {
         toast.error('Template has no content');
