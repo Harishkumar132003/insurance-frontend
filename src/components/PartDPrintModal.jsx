@@ -142,7 +142,31 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
       } catch (e) {
         const sc = e?.response?.status;
         const detail = e?.response?.data?.detail || '';
-        if (sc === 404) {
+        // 400 "no approval email yet" — Part-D acts as the auth gate here.
+        // Seed amount/claim-number from the claim, leave the bill-breakdown
+        // fields empty for the user to fill, defer the actual record bind
+        // to Save/Print which calls providerAction first.
+        if (sc === 400 && /no approval email/i.test(detail)) {
+          if (!cancelled) {
+            setApproveAmount(
+              claim?.approved_amount != null && claim?.approved_amount !== '' ? String(claim.approved_amount)
+              : claim?.requested_amount != null ? String(claim.requested_amount)
+              : ''
+            );
+            setClaimNumber(claim?.claim_number || '');
+          }
+        } else if (sc === 404 && emailId == null) {
+          // GET returned 404 (no part-d row and no approval). Same as above:
+          // open the editor and let Save/Print create the approval inline.
+          if (!cancelled) {
+            setApproveAmount(
+              claim?.approved_amount != null && claim?.approved_amount !== '' ? String(claim.approved_amount)
+              : claim?.requested_amount != null ? String(claim.requested_amount)
+              : ''
+            );
+            setClaimNumber(claim?.claim_number || '');
+          }
+        } else if (sc === 404) {
           if (!cancelled) setUnavailable(true);
         } else if (sc === 400 && /not an approval email/i.test(detail) && emailId != null) {
           // Passed an email_id that isn't an approval row — fall back to the
@@ -203,6 +227,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
     if (typeof onSaved === 'function') onSaved(data);
   };
 
+  // Save = pure data persist. No approval trigger. Pre-approval saves go as a
+  // draft (no email_id in payload); the backend creates a draft Part-D row
+  // with claim_case_email_id IS NULL, and links it to the approval email
+  // later when the provider hits Approve in the separate modal.
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -218,9 +246,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
     }
   };
 
-  // Print: persist the field values + the rendered PDF (so the letter is
-  // attached to the approval email), then open the browser print dialog with
-  // the populated Part-D.
+  // Print = persist field values (so the user doesn't lose their work) + open
+  // the browser print dialog with the populated PDF. The user then downloads
+  // the PDF and attaches it manually in the Approve modal — Print does NOT
+  // trigger any approval here.
   const handlePrint = async () => {
     if (!htmlRef.current) {
       toast.error('PART_D template not loaded');
@@ -229,14 +258,25 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
     setSaving(true);
     try {
       const flatArgs = buildFlatArgs();
-      const blob = await renderPartDPdfBlob({ htmlTemplate: htmlRef.current, ...flatArgs });
-      const filename = `PartD_${claimNumber || claim?.claim_number || claimCaseId}.pdf`;
+      // Post-approval: a PDF blob can be attached to the approval email so
+      // the saved letter is part of the audit trail. Pre-approval: we skip
+      // the file upload (no email to bind it to) and just persist field
+      // values; the same PDF still opens in the print dialog for download.
       const fd = new FormData();
-      if (resolvedEmailId != null) fd.append('email_id', String(resolvedEmailId));
-      Object.entries(fieldPayload()).forEach(([k, v]) => fd.append(k, v == null ? '' : String(v)));
-      fd.append('file', blob, filename);
-      const res = await claimCaseService.putPartD(claimCaseId, fd);
-      afterSave(res.data);
+      if (resolvedEmailId != null) {
+        const blob = await renderPartDPdfBlob({ htmlTemplate: htmlRef.current, ...flatArgs });
+        const filename = `PartD_${claimNumber || claim?.claim_number || claimCaseId}.pdf`;
+        fd.append('email_id', String(resolvedEmailId));
+        Object.entries(fieldPayload()).forEach(([k, v]) => fd.append(k, v == null ? '' : String(v)));
+        fd.append('file', blob, filename);
+        const res = await claimCaseService.putPartD(claimCaseId, fd);
+        afterSave(res.data);
+      } else {
+        // Draft path: JSON PUT (no file), then render the PDF locally for printing.
+        const payload = { ...fieldPayload() };
+        const res = await claimCaseService.putPartD(claimCaseId, payload);
+        afterSave(res.data);
+      }
       printPartDHtml(renderTemplate(htmlRef.current, buildPartDFlat(flatArgs)));
       toast.success('Part-D saved');
     } catch {

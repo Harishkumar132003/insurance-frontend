@@ -9,8 +9,28 @@ import { IconRefresh } from '../components/icons/Icons';
 import { useToast } from '../components/Toast';
 import './Pages.scss';
 
-const CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI'];
-const EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'ENHANCEMENT_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'ADR_NMI'];
+const PRE_AUTH_CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED', 'DENIED', 'ENHANCEMENT_DENIED', 'ADR_NMI'];
+const PRE_AUTH_EMAIL_TYPE_OPTIONS = ['APPROVAL', 'PARTIAL_APPROVAL', 'ENHANCEMENT_APPROVAL', 'DENIAL', 'ENHANCEMENT_DENIAL', 'ADR_NMI'];
+// Claim stage: no enhancement loop. Status pickers and email-type pickers
+// drop the ENHANCEMENT_* options, and email types carry the CLAIM_ prefix so
+// the timeline/filters keep stages separate.
+const CLAIM_STAGE_CLAIM_STATUS_OPTIONS = ['APPROVED', 'PARTIALLY_APPROVED', 'DENIED', 'ADR_NMI'];
+const CLAIM_STAGE_EMAIL_TYPE_OPTIONS = ['CLAIM_APPROVAL', 'CLAIM_PARTIAL_APPROVAL', 'CLAIM_DENIAL', 'CLAIM_ADR_NMI'];
+
+// Heuristic: a claim-stage email is one whose persisted email_type carries the
+// CLAIM_ prefix, OR whose original (inbound) AI-suggested status arrived after
+// the case moved to CLAIM (in which case email_type still starts with CLAIM_).
+// Falls back to false (pre-auth) so existing emails keep behaving exactly as
+// they do today.
+const isClaimStageEmail = (email) =>
+  !!email?.email_type && email.email_type.startsWith('CLAIM_');
+
+const formatINR = (val) => {
+  if (val === '' || val == null) return '—';
+  const num = Number(val);
+  if (Number.isNaN(num)) return String(val);
+  return num.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+};
 
 export default function QueryManagement() {
   const navigate = useNavigate();
@@ -34,6 +54,7 @@ export default function QueryManagement() {
   // from the email's ai_documents_list; sent back as documents_list.
   const [documentsList, setDocumentsList] = useState([]);
   const [newDocLabel, setNewDocLabel] = useState('');
+  const [remark, setRemark] = useState('');
   const [saving, setSaving] = useState(false);
   const [viewUrl, setViewUrl] = useState(null);
   const [viewFilename, setViewFilename] = useState('');
@@ -89,14 +110,18 @@ export default function QueryManagement() {
       return;
     }
     if (!email.is_read) {
+      const isClaim = isClaimStageEmail(email);
+      const emailTypeOptions = isClaim ? CLAIM_STAGE_EMAIL_TYPE_OPTIONS : PRE_AUTH_EMAIL_TYPE_OPTIONS;
+      const statusOptions = isClaim ? CLAIM_STAGE_CLAIM_STATUS_OPTIONS : PRE_AUTH_CLAIM_STATUS_OPTIONS;
       setSelectedEmail(email);
-      setEmailType(email.email_type || EMAIL_TYPE_OPTIONS[0]);
-      setClaimStatus(email.ai_suggested_status || CLAIM_STATUS_OPTIONS[0]);
+      setEmailType(email.email_type || emailTypeOptions[0]);
+      setClaimStatus(email.ai_suggested_status || statusOptions[0]);
       // Prefer the human-saved value, fall back to the AI suggestion.
       setClaimNumber(email.claim_number || email.ai_suggested_claim_number || '');
       setApprovedAmount(email.approved_amount ?? email.ai_suggested_amount ?? '');
       setDocumentsList(Array.isArray(email.ai_documents_list) ? [...email.ai_documents_list] : []);
       setNewDocLabel('');
+      setRemark(email.ai_denial_reason || '');
     } else {
       navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } });
     }
@@ -137,6 +162,11 @@ export default function QueryManagement() {
           payload.documents_list = documentsList
             .map((d) => String(d).trim())
             .filter(Boolean);
+        }
+        // Denial-only: send the user-edited reason as the audit remark.
+        if (claimStatus === 'DENIED' || claimStatus === 'ENHANCEMENT_DENIED') {
+          const trimmed = remark.trim();
+          if (trimmed) payload.remarks = trimmed;
         }
       }
       await claimCaseService.updateExtractedData(selectedEmail.claim_case_id, selectedEmail.id, payload);
@@ -330,7 +360,55 @@ export default function QueryManagement() {
                 <span className="email-detail__label">AI Status</span>
                 <span className="badge badge--warning">{selectedEmail.ai_suggested_status || '—'}</span>
               </div>
+              {selectedEmail.ai_denial_reason && (
+                <div className="email-detail__row">
+                  <span className="email-detail__label">AI Denial Reason</span>
+                  <span>{selectedEmail.ai_denial_reason}</span>
+                </div>
+              )}
             </div>
+
+            {Array.isArray(selectedEmail.ai_approved_breakdown) && selectedEmail.ai_approved_breakdown.length > 0 && (
+              <>
+                <div className="email-detail__divider" />
+                <div>
+                  <div className="email-detail__label" style={{ marginBottom: 8 }}>
+                    AI Bill Breakdown
+                  </div>
+                  <table className="claim-detail__table" style={{ width: '100%', fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left' }}>Item</th>
+                        <th style={{ textAlign: 'right' }}>Claimed</th>
+                        <th style={{ textAlign: 'right' }}>Approved</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedEmail.ai_approved_breakdown.map((row, idx) => (
+                        <tr key={`${row.label}-${idx}`}>
+                          <td>{row.label}</td>
+                          <td style={{ textAlign: 'right' }}>{formatINR(row.claimed)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatINR(row.approved)}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ fontWeight: 600 }}>Total</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                          {formatINR(selectedEmail.ai_approved_breakdown.reduce(
+                            (acc, r) => acc + (typeof r.claimed === 'number' ? r.claimed : 0), 0,
+                          ))}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                          {formatINR(selectedEmail.ai_approved_breakdown.reduce(
+                            (acc, r) => acc + (typeof r.approved === 'number' ? r.approved : 0), 0,
+                          ))}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
             <div className="email-detail__divider" />
 
@@ -381,7 +459,7 @@ export default function QueryManagement() {
               <div className="form-group">
                 <label>Email Type</label>
                 <select value={emailType} onChange={(e) => setEmailType(e.target.value)}>
-                  {EMAIL_TYPE_OPTIONS.map((opt) => (
+                  {(isClaimStageEmail(selectedEmail) ? CLAIM_STAGE_EMAIL_TYPE_OPTIONS : PRE_AUTH_EMAIL_TYPE_OPTIONS).map((opt) => (
                     <option key={opt} value={opt}>{opt.replace(/_/g, ' ')}</option>
                   ))}
                 </select>
@@ -391,7 +469,7 @@ export default function QueryManagement() {
                   <div className="form-group">
                     <label>Claim Status</label>
                     <select value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)}>
-                      {CLAIM_STATUS_OPTIONS.map((opt) => (
+                      {(isClaimStageEmail(selectedEmail) ? CLAIM_STAGE_CLAIM_STATUS_OPTIONS : PRE_AUTH_CLAIM_STATUS_OPTIONS).map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
@@ -412,7 +490,7 @@ export default function QueryManagement() {
                   </div>
                   {(claimStatus === 'APPROVED' || claimStatus === 'PARTIALLY_APPROVED' || claimStatus === 'ENHANCEMENT_APPROVED') && (
                     <div className="form-group">
-                      <label>{claimStatus === 'ENHANCEMENT_APPROVED' ? 'Enhancement Amount' : 'Approved Amount'}</label>
+                      <label>{claimStatus === 'ENHANCEMENT_APPROVED' ? 'Enhancement Amount (₹)' : 'Approved Amount (₹)'}</label>
                       <input
                         type="number"
                         placeholder="e.g. 50000"
@@ -421,7 +499,23 @@ export default function QueryManagement() {
                       />
                       {selectedEmail.ai_suggested_amount != null && (
                         <small className="policy-suggestion">
-                          AI suggested: {selectedEmail.ai_suggested_amount}
+                          AI suggested: {formatINR(selectedEmail.ai_suggested_amount)}
+                        </small>
+                      )}
+                    </div>
+                  )}
+                  {(claimStatus === 'DENIED' || claimStatus === 'ENHANCEMENT_DENIED') && (
+                    <div className="form-group">
+                      <label>Remark</label>
+                      <textarea
+                        rows={3}
+                        placeholder="Insurer's stated reason for denial"
+                        value={remark}
+                        onChange={(e) => setRemark(e.target.value)}
+                      />
+                      {selectedEmail.ai_denial_reason && (
+                        <small className="policy-suggestion">
+                          AI suggested: {selectedEmail.ai_denial_reason}
                         </small>
                       )}
                     </div>

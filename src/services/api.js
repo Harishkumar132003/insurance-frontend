@@ -27,14 +27,24 @@ api.interceptors.response.use(
       window.location.href = '/login';
       return Promise.reject(error);
     }
-    const detail = error.response?.data?.detail;
-    const message =
-      typeof detail === 'string'
-        ? detail
-        : Array.isArray(detail)
-          ? detail.map((d) => d.msg).join(', ')
-          : error.response?.data?.message || 'Something went wrong';
-    toast.error(message);
+    // Callers can opt out of the global error toast for expected non-OK
+    // responses (e.g. a 404 used as a "does this resource exist yet" probe)
+    // via `axios.get(url, { silent: true })` or `{ silentStatuses: [404] }`.
+    const cfg = error.config || {};
+    const status = error.response?.status;
+    const silent =
+      cfg.silent === true ||
+      (Array.isArray(cfg.silentStatuses) && status != null && cfg.silentStatuses.includes(status));
+    if (!silent) {
+      const detail = error.response?.data?.detail;
+      const message =
+        typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((d) => d.msg).join(', ')
+            : error.response?.data?.message || 'Something went wrong';
+      toast.error(message);
+    }
     return Promise.reject(error);
   }
 );
@@ -164,9 +174,14 @@ export const claimCaseService = {
   // row or a prefilled stub (is_persisted=false). PUT accepts a plain JSON
   // object (field values only) or a FormData (field values + `file` = the
   // rendered PDF + optional `email_id`).
+  // Best-effort prefill — ProviderApproveModal calls this on open. The backend
+  // returns 400 ("no approval email yet") for cases that haven't been approved
+  // yet; treat that (and 404) as expected non-errors so the global toast stays
+  // silent.
   getPartD: (claimCaseId, emailId) =>
     api.get(`/claim-cases/${claimCaseId}/part-d`, {
       params: emailId != null ? { email_id: emailId } : {},
+      silentStatuses: [400, 404],
     }),
   putPartD: (claimCaseId, data) => {
     const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
@@ -191,6 +206,18 @@ export const documentService = {
     responseType: 'blob',
   }),
   delete: (claimCaseId, documentId) => api.delete(`/claim-cases/${claimCaseId}/documents/${documentId}`),
+  fromEmail: (claimCaseId, payload) =>
+    api.post(`/claim-cases/${claimCaseId}/documents/from-email`, payload),
+};
+
+// Claim (post-approval claim raise)
+export const claimService = {
+  raise: (claimCaseId, payload) =>
+    api.post(`/claim-cases/${claimCaseId}/claim`, payload).then((r) => r.data),
+  // The GET is used as a "has a claim been raised?" probe — 404 is expected and
+  // should not surface a global error toast.
+  get: (claimCaseId) =>
+    api.get(`/claim-cases/${claimCaseId}/claim`, { silentStatuses: [404] }).then((r) => r.data),
 };
 
 // Form data

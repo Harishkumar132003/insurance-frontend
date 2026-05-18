@@ -31,6 +31,13 @@ function statusBadgeVariant(status) {
     case 'ENHANCEMENT_DENIED': return 'danger';
     case 'ADR_NMI': return 'warning';
     case 'SUBMITTED': return 'info';
+    case 'CLAIM_SUBMITTED': return 'info';
+    case 'CLAIM_APPROVED': return 'success';
+    case 'CLAIM_PARTIALLY_APPROVED': return 'info';
+    case 'CLAIM_DENIED': return 'danger';
+    case 'CLAIM_ADR_NMI': return 'warning';
+    case 'CLAIM_ADR_SUBMITTED': return 'info';
+    case 'CLAIM_RECONSIDER': return 'info';
     case 'DRAFT': return 'default';
     case 'ADR_SUBMITTED':
     case 'ENHANCE_SUBMITTED':
@@ -458,11 +465,12 @@ function Field({ label, required, hint, span = 1, children }) {
   );
 }
 
-function ReadField({ label, value, span = 1 }) {
+function ReadField({ label, value, hint, span = 1 }) {
   return (
     <div className="portal-form__field" style={{ gridColumn: `span ${span}` }}>
       <label className="portal-form__field-label">{label}</label>
       <div className="portal-form__read-field">{value}</div>
+      {hint && <div className="portal-form__field-hint">{hint}</div>}
     </div>
   );
 }
@@ -790,6 +798,25 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
   const approvedSoFar = Number(submitResult.approved_amount) || 0;
   const revisedTotal = approvedSoFar + additionalNum;
 
+  const submittedRequestedAmount =
+    submitResult.data_json?.hospitalization?.costs?.total_cost
+    ?? submitResult.requested_amount;
+
+  const latestApproval = (() => {
+    const APPROVAL_STATES = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED']);
+    const history = Array.isArray(submitResult.status_history) ? submitResult.status_history : [];
+    const approvals = history.filter((e) => APPROVAL_STATES.has(e.status) && e.created_at);
+    if (approvals.length === 0) return null;
+    return approvals.reduce((latest, e) =>
+      !latest || new Date(e.created_at) > new Date(latest.created_at) ? e : latest, null);
+  })();
+  const latestApprovedAt = latestApproval?.created_at
+    ? new Date(latestApproval.created_at).toLocaleString('en-IN', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).replace(',', '')
+    : null;
+
   const canSubmit = additionalNum > 0 && reasonDetail.trim().length > 0 && !sending;
 
   const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
@@ -848,7 +875,7 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
           span={2}
         />
         <ReadField label="Insurer" value={submitResult.insurer_name || '—'} />
-        <ReadField label="Originally requested" value={formatINR(submitResult.requested_amount)} />
+        <ReadField label="Originally requested" value={formatINR(submittedRequestedAmount)} />
         <ReadField
           label="Approved so far"
           value={
@@ -856,6 +883,7 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
               {formatINR(submitResult.approved_amount)}
             </span>
           }
+          hint={latestApprovedAt ? `Approved on ${latestApprovedAt}` : null}
         />
         <ReadField
           label="Diagnosis"
@@ -1469,7 +1497,8 @@ export default function PreAuthForm() {
   const toast = useToast();
   const { user } = useAuth();
   const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
-  const backPath = location.state?.from || '/claim-list';
+  const backPath = location.state?.from
+    || (location.pathname.startsWith('/claims/') ? '/claims' : '/claim-list');
   const { claimCaseId: routeClaimCaseId } = useParams();
   const [loadingCase, setLoadingCase] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
@@ -1583,6 +1612,9 @@ export default function PreAuthForm() {
         policy_provider_email: cc.policy_provider_email || '',
         cc_emails: Array.isArray(cc.cc_emails) ? cc.cc_emails : [],
         is_onboarded: cc.is_onboarded === true,
+        has_claim: cc.has_claim === true,
+        claim_summary: cc.claim_summary || null,
+        current_stage: cc.current_stage,
         status_history: cc.status_history || [],
         // from cc.summary
         pa_number: cc.pa_number || cc.claim_number,
@@ -1664,7 +1696,16 @@ export default function PreAuthForm() {
     DENIED:               { label: 'Reconsider',     emailType: 'RECONSIDER' },
     ADR_NMI:              { label: 'ADR Submit',     emailType: 'ADR_SUBMITTED' },
   };
-  const raiseAction = raiseActionByStatus[submitResult?.claim_status] || { label: 'Raise Enhance', emailType: 'ENHANCE_SUBMITTED' };
+  // Claim-stage reply actions are driven off the workflow status on the case
+  // (CLAIM_ADR_NMI / CLAIM_DENIED), not the pre-auth outcome on claim_status.
+  const claimRaiseActionByStatus = {
+    CLAIM_ADR_NMI: { label: 'Claim ADR Submit',   emailType: 'CLAIM_ADR_SUBMITTED' },
+    CLAIM_DENIED:  { label: 'Reconsider Claim',   emailType: 'CLAIM_RECONSIDER' },
+  };
+  const isClaimStage = submitResult?.current_stage === 'CLAIM';
+  const raiseAction = isClaimStage
+    ? (claimRaiseActionByStatus[submitResult?.status] || { label: 'Raise Claim Reply', emailType: 'CLAIM_ADR_SUBMITTED' })
+    : (raiseActionByStatus[submitResult?.claim_status] || { label: 'Raise Enhance', emailType: 'ENHANCE_SUBMITTED' });
 
   const handleRaiseEnhance = () => {
     setShowReplyCompose(true);
@@ -1696,15 +1737,15 @@ export default function PreAuthForm() {
   const alreadyRaised = SUBMITTED_STAGE_STATUSES.includes(latestStageStatus);
   // Claim is still a draft (initial pre-auth email hasn't been sent).
   const isDraft = latestStageStatus === 'DRAFT' || statusHistory.length === 0;
-  // Cumulative approved amount has reached (or exceeded) the requested amount
-  // → nothing more to authorise, so hide the Enhance/Raise button.
-  const reqAmt = Number(submitResult?.requested_amount);
-  const apprAmt = Number(submitResult?.approved_amount);
-  const fullyApproved =
-    Number.isFinite(reqAmt) && reqAmt > 0 &&
-    Number.isFinite(apprAmt) && apprAmt >= reqAmt;
-  const showRaiseBtn = !isDraft && !fullyApproved
-    && Boolean(raiseActionByStatus[submitResult?.claim_status]) && !alreadyRaised;
+  // Enhance / ADR / Reconsider buttons remain visible alongside Raise Claim
+  // even when the pre-auth was approved at full requested amount — the
+  // hospital may still need to file an enhancement for additional cover. On
+  // claim stage the button derives from the case's CLAIM_* status instead.
+  const showRaiseBtn = !isDraft && !alreadyRaised && (
+    isClaimStage
+      ? Boolean(claimRaiseActionByStatus[submitResult?.status])
+      : Boolean(raiseActionByStatus[submitResult?.claim_status])
+  );
 
   const handleSubmitPreAuth = () => {
     setShowReplyCompose(true);
@@ -1993,6 +2034,29 @@ export default function PreAuthForm() {
       // timeline reads newest-first (latest at top, DRAFT at the bottom).
       const sorted = [...statusHistory]
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      // Build emailId → email_date lookup so provider TAT can be measured from
+      // the actual email timestamps (more accurate than status_history
+      // created_at, which is the admin-validation moment for AI suggestions).
+      const emailDateById = new Map();
+      for (const e of claimEmails) {
+        if (e.id != null && e.email_date) emailDateById.set(e.id, e.email_date);
+      }
+      // Walk chronologically tracking the most recent hospital-outbound event
+      // (every non-received-side row is a hospital action). For each
+      // received-side row, TAT = received_at - lastOutboundAt.
+      let lastOutboundAt = null;
+      const tatByIndex = sorted.map((entry) => {
+        const isReceived = RECEIVED_SIDE.has(entry.status);
+        const ownAt = (entry.email_id != null && emailDateById.get(entry.email_id))
+          || entry.created_at;
+        if (!isReceived) {
+          if (ownAt) lastOutboundAt = ownAt;
+          return null;
+        }
+        if (!ownAt || !lastOutboundAt) return null;
+        const delta = new Date(ownAt) - new Date(lastOutboundAt);
+        return Number.isFinite(delta) && delta >= 0 ? delta : null;
+      });
       return sorted.map((entry, i) => {
         // For ADR_NMI entries: find the next ADR_SUBMITTED entry that
         // (chronologically) responded to it, so the row can offer a
@@ -2004,10 +2068,26 @@ export default function PreAuthForm() {
             .find((e) => e.status === 'ADR_SUBMITTED');
           submittedEmailId = nextSubmitted?.email_id ?? null;
         }
+        // Distinguish claim-stage transitions from pre-auth in the label so
+        // a SUBMITTED row reads "Claim Raised" / "Claim Approved" rather than
+        // the bare "Submitted" / "Approved".
+        const isClaimStageEntry = entry.stage === 'CLAIM';
+        const CLAIM_STAGE_LABEL = {
+          SUBMITTED:           'Claim Raised',
+          APPROVED:            'Claim Approved',
+          PARTIALLY_APPROVED:  'Claim Partially Approved',
+          DENIED:              'Claim Denied',
+          ADR_NMI:             'Claim ADR Requested',
+          ADR_SUBMITTED:       'Claim ADR Submitted',
+          RECONSIDER:          'Claim Reconsider Requested',
+        };
+        const displayLabel = isClaimStageEntry
+          ? (CLAIM_STAGE_LABEL[entry.status] || statusLabel(entry.status))
+          : statusLabel(entry.status);
         return {
-          status: statusLabel(entry.status),
+          status: displayLabel,
           variant: statusBadgeVariant(entry.status),
-          description: entry.remarks || statusLabel(entry.status),
+          description: entry.remarks || displayLabel,
           timestamp: entry.created_at || null,
           // Use the per-round approved_amount on the history entry so each
           // PARTIALLY_APPROVED / APPROVED row shows what *that* round approved,
@@ -2025,6 +2105,7 @@ export default function PreAuthForm() {
           // the "View Form" button for non-onboarded claims, where these
           // emails are AI-parsed text with no structured form.
           isReceivedSide: RECEIVED_SIDE.has(entry.status),
+          providerTatMs: tatByIndex[i],
         };
       }).reverse();
     }
@@ -2153,12 +2234,31 @@ export default function PreAuthForm() {
         </div>
       )}
 
-      {/* Raise Enhance / Reconsider / ADR Submit (label varies by claim_status) */}
-      {!showReplyCompose && showRaiseBtn && (
-        <button className="claim-detail__enhance-btn" onClick={handleRaiseEnhance}>
-          <IconPlus size={16} /> {raiseAction.label}
-        </button>
-      )}
+      {/* Row of follow-up CTAs — Enhance/ADR/Reconsider + Raise Claim share one row. */}
+      {!showReplyCompose && (() => {
+        const approved = Number(submitResult?.approved_amount);
+        const hasApprovedAmount = Number.isFinite(approved) && approved > 0;
+        const hasClaim = submitResult?.has_claim === true;
+        const showClaimBtn = !isInsuranceProvider && submitResult && (hasApprovedAmount || hasClaim);
+        if (!showRaiseBtn && !showClaimBtn) return null;
+        return (
+          <div className="claim-detail__cta-row">
+            {showRaiseBtn && (
+              <button className="claim-detail__enhance-btn" onClick={handleRaiseEnhance}>
+                <IconPlus size={16} /> {raiseAction.label}
+              </button>
+            )}
+            {showClaimBtn && (
+              <button
+                className="claim-detail__claim-btn"
+                onClick={() => navigate(`/claim/${routeClaimCaseId}`)}
+              >
+                {hasClaim ? 'View Claim' : <><IconPlus size={16} /> Raise Claim</>}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Inline reply compose — branches between structured portal forms
           (APPLIED → Submit, APPROVED / PARTIALLY_APPROVED → Enhance,
@@ -2172,10 +2272,13 @@ export default function PreAuthForm() {
             submitResult.claim_status === 'PARTIALLY_APPROVED' ||
             submitResult.claim_status === 'ENHANCEMENT_APPROVED' ||
             submitResult.claim_status === 'ENHANCEMENT_DENIED');
-        const useAdrForm = replyEmailType === 'ADR_SUBMITTED';
+        // ADR form covers both pre-auth ADR (ADR_SUBMITTED) and claim ADR
+        // (CLAIM_ADR_SUBMITTED) — same UI, the backend routes by stage.
+        const useAdrForm = replyEmailType === 'ADR_SUBMITTED' || replyEmailType === 'CLAIM_ADR_SUBMITTED';
+        // Reconsider covers pre-auth denial and claim denial.
         const useReconsiderForm =
-          replyEmailType === 'RECONSIDER' &&
-          submitResult.claim_status === 'DENIED';
+          (replyEmailType === 'RECONSIDER' && submitResult.claim_status === 'DENIED') ||
+          replyEmailType === 'CLAIM_RECONSIDER';
 
         if (useSubmitForm) {
           return (
@@ -2327,21 +2430,36 @@ export default function PreAuthForm() {
                   </div>
                 )}
 
-                {viewMode === 'form' && (
-                  viewedEmail.form_values ? (
-                    <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-                      <EmailFormValues
-                        formValues={viewedEmail.form_values}
-                        emailType={viewedEmail.email_type}
-                        claim={submitResult}
-                      />
-                    </div>
-                  ) : (
+                {viewMode === 'form' && (() => {
+                  const fv = viewedEmail.form_values;
+                  const hasFv = fv && typeof fv === 'object' && Object.keys(fv).length > 0;
+                  // Older pre-auth SUBMITTED emails were saved before
+                  // form_values was snapshotted onto the email row. For those,
+                  // fall back to the pre-auth FormData on the claim_case so
+                  // SubmitView (which reads claim.data_json) can still render
+                  // the original submission.
+                  const SUBMIT_TYPES = new Set(['SUBMITTED', 'APPLIED']);
+                  const canFallback =
+                    SUBMIT_TYPES.has(viewedEmail.email_type) &&
+                    submitResult?.data_json &&
+                    Object.keys(submitResult.data_json).length > 0;
+                  if (hasFv || canFallback) {
+                    return (
+                      <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+                        <EmailFormValues
+                          formValues={fv || {}}
+                          emailType={viewedEmail.email_type}
+                          claim={submitResult}
+                        />
+                      </div>
+                    );
+                  }
+                  return (
                     <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: 6 }}>
                       No structured form data was saved for this entry.
                     </div>
-                  )
-                )}
+                  );
+                })()}
 
                 {viewMode === 'requested-docs' && (
                   requestedDocs.length > 0 ? (
@@ -2499,6 +2617,22 @@ function Accordion({ number, title, defaultOpen = false, children }) {
 
 // ── Status Timeline ─────────────────────────────────────────────────
 
+// Provider turnaround time formatted as "<1m" / "45m" / "2h 30m" / "1d 4h".
+function formatProviderTat(ms) {
+  if (ms == null || Number.isNaN(ms) || ms < 0) return null;
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 1) return '<1m';
+  const days = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins = totalMin % 60;
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (mins && !days) parts.push(`${mins}m`);
+  if (!parts.length) parts.push('0m');
+  return parts.join(' ');
+}
+
 function StatusTimeline({
   events, onViewEmail, onAction, pendingAction, claimOnboarded,
 }) {
@@ -2541,6 +2675,14 @@ function StatusTimeline({
               </span>
               {ev.amount != null && ev.amount !== '' && (
                 <span className="claim-status-timeline__amount">{formatINR(ev.amount)}</span>
+              )}
+              {ev.isReceivedSide && formatProviderTat(ev.providerTatMs) && (
+                <span
+                  className="claim-status-timeline__tat"
+                  title="Time taken by the provider to reply"
+                >
+                  Provider TAT: {formatProviderTat(ev.providerTatMs)}
+                </span>
               )}
               <div className="claim-status-timeline__row-actions">
                 {ev.emailId && onViewEmail && (

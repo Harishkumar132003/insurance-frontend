@@ -8,14 +8,16 @@ import { renderPartDPdfBlob } from './partDTemplate';
 export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
   const toast = useToast();
 
-  const [approveAmount, setApproveAmount] = useState(
-    claim?.approved_amount || claim?.requested_amount || ''
-  );
-  const [claimNumber, setClaimNumber] = useState(claim?.claim_number || '');
+  // approveAmount + claimNumber are sourced exclusively from the Part-D form
+  // (draft pre-approval, or the bound letter post-approval) — never edited
+  // here. The Approve modal displays them read-only.
+  const [approveAmount, setApproveAmount] = useState('');
+  const [claimNumber, setClaimNumber] = useState('');
   const [remarks, setRemarks] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState(true);
+  const [loadingPartD, setLoadingPartD] = useState(true);
   const htmlRef = useRef('');
 
   useEffect(() => {
@@ -37,12 +39,15 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Approved amount + claim number are not edited here — they come from the
-  // current Part-D record (or the claim's stub when none exists yet) and are
-  // shown read-only. Best-effort fetch; on 404 (no approval round yet) we keep
-  // the claim-based defaults seeded above.
+  // Approved amount + claim number come from the Part-D form (draft or
+  // approval-bound). The Approve modal only displays them — the provider edits
+  // them inside the Part-D modal. Load-blocking so we can show a clear
+  // "fill Part-D first" warning when nothing has been saved yet.
   useEffect(() => {
-    if (!claim?.claim_case_id) return;
+    if (!claim?.claim_case_id) {
+      setLoadingPartD(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -52,7 +57,11 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
         if (d.approved_amount != null) setApproveAmount(String(d.approved_amount));
         if (d.claim_number != null && d.claim_number !== '') setClaimNumber(d.claim_number);
       } catch {
-        // 404 / error — keep the claim-based defaults; no toast (best-effort).
+        // silentStatuses on getPartD already suppresses toasts for 400/404.
+        // We don't seed any fallback — leaving fields empty triggers the
+        // "fill Part-D first" warning in the UI.
+      } finally {
+        if (!cancelled) setLoadingPartD(false);
       }
     })();
     return () => { cancelled = true; };
@@ -110,6 +119,19 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
     }
   };
 
+  const formatINR = (val) => {
+    if (val === '' || val == null) return '—';
+    const num = Number(val);
+    if (Number.isNaN(num)) return String(val);
+    return num.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+  };
+  const requestedAmt = Number(claim?.requested_amount) || 0;
+  const approvedAmtNum = Number(approveAmount);
+  const isPartial = approveAmount !== '' && Number.isFinite(approvedAmtNum)
+    && requestedAmt > 0 && approvedAmtNum < requestedAmt;
+  const partDMissing = !loadingPartD
+    && (approveAmount === '' || Number.isNaN(approvedAmtNum) || approvedAmtNum <= 0);
+
   return (
     <Modal title="Approve" onClose={onClose}>
       <div className="modal-form">
@@ -119,16 +141,44 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
         </div>
 
         <div className="form-group">
-          <label>Approved Amount</label>
-          <input type="number" value={approveAmount} disabled readOnly />
-          <p className="provider-approve__file-hint">Set in the Part-D form.</p>
+          <label>Approved Amount <span style={{ color: '#b91c1c' }}>*</span></label>
+          <div>
+            {loadingPartD ? <Spinner size={14} /> : formatINR(approveAmount)}
+            {!loadingPartD && isPartial && (
+              <span className="provider-approve__file-hint" style={{ marginLeft: 8 }}>
+                (partial — below requested {formatINR(claim?.requested_amount)})
+              </span>
+            )}
+          </div>
+          <p className="provider-approve__file-hint">
+            Set this in the Part-D form. Read-only here.
+          </p>
         </div>
 
         <div className="form-group">
           <label>Claim Number</label>
-          <input type="text" value={claimNumber} disabled readOnly />
-          <p className="provider-approve__file-hint">Set in the Part-D form.</p>
+          <div>{loadingPartD ? <Spinner size={14} /> : (claimNumber || '—')}</div>
+          <p className="provider-approve__file-hint">
+            Set this in the Part-D form. Read-only here.
+          </p>
         </div>
+
+        {partDMissing && (
+          <div className="form-group">
+            <p
+              className="provider-approve__file-hint"
+              style={{
+                background: '#fef3c7',
+                color: '#92400e',
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: '1px solid #fde68a',
+              }}
+            >
+              Set the approved amount + claim number in the Part-D form first.
+            </p>
+          </div>
+        )}
 
         <div className="form-group">
           <label>Remarks</label>
@@ -174,7 +224,7 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
             type="button"
             className="btn btn--primary"
             onClick={handleSubmit}
-            disabled={saving || (!uploadedFile && loadingTemplate)}
+            disabled={saving || loadingPartD || partDMissing || (!uploadedFile && loadingTemplate)}
           >
             {saving ? <Spinner size={16} /> : 'Submit'}
           </button>

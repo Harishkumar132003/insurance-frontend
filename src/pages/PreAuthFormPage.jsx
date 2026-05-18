@@ -34,6 +34,39 @@ const SURGERY_ICD_OPTIONS = SURGERY_OPTIONS.map((s) => ({
   label: `${s.icd_10_pcs_code} — ${s.surgery_name}`,
 }));
 
+export const DRUG_ROUTES = [
+  { code: 'PO',              route: 'Oral' },
+  { code: 'IV',              route: 'Intravenous' },
+  { code: 'IM',              route: 'Intramuscular' },
+  { code: 'SC',              route: 'Subcutaneous' },
+  { code: 'ID',              route: 'Intradermal' },
+  { code: 'SL',              route: 'Sublingual' },
+  { code: 'BUCCAL',          route: 'Buccal' },
+  { code: 'TOP',             route: 'Topical' },
+  { code: 'TD',              route: 'Transdermal' },
+  { code: 'INH',             route: 'Inhalation' },
+  { code: 'NEB',             route: 'Nebulization' },
+  { code: 'NASAL',           route: 'Nasal' },
+  { code: 'OPH',             route: 'Ophthalmic' },
+  { code: 'OTIC',            route: 'Otic' },
+  { code: 'RECTAL',          route: 'Rectal' },
+  { code: 'VAGINAL',         route: 'Vaginal' },
+  { code: 'PR',              route: 'Per Rectal' },
+  { code: 'PEG',             route: 'PEG Tube' },
+  { code: 'NG',              route: 'Nasogastric' },
+  { code: 'INTRA_ART',       route: 'Intra-articular' },
+  { code: 'INTRATHECAL',     route: 'Intrathecal' },
+  { code: 'EPIDURAL',        route: 'Epidural' },
+  { code: 'INTRAPERITONEAL', route: 'Intraperitoneal' },
+  { code: 'INTRAVESICAL',    route: 'Intravesical' },
+  { code: 'INTRAOCULAR',     route: 'Intraocular' },
+];
+
+const DRUG_ROUTE_OPTIONS = DRUG_ROUTES.map((r) => ({
+  value: r.code,
+  label: `${r.code} — ${r.route}`,
+}));
+
 export const FORM_SECTIONS = [
   // {
   //   name: 'tpa_insurer_hospital',
@@ -101,7 +134,7 @@ export const FORM_SECTIONS = [
     ],
     fieldsAfterSubgroups: [
       { key: 'treatment_details', label: 'Treatment Details', type: 'textarea' },
-      { key: 'drug_route', label: 'Drug Route', type: 'text' },
+      { key: 'drug_route', label: 'Drug Route', type: 'select', options: DRUG_ROUTE_OPTIONS },
       { key: 'surgery_name', label: 'Surgery Name', type: 'select', options: SURGERY_NAME_OPTIONS },
       { key: 'surgery_icd_code', label: 'Surgery ICD Code', type: 'select', options: SURGERY_ICD_OPTIONS },
       { key: 'other_treatment', label: 'Other Treatment', type: 'text' },

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { claimCaseService } from '../services/api';
+import { claimCaseService, claimService, documentService } from '../services/api';
+import { CLAIM_DOCUMENT_TYPES } from '../constants/claimDocuments';
 import { IconArrowLeft, IconChevronRight, IconCheck, IconAlertCircle, IconX, IconFormEdit } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
@@ -22,6 +23,9 @@ const AWAITING_PROVIDER_STATUSES = new Set([
   'RECONSIDER',
   'RECONSIDER_SUBMITTED',
   'ADR_SUBMITTED',
+  'CLAIM_SUBMITTED',
+  'CLAIM_ADR_SUBMITTED',
+  'CLAIM_RECONSIDER',
 ]);
 
 function formatINR(amount) {
@@ -33,13 +37,25 @@ function formatINR(amount) {
 
 function statusBadgeVariant(status) {
   switch (status) {
-    case 'APPROVED': return 'success';
-    case 'ENHANCEMENT_APPROVED': return 'success';
-    case 'PARTIALLY_APPROVED': return 'info';
-    case 'DENIED': return 'danger';
-    case 'ENHANCEMENT_DENIED': return 'danger';
-    case 'ADR_NMI': return 'warning';
-    case 'SUBMITTED': return 'info';
+    case 'APPROVED':
+    case 'ENHANCEMENT_APPROVED':
+    case 'CLAIM_APPROVED':
+      return 'success';
+    case 'PARTIALLY_APPROVED':
+    case 'CLAIM_PARTIALLY_APPROVED':
+      return 'info';
+    case 'DENIED':
+    case 'ENHANCEMENT_DENIED':
+    case 'CLAIM_DENIED':
+      return 'danger';
+    case 'ADR_NMI':
+    case 'CLAIM_ADR_NMI':
+      return 'warning';
+    case 'SUBMITTED':
+    case 'CLAIM_SUBMITTED':
+    case 'CLAIM_ADR_SUBMITTED':
+    case 'CLAIM_RECONSIDER':
+      return 'info';
     case 'DRAFT': return 'default';
     case 'ADR_SUBMITTED':
     case 'ENHANCE_SUBMITTED':
@@ -69,9 +85,21 @@ export default function ProviderClaimDetail() {
   const [loadingCase, setLoadingCase] = useState(false);
   const [claim, setClaim] = useState(null);
   const [claimEmails, setClaimEmails] = useState([]);
+  // Claim-stage data: bill_breakdown + docs grouped by category. Populated only
+  // when current_stage === 'CLAIM'.
+  const [claimData, setClaimData] = useState(null);
 
-  // Per-action modal state. Approve has its own component; Deny / NMI are inline.
+  // Per-action modal state. Pre-auth uses the Part-D ProviderApproveModal;
+  // claim stage uses an itemized approve modal opened via claimApproveOpen.
   const [approveOpen, setApproveOpen] = useState(false);
+  const [claimApproveOpen, setClaimApproveOpen] = useState(false);
+  // Array of { label, claimed: number, approved: string } mirroring the
+  // hospital's bill_breakdown. Empty array → fallback single-amount UI.
+  const [claimApprovedLines, setClaimApprovedLines] = useState([]);
+  const [claimApproveAmountFallback, setClaimApproveAmountFallback] = useState('');
+  const [claimApproveRemarks, setClaimApproveRemarks] = useState('');
+  const [claimApproveFile, setClaimApproveFile] = useState(null);
+  const [claimApproveSaving, setClaimApproveSaving] = useState(false);
   const [partD, setPartD] = useState({ open: false, emailId: null });
 
   const [denyOpen, setDenyOpen] = useState(false);
@@ -166,6 +194,7 @@ export default function ProviderClaimDetail() {
         claim_case_id: cc.id,
         status: cc.status,
         claim_status: cc.claim_status,
+        current_stage: cc.current_stage,
         main_status: cc.main_status ?? null,
         claim_number: cc.claim_number || '',
         approved_amount: cc.approved_amount ?? '',
@@ -189,6 +218,18 @@ export default function ProviderClaimDetail() {
         is_onboarded: cc.is_onboarded === true,
       });
       setClaimEmails(Array.isArray(emailsRes.data) ? emailsRes.data : []);
+
+      // Claim-stage data — fetched lazily; not all claim_cases are claim-stage.
+      if (cc.has_claim || cc.current_stage === 'CLAIM') {
+        try {
+          const claimPayload = await claimService.get(routeClaimCaseId);
+          setClaimData(claimPayload);
+        } catch {
+          setClaimData(null);
+        }
+      } else {
+        setClaimData(null);
+      }
     } catch {
       // handled by interceptor
     } finally {
@@ -237,10 +278,25 @@ export default function ProviderClaimDetail() {
             .find((e) => e.status === 'ADR_SUBMITTED');
           submittedEmailId = nextSubmitted?.email_id ?? null;
         }
+        // Distinguish claim-stage transitions in the label so a SUBMITTED row
+        // reads "Claim Raised" rather than the bare "Submitted".
+        const isClaimStageEntry = entry.stage === 'CLAIM';
+        const CLAIM_STAGE_LABEL = {
+          SUBMITTED:           'Claim Raised',
+          APPROVED:            'Claim Approved',
+          PARTIALLY_APPROVED:  'Claim Partially Approved',
+          DENIED:              'Claim Denied',
+          ADR_NMI:             'Claim ADR Requested',
+          ADR_SUBMITTED:       'Claim ADR Submitted',
+          RECONSIDER:          'Claim Reconsider Requested',
+        };
+        const displayLabel = isClaimStageEntry
+          ? (CLAIM_STAGE_LABEL[entry.status] || statusLabel(entry.status))
+          : statusLabel(entry.status);
         return {
-          status: statusLabel(entry.status),
+          status: displayLabel,
           variant: statusBadgeVariant(entry.status),
-          description: entry.remarks || statusLabel(entry.status),
+          description: entry.remarks || displayLabel,
           timestamp: entry.created_at || null,
           // Per-round approved amount on the history entry so each
           // PARTIALLY_APPROVED / APPROVED / ENHANCEMENT_APPROVED row shows
@@ -270,6 +326,98 @@ export default function ProviderClaimDetail() {
     await loadClaimData(false);
   };
 
+  const openClaimApprove = () => {
+    const items = Array.isArray(claimData?.bill_breakdown) ? claimData.bill_breakdown : [];
+    setClaimApprovedLines(items.map((it) => ({
+      label: it.label,
+      claimed: Number(it.amount) || 0,
+      approved: String(Number(it.amount) || 0), // default = full approval
+    })));
+    setClaimApproveAmountFallback(
+      items.length === 0 && claimData?.claimed_amount != null
+        ? String(claimData.claimed_amount) : ''
+    );
+    setClaimApproveRemarks('');
+    setClaimApproveFile(null);
+    setClaimApproveOpen(true);
+  };
+
+  const closeClaimApprove = () => {
+    setClaimApproveOpen(false);
+  };
+
+  const updateApprovedLine = (idx, value) => {
+    setClaimApprovedLines((prev) =>
+      prev.map((ln, i) => (i === idx ? { ...ln, approved: value } : ln)),
+    );
+  };
+
+  const claimTotalClaimed = claimApprovedLines.reduce(
+    (s, ln) => s + (Number(ln.claimed) || 0), 0,
+  );
+  const claimTotalApproved = claimApprovedLines.reduce(
+    (s, ln) => s + (Number(ln.approved) || 0), 0,
+  );
+
+  const handleClaimApproveSubmit = async () => {
+    if (!claim) return;
+    // Validate every per-line approved amount.
+    for (const ln of claimApprovedLines) {
+      const n = Number(ln.approved);
+      if (!Number.isFinite(n) || n < 0) {
+        toast.error(`"${ln.label}" needs a non-negative number`);
+        return;
+      }
+    }
+    const itemized = claimApprovedLines.length > 0;
+    const amt = itemized ? claimTotalApproved : Number(claimApproveAmountFallback);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error('Approved amount must be greater than zero');
+      return;
+    }
+    const claimedTotal = itemized
+      ? claimTotalClaimed
+      : (Number(claimData?.claimed_amount) || 0);
+    const decision = claimedTotal > 0 && amt < claimedTotal
+      ? 'PARTIALLY_APPROVED' : 'APPROVED';
+    setClaimApproveSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('status', decision);
+      fd.append('approved_amount', String(amt));
+      if (itemized) {
+        fd.append('approved_breakdown', JSON.stringify(
+          claimApprovedLines.map((ln) => ({
+            label: ln.label,
+            claimed: ln.claimed,
+            approved: Number(ln.approved) || 0,
+          })),
+        ));
+      }
+      if (claimApproveRemarks.trim()) fd.append('remarks', claimApproveRemarks.trim());
+      if (claimApproveFile) fd.append('file', claimApproveFile);
+      await claimCaseService.providerAction(claim.claim_case_id, fd);
+      toast.success('Response submitted');
+      closeClaimApprove();
+      await loadClaimData(false);
+    } catch {
+      // interceptor handles
+    } finally {
+      setClaimApproveSaving(false);
+    }
+  };
+
+  const viewClaimDoc = async (doc) => {
+    if (!doc?.id || !claim?.claim_case_id) return;
+    try {
+      const res = await documentService.view(claim.claim_case_id, doc.id);
+      const url = URL.createObjectURL(res.data);
+      window.open(url, '_blank', 'noopener');
+    } catch {
+      // interceptor handles
+    }
+  };
+
   const closeDeny = () => {
     setDenyOpen(false);
     setDenyRemarks('');
@@ -283,11 +431,11 @@ export default function ProviderClaimDetail() {
     }
     setDenySaving(true);
     try {
-      // Denying an enhancement submission goes to ENHANCEMENT_DENIED so the
-      // hospital can re-file via the Enhance Submit form again. A first-round
-      // submission goes to plain DENIED (which routes to Reconsider on the
-      // hospital side).
-      const denyStatus = claim.status === 'ENHANCE_SUBMITTED'
+      // Pre-auth: denying an enhancement submission goes to ENHANCEMENT_DENIED
+      // so the hospital can re-file. Claim stage: always plain DENIED — there's
+      // no enhancement loop on a claim. First-round submissions also use DENIED.
+      const isClaimStage = claim.current_stage === 'CLAIM';
+      const denyStatus = (!isClaimStage && claim.status === 'ENHANCE_SUBMITTED')
         ? 'ENHANCEMENT_DENIED'
         : 'DENIED';
       await claimCaseService.providerAction(claim.claim_case_id, {
@@ -420,26 +568,131 @@ export default function ProviderClaimDetail() {
         </div>
       </div>
 
-      {canRespond && !fullyApproved && (
-        <div className="claim-detail__actions">
-          <button className="btn btn--outline" onClick={() => setApproveOpen(true)}>
-            <IconCheck size={16} /> Approve
-          </button>
-          <button className="btn btn--outline" onClick={() => setNmiOpen(true)}>
-            <IconAlertCircle size={16} /> Request Additional Documents
-          </button>
-          <button className="btn btn--outline" onClick={() => setDenyOpen(true)}>
-            <IconX size={16} /> Denied
-          </button>
-          {hasApproval && (
+      {(() => {
+        const isClaimStage = claim.current_stage === 'CLAIM';
+        // On claim stage we don't gate on fullyApproved (that's a pre-auth
+        // concept — claim is judged against bill, not against requested cover).
+        const gateOk = isClaimStage ? canRespond : (canRespond && !fullyApproved);
+        if (!gateOk) return null;
+        return (
+          <div className="claim-detail__actions">
             <button
               className="btn btn--outline"
-              onClick={() => setPartD({ open: true, emailId: null })}
-              title="Edit / generate the Part-D authorization letter (latest approval)"
+              onClick={() => isClaimStage ? openClaimApprove() : setApproveOpen(true)}
             >
-              <IconFormEdit size={16} /> Part D
+              <IconCheck size={16} /> {isClaimStage ? 'Claim Approve' : 'Approve'}
             </button>
-          )}
+            <button className="btn btn--outline" onClick={() => setNmiOpen(true)}>
+              <IconAlertCircle size={16} /> {isClaimStage ? 'Claim ADR' : 'Request Additional Documents'}
+            </button>
+            <button className="btn btn--outline" onClick={() => setDenyOpen(true)}>
+              <IconX size={16} /> {isClaimStage ? 'Claim Denied' : 'Denied'}
+            </button>
+            {canRespond && !isClaimStage && (
+              <button
+                className="btn btn--outline"
+                onClick={() => setPartD({ open: true, emailId: null })}
+                title={hasApproval
+                  ? 'Edit / regenerate the Part-D authorization letter (latest approval)'
+                  : 'Issue authorization for this pre-auth (Part-D)'}
+              >
+                <IconFormEdit size={16} /> Part D
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Claim review — bill breakdown + categorized docs. Only rendered when
+          the case is in CLAIM stage (i.e. the hospital has raised a claim). */}
+      {claim.current_stage === 'CLAIM' && claimData && (
+        <div className="claim-detail__accordions">
+          <Accordion title="Claim Review" defaultOpen>
+            <div className="claim-review">
+              <div className="claim-review__stats">
+                <div className="claim-review__stat">
+                  <div className="claim-review__stat-label">CLAIMED</div>
+                  <div className="claim-review__stat-value">{formatINR(claimData.claimed_amount)}</div>
+                </div>
+                <div className="claim-review__stat">
+                  <div className="claim-review__stat-label">CLAIM APPROVED</div>
+                  <div className="claim-review__stat-value claim-detail__stat-value--approved">
+                    {formatINR(claimData.approved_amount)}
+                  </div>
+                </div>
+                <div className="claim-review__stat">
+                  <div className="claim-review__stat-label">CLAIM STATUS</div>
+                  <div className="claim-review__stat-value">{statusLabel(claimData.status)}</div>
+                </div>
+              </div>
+
+              <h4 className="claim-review__heading">Bill breakdown</h4>
+              {Array.isArray(claimData.bill_breakdown) && claimData.bill_breakdown.length > 0 ? (
+                <table className="claim-review__table">
+                  <thead>
+                    <tr>
+                      <th>Line item</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {claimData.bill_breakdown.map((it, idx) => (
+                      <tr key={idx}>
+                        <td>{it.label}</td>
+                        <td style={{ textAlign: 'right' }}>{formatINR(it.amount)}</td>
+                      </tr>
+                    ))}
+                    <tr className="claim-review__total-row">
+                      <td><strong>Total claimed</strong></td>
+                      <td style={{ textAlign: 'right' }}><strong>{formatINR(claimData.claimed_amount)}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              ) : (
+                <p className="claim-review__empty">No bill breakdown provided.</p>
+              )}
+
+              {claimData.remarks && (
+                <>
+                  <h4 className="claim-review__heading">Hospital remarks</h4>
+                  <p className="claim-review__remarks">{claimData.remarks}</p>
+                </>
+              )}
+
+              <h4 className="claim-review__heading">Supporting documents</h4>
+              <div className="claim-doc-grid">
+                {CLAIM_DOCUMENT_TYPES.map((cat) => {
+                  const group = (claimData.documents_by_type || []).find((g) => g.document_type === cat.key);
+                  const files = group?.documents || [];
+                  return (
+                    <div key={cat.key} className="claim-doc-card">
+                      <div className="claim-doc-card__head">
+                        <div className="claim-doc-card__title">{cat.label}</div>
+                        <div className="claim-doc-card__count">{files.length} file{files.length === 1 ? '' : 's'}</div>
+                      </div>
+                      <div className="claim-doc-card__files">
+                        {files.length === 0 && (
+                          <span className="portal-form__files-empty">No files submitted.</span>
+                        )}
+                        {files.map((doc) => (
+                          <span key={doc.id} className="apply-step__attach-chip">
+                            <button
+                              type="button"
+                              className="claim-doc-card__view"
+                              onClick={() => viewClaimDoc(doc)}
+                              title="View"
+                            >
+                              {doc.original_filename}
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </Accordion>
         </div>
       )}
 
@@ -464,6 +717,126 @@ export default function ProviderClaimDetail() {
           onSubmitted={handleApproveSubmitted}
         />
       )}
+
+      {claimApproveOpen && (() => {
+        const itemized = claimApprovedLines.length > 0;
+        const decisionLabel = itemized
+          ? (claimTotalApproved < claimTotalClaimed && claimTotalApproved > 0
+              ? 'Partial approval'
+              : claimTotalApproved === claimTotalClaimed
+                ? 'Full approval'
+                : claimTotalApproved === 0 ? '—' : 'Over-approval')
+          : null;
+        return (
+          <Modal title="Approve Claim" onClose={closeClaimApprove}>
+            <div className="modal-form">
+              <div className="form-group">
+                <label>Patient</label>
+                <div>{patientName} — {uhid}</div>
+              </div>
+
+              {itemized ? (
+                <div className="form-group">
+                  <label>Approved Breakdown <span style={{ color: '#b91c1c' }}>*</span></label>
+                  <table className="claim-review__table" style={{ width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th>Line item</th>
+                        <th style={{ textAlign: 'right' }}>Claimed</th>
+                        <th style={{ textAlign: 'right' }}>Approved</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {claimApprovedLines.map((ln, idx) => (
+                        <tr key={idx}>
+                          <td>{ln.label || '—'}</td>
+                          <td style={{ textAlign: 'right' }}>{formatINR(ln.claimed)}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <input
+                              type="number"
+                              value={ln.approved}
+                              onChange={(e) => updateApprovedLine(idx, e.target.value)}
+                              min="0"
+                              style={{ width: 120, textAlign: 'right' }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="claim-review__total-row">
+                        <td><strong>Total</strong></td>
+                        <td style={{ textAlign: 'right' }}><strong>{formatINR(claimTotalClaimed)}</strong></td>
+                        <td style={{ textAlign: 'right' }}><strong>{formatINR(claimTotalApproved)}</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {decisionLabel && (
+                    <p className="provider-approve__file-hint" style={{ marginTop: 6 }}>
+                      Decision on submit: <strong>{decisionLabel}</strong>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>Claimed Amount</label>
+                    <div>{formatINR(claimData?.claimed_amount)}</div>
+                  </div>
+                  <div className="form-group">
+                    <label>Approved Amount <span style={{ color: '#b91c1c' }}>*</span></label>
+                    <input
+                      type="number"
+                      value={claimApproveAmountFallback}
+                      onChange={(e) => setClaimApproveAmountFallback(e.target.value)}
+                      placeholder="e.g. 150000"
+                      min="0"
+                    />
+                    <p className="provider-approve__file-hint">
+                      Hospital didn't submit a bill breakdown; enter the total approved amount.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <div className="form-group">
+                <label>Remarks</label>
+                <textarea
+                  rows={3}
+                  placeholder="Optional notes"
+                  value={claimApproveRemarks}
+                  onChange={(e) => setClaimApproveRemarks(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Attach Approval Letter (optional)</label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={(e) => setClaimApproveFile(e.target.files?.[0] || null)}
+                />
+                {claimApproveFile && (
+                  <p className="provider-approve__file-hint">
+                    <strong>{claimApproveFile.name}</strong>
+                    {' '}({Math.round(claimApproveFile.size / 1024)} KB)
+                  </p>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn--ghost" onClick={closeClaimApprove} disabled={claimApproveSaving}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={handleClaimApproveSubmit}
+                  disabled={claimApproveSaving}
+                >
+                  {claimApproveSaving ? <Spinner size={16} /> : 'Submit'}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {partD.open && (
         <PartDPrintModal

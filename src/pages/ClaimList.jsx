@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { claimCaseService } from '../services/api';
 import { useAuth, ROLES } from '../context/AuthContext';
 import EmptyState from '../components/EmptyState';
@@ -7,12 +7,20 @@ import Spinner from '../components/Spinner';
 import { IconPlus, IconMail } from '../components/icons/Icons';
 import './Pages.scss';
 
-const FILTERS = [
+const PRE_AUTH_FILTERS = [
   { key: 'all', label: 'All', match: () => true },
   { key: 'submitted', label: 'Submitted', match: (c) => c.status === 'SUBMITTED' },
   { key: 'approved', label: 'Approved', match: (c) => c.status === 'APPROVED' || c.status === 'PARTIALLY_APPROVED' || c.status === 'ENHANCEMENT_APPROVED' },
   { key: 'adr', label: 'ADR Pending', match: (c) => c.status === 'ADR_NMI' },
   { key: 'denied', label: 'Denied', match: (c) => c.status === 'DENIED' || c.status === 'ENHANCEMENT_DENIED' },
+];
+
+const CLAIM_FILTERS = [
+  { key: 'all', label: 'All', match: () => true },
+  { key: 'submitted', label: 'Submitted', match: (c) => c.status === 'CLAIM_SUBMITTED' },
+  { key: 'approved', label: 'Approved', match: (c) => c.status === 'CLAIM_APPROVED' || c.status === 'CLAIM_PARTIALLY_APPROVED' },
+  { key: 'adr', label: 'ADR Pending', match: (c) => c.status === 'CLAIM_ADR_NMI' },
+  { key: 'denied', label: 'Denied', match: (c) => c.status === 'CLAIM_DENIED' },
 ];
 
 const STATUS_PILL = {
@@ -22,6 +30,13 @@ const STATUS_PILL = {
   RECONSIDER:          { label: 'Reconsider Requested', variant: 'info' },
   RECONSIDER_SUBMITTED:{ label: 'Reconsider Requested', variant: 'info' },
   ADR_SUBMITTED:       { label: 'ADR Submitted',       variant: 'info' },
+  CLAIM_SUBMITTED:           { label: 'Claim Submitted',           variant: 'info' },
+  CLAIM_APPROVED:            { label: 'Claim Approved',            variant: 'success' },
+  CLAIM_PARTIALLY_APPROVED:  { label: 'Claim Partially Approved',  variant: 'purple' },
+  CLAIM_DENIED:              { label: 'Claim Denied',              variant: 'danger' },
+  CLAIM_ADR_NMI:             { label: 'Claim ADR Pending',         variant: 'warning' },
+  CLAIM_ADR_SUBMITTED:       { label: 'Claim ADR Submitted',       variant: 'info' },
+  CLAIM_RECONSIDER:          { label: 'Claim Reconsider Requested', variant: 'info' },
   APPROVED:            { label: 'Approved',            variant: 'success' },
   PARTIALLY_APPROVED:  { label: 'Partially Approved',  variant: 'purple' },
   ENHANCEMENT_APPROVED:{ label: 'Enhancement Approved', variant: 'success' },
@@ -59,10 +74,16 @@ function SearchIcon() {
   );
 }
 
-export default function ClaimList() {
+export default function ClaimList({ stage }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
+  const FILTERS = stage === 'CLAIM' ? CLAIM_FILTERS : PRE_AUTH_FILTERS;
+  const title = stage === 'CLAIM' ? 'Claim Tracker' : 'Pre-Auth Tracker';
+  const subtitle = stage === 'CLAIM'
+    ? 'Track and manage all claim settlements raised to insurers and TPAs.'
+    : 'Track, enhance, and manage all pre-authorisation requests sent to insurers and TPAs.';
   const [activeFilter, setActiveFilter] = useState('all');
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,13 +99,13 @@ export default function ClaimList() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    const params = search ? { q: search } : undefined;
-    claimCaseService.getAll(params)
+    const params = { ...(search ? { q: search } : {}), ...(stage ? { stage } : {}) };
+    claimCaseService.getAll(Object.keys(params).length ? params : undefined)
       .then((res) => { if (!cancelled) setClaims(Array.isArray(res.data) ? res.data : []); })
       .catch(() => { if (!cancelled) setClaims([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [search]);
+  }, [search, stage]);
 
   const counts = useMemo(() => {
     const map = {};
@@ -101,10 +122,8 @@ export default function ClaimList() {
     <div className="preauth-tracker">
       <div className="preauth-tracker__header">
         <div className="preauth-tracker__header-text">
-          <h1 className="preauth-tracker__title">Pre-Auth Tracker</h1>
-          <p className="preauth-tracker__subtitle">
-            Track, enhance, and manage all pre-authorisation requests sent to insurers and TPAs.
-          </p>
+          <h1 className="preauth-tracker__title">{title}</h1>
+          <p className="preauth-tracker__subtitle">{subtitle}</p>
         </div>
         {!isInsuranceProvider && (
           <div className="preauth-tracker__header-actions">
@@ -184,8 +203,10 @@ export default function ClaimList() {
                 key={id}
                 className={`preauth-card ${adrOverdue ? 'preauth-card--overdue' : ''}`}
                 onClick={() => navigate(
-                  isInsuranceProvider ? `/provider-queue/${id}` : `/claim-list/${id}`,
-                  { state: { from: '/claim-list' } }
+                  isInsuranceProvider
+                    ? `/provider-queue/${id}`
+                    : `${stage === 'CLAIM' ? '/claims' : '/claim-list'}/${id}`,
+                  { state: { from: location.pathname } }
                 )}
               >
                 {/* Left: identity */}
