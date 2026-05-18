@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { claimCaseService } from '../services/api';
+import { claimCaseService, policyProviderService } from '../services/api';
 import { useAuth, ROLES } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
@@ -59,11 +59,32 @@ export default function QueryManagement() {
   const [viewUrl, setViewUrl] = useState(null);
   const [viewFilename, setViewFilename] = useState('');
   const [viewContentType, setViewContentType] = useState('');
+  // Search / provider filter — same debounced-input pattern as ClaimList.
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [providerFilter, setProviderFilter] = useState('');
+  const [providers, setProviders] = useState([]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Load providers once for the dropdown — hospital admins only. Insurance
+  // providers are auto-scoped to their own provider server-side.
+  useEffect(() => {
+    if (isInsuranceProvider) return;
+    policyProviderService.getAll()
+      .then((res) => setProviders(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setProviders([]));
+  }, [isInsuranceProvider]);
 
   const fetchEmails = (p = page) => {
     setLoading(true);
     const params = { page: p, page_size: pageSize };
     if (filterClaimId) params.claim_case_id = filterClaimId;
+    if (search) params.q = search;
+    if (providerFilter) params.provider_id = providerFilter;
     claimCaseService.getAllEmailsPaginated(params)
       .then((res) => {
         const data = res.data;
@@ -79,9 +100,14 @@ export default function QueryManagement() {
       .finally(() => setLoading(false));
   };
 
+  // Reset to page 1 whenever search or provider filter changes.
+  useEffect(() => {
+    setPage(1);
+  }, [search, providerFilter]);
+
   useEffect(() => {
     fetchEmails(page);
-  }, [page, pageSize, filterClaimId]);
+  }, [page, pageSize, filterClaimId, search, providerFilter]);
 
   const isEmailRead = (email) =>
     isInsuranceProvider ? !!email.provider_read : !!email.is_read;
@@ -244,14 +270,35 @@ export default function QueryManagement() {
             {totalEmails} email{totalEmails !== 1 ? 's' : ''}
             {totalPages > 1 && ` — Page ${page} of ${totalPages}`}
           </span>
-          <button
-            className="btn btn--ghost"
-            onClick={() => fetchEmails(page)}
-            disabled={loading}
-          >
-            {loading ? <Spinner size={16} /> : <IconRefresh size={16} />}
-            Refresh
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="search"
+              placeholder="Search by patient name or UHID"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              style={{ minWidth: 240, padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6 }}
+            />
+            {!isInsuranceProvider && (
+              <select
+                value={providerFilter}
+                onChange={(e) => setProviderFilter(e.target.value)}
+                style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6 }}
+              >
+                <option value="">All providers</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+            <button
+              className="btn btn--ghost"
+              onClick={() => fetchEmails(page)}
+              disabled={loading}
+            >
+              {loading ? <Spinner size={16} /> : <IconRefresh size={16} />}
+              Refresh
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -285,6 +332,11 @@ export default function QueryManagement() {
                       </span>
                     </div>
                     <div className="email-inbox__item-subject">{email.subject}</div>
+                    {(email.patient_name || email.provider_name) && (
+                      <div style={{ fontSize: 12, color: '#6b7280', margin: '2px 0' }}>
+                        {[email.patient_name, email.provider_name].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
                     <div className="email-inbox__item-preview">
                       {email.body?.replace(/<[^>]*>/g, '').slice(0, 120) || email.preview || 'No content'}
                     </div>
