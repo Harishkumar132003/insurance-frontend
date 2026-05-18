@@ -1737,11 +1737,15 @@ export default function PreAuthForm() {
   const alreadyRaised = SUBMITTED_STAGE_STATUSES.includes(latestStageStatus);
   // Claim is still a draft (initial pre-auth email hasn't been sent).
   const isDraft = latestStageStatus === 'DRAFT' || statusHistory.length === 0;
-  // Enhance / ADR / Reconsider buttons remain visible alongside Raise Claim
-  // even when the pre-auth was approved at full requested amount — the
-  // hospital may still need to file an enhancement for additional cover. On
-  // claim stage the button derives from the case's CLAIM_* status instead.
-  const showRaiseBtn = !isDraft && !alreadyRaised && (
+  // Hide Enhance Submit specifically when the insurer has already sanctioned
+  // the full requested amount — there is no remaining gap to enhance.
+  // Reconsider / ADR Submit and claim-stage actions are unaffected by this
+  // gate. On claim stage the button derives from the case's CLAIM_* status.
+  const requestedAmt = Number(submitResult?.requested_amount) || 0;
+  const approvedAmt = Number(submitResult?.approved_amount) || 0;
+  const fullyApproved = requestedAmt > 0 && approvedAmt >= requestedAmt;
+  const isEnhanceAction = !isClaimStage && raiseAction.emailType === 'ENHANCE_SUBMITTED';
+  const showRaiseBtn = !isDraft && !alreadyRaised && !(isEnhanceAction && fullyApproved) && (
     isClaimStage
       ? Boolean(claimRaiseActionByStatus[submitResult?.status])
       : Boolean(raiseActionByStatus[submitResult?.claim_status])
@@ -2239,7 +2243,12 @@ export default function PreAuthForm() {
         const approved = Number(submitResult?.approved_amount);
         const hasApprovedAmount = Number.isFinite(approved) && approved > 0;
         const hasClaim = submitResult?.has_claim === true;
-        const showClaimBtn = !isInsuranceProvider && submitResult && (hasApprovedAmount || hasClaim);
+        // Don't offer "Raise Claim" while a provider response is pending
+        // (insurer still owes a reply to our Enhance/ADR/Reconsider). Once
+        // a claim already exists the button shows "View Claim", which
+        // remains accessible regardless of any in-flight pre-auth round.
+        const blockNewClaim = alreadyRaised && !hasClaim;
+        const showClaimBtn = !isInsuranceProvider && submitResult && (hasApprovedAmount || hasClaim) && !blockNewClaim;
         if (!showRaiseBtn && !showClaimBtn) return null;
         return (
           <div className="claim-detail__cta-row">
