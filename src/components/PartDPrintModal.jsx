@@ -2,123 +2,312 @@ import { useEffect, useRef, useState } from 'react';
 import Modal from './Modal';
 import Spinner from './Spinner';
 import { useToast } from './Toast';
-import { formTemplateService } from '../services/api';
-import { buildPartDFlat, renderTemplate } from './partDTemplate';
+import { formTemplateService, claimCaseService } from '../services/api';
+import { buildPartDFlat, renderTemplate, renderPartDPdfBlob } from './partDTemplate';
 
-// Fill-and-print Part D form. The provider edits the line-item / summary
-// values that aren't already on the claim or hospital form, and prints the
-// fully-populated template. Auto-fillable values (patient, hospital, TPA,
-// dates, diagnosis, etc.) are pulled in via buildPartDFlat → no UI needed.
-export default function PartDPrintModal({ claim, onClose }) {
+// Open the browser print dialog for a populated PART_D template, off-screen.
+const PARTD_PRINT_IFRAME_ID = 'partd-print-frame';
+function printPartDHtml(html) {
+  if (!html) return;
+  let iframe = document.getElementById(PARTD_PRINT_IFRAME_ID);
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = PARTD_PRINT_IFRAME_ID;
+    iframe.style.cssText = 'position:fixed;width:0;height:0;border:none;left:-9999px;';
+    document.body.appendChild(iframe);
+  }
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) return;
+  doc.open();
+  doc.write(html);
+  doc.close();
+  const fire = () => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+  };
+  if (doc.readyState === 'complete') fire();
+  else iframe.onload = fire;
+}
+
+// Part-D authorization letter editor for a single approval round.
+//
+// On open it GETs /claim-cases/{id}/part-d (scoped to `emailId`) to prefill
+// the form — a saved row or a stub (approved_amount + claim_number from the
+// claim, is_persisted=false). The provider edits the bill-breakdown /
+// authorisation-summary free-text fields, then either:
+//   • Save  → PUT JSON (field values only; nothing attached)
+//   • Print → render the PDF client-side, PUT multipart (field values + the
+//     PDF, so it's attached to the approval email), then open the browser
+//     print dialog with the populated letter.
+//
+// Props: claim (the full claim shape used by buildPartDFlat), claimCaseId,
+// emailId (the approval-round email this letter belongs to; optional — the
+// backend defaults to the latest approval), onClose, onSaved (called after a
+// successful PUT so the parent can refresh).
+
+// [stateKey, apiKey, label] — all free-text strings ("Rs.5,000/day", "N/A", "").
+const PARTD_TEXT_FIELDS = [
+  ['roomRentPerDay', 'room_rent_per_day', 'Room Rent / Day'],
+  ['icuRentPerDay', 'icu_rent_per_day', 'ICU Rent / Day'],
+  ['nursingChargesPerDay', 'nursing_charges_per_day', 'Nursing Charges / Day'],
+  ['consultantVisitChargesPerDay', 'consultant_visit_charges_per_day', 'Consultant Visit Charges / Day'],
+  ['surgeonAnesthetistFee', 'surgeon_anesthetist_fee', 'Surgeon Fee / OT / Anesthetist'],
+  ['others', 'others', 'Others'],
+  ['totalBillAmount', 'total_bill_amount', 'Total Bill Amount'],
+  ['deductionsDetail', 'deductions_detail', 'Deductions Detail'],
+  ['discount', 'discount', 'Discount'],
+  ['coPay', 'co_pay', 'Co-Pay'],
+  ['deductibles', 'deductibles', 'Deductibles'],
+  ['totalAuthorisedAmount', 'total_authorised_amount', 'Total Authorised Amount'],
+  ['amountToBePaidByInsured', 'amount_to_be_paid_by_insured', 'Amount to be paid by Insured'],
+];
+
+const EMPTY_TEXT_STATE = PARTD_TEXT_FIELDS.reduce((acc, [k]) => { acc[k] = ''; return acc; }, {});
+
+function statusBadge(meta) {
+  if (!meta) return null;
+  if (!meta.is_persisted) return { label: 'Part-D not started', cls: 'default' };
+  if (meta.attachment_id == null) return { label: 'Saved (not yet printed)', cls: 'info' };
+  return { label: 'Part-D generated', cls: 'success' };
+}
+
+export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, onSaved }) {
   const toast = useToast();
-  const iframeRef = useRef(null);
   const htmlRef = useRef('');
-  const [loading, setLoading] = useState(true);
-  const [ready, setReady] = useState(false);
 
-  const [approveAmount, setApproveAmount] = useState(
-    claim?.approved_amount || claim?.requested_amount || ''
-  );
-  const [claimNumber, setClaimNumber] = useState(claim?.claim_number || '');
+  const [loadingTemplate, setLoadingTemplate] = useState(true);
+  const [loadingData, setLoadingData] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [unavailable, setUnavailable] = useState(false); // GET 404 → no approval email yet
+
+  // Server metadata for the loaded round.
+  const [meta, setMeta] = useState(null); // { id, is_persisted, attachment_id, claim_case_email_id }
+  const [resolvedEmailId, setResolvedEmailId] = useState(emailId ?? null);
+
+  // Editable form state.
+  const [approveAmount, setApproveAmount] = useState('');
+  const [claimNumber, setClaimNumber] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [textFields, setTextFields] = useState(EMPTY_TEXT_STATE);
 
-  const [roomRentPerDay, setRoomRentPerDay] = useState('');
-  const [icuRentPerDay, setIcuRentPerDay] = useState('');
-  const [nursingChargesPerDay, setNursingChargesPerDay] = useState('');
-  const [consultantVisitChargesPerDay, setConsultantVisitChargesPerDay] = useState('');
-  const [surgeonAnesthetistFee, setSurgeonAnesthetistFee] = useState('');
-  const [others, setOthers] = useState('');
+  const setTextField = (key, value) => setTextFields((prev) => ({ ...prev, [key]: value }));
 
-  const [totalBillAmount, setTotalBillAmount] = useState('');
-  const [deductionsDetail, setDeductionsDetail] = useState('');
-  const [discount, setDiscount] = useState('');
-  const [coPay, setCoPay] = useState('');
-  const [deductibles, setDeductibles] = useState('');
-  const [totalAuthorisedAmount, setTotalAuthorisedAmount] = useState('');
-  const [amountToBePaidByInsured, setAmountToBePaidByInsured] = useState('');
+  // Re-hydrate all state from a PartDLetterResponse.
+  const hydrate = (data) => {
+    if (!data) return;
+    setMeta({
+      id: data.id ?? null,
+      is_persisted: !!data.is_persisted,
+      attachment_id: data.attachment_id ?? null,
+      claim_case_email_id: data.claim_case_email_id ?? null,
+    });
+    if (data.claim_case_email_id != null) setResolvedEmailId(data.claim_case_email_id);
+    setApproveAmount(data.approved_amount != null ? String(data.approved_amount) : '');
+    setClaimNumber(data.claim_number ?? '');
+    setRemarks(data.remarks ?? '');
+    setTextFields(
+      PARTD_TEXT_FIELDS.reduce((acc, [stateKey, apiKey]) => {
+        acc[stateKey] = data[apiKey] ?? '';
+        return acc;
+      }, {}),
+    );
+  };
 
-  // Fetch template once.
+  // Fetch template + Part-D data on open.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await formTemplateService.getFirstByType('PART_D');
-        if (cancelled) return;
-        const html = res?.data?.html_content || '';
-        htmlRef.current = html;
-        if (!html) toast.error('PART_D template not available');
+        if (!cancelled) {
+          htmlRef.current = res?.data?.html_content || '';
+          if (!htmlRef.current) toast.error('PART_D template not available');
+        }
       } catch {
         // axios interceptor surfaces toast
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoadingTemplate(false);
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-render the iframe preview whenever any input changes. Debounced so
-  // typing stays smooth, and scroll position is preserved across rewrites.
   useEffect(() => {
-    if (loading) return;
-    const iframe = iframeRef.current;
-    const html = htmlRef.current;
-    if (!iframe || !html) return;
-
-    const timer = setTimeout(() => {
-      const flat = buildPartDFlat({
-        claim,
-        approveAmount, claimNumber, remarks,
-        roomRentPerDay, icuRentPerDay, nursingChargesPerDay,
-        consultantVisitChargesPerDay, surgeonAnesthetistFee, others,
-        totalBillAmount, deductionsDetail, discount, coPay,
-        deductibles, totalAuthorisedAmount, amountToBePaidByInsured,
-      });
-      const rendered = renderTemplate(html, flat);
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return;
-      const prevScroll = iframe.contentWindow?.scrollY || 0;
-      doc.open();
-      doc.write(rendered);
-      doc.close();
-      const apply = () => {
-        setReady(true);
-        try { iframe.contentWindow?.scrollTo(0, prevScroll); } catch {
-          // cross-origin or detached frame — ignore
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await claimCaseService.getPartD(claimCaseId, emailId);
+        if (!cancelled) hydrate(res.data);
+      } catch (e) {
+        const sc = e?.response?.status;
+        const detail = e?.response?.data?.detail || '';
+        // 400 "no approval email yet" — Part-D acts as the auth gate here.
+        // Seed amount/claim-number from the claim, leave the bill-breakdown
+        // fields empty for the user to fill, defer the actual record bind
+        // to Save/Print which calls providerAction first.
+        if (sc === 400 && /no approval email/i.test(detail)) {
+          if (!cancelled) {
+            setApproveAmount(
+              claim?.approved_amount != null && claim?.approved_amount !== '' ? String(claim.approved_amount)
+              : claim?.requested_amount != null ? String(claim.requested_amount)
+              : ''
+            );
+            setClaimNumber(claim?.claim_number || '');
+          }
+        } else if (sc === 404 && emailId == null) {
+          // GET returned 404 (no part-d row and no approval). Same as above:
+          // open the editor and let Save/Print create the approval inline.
+          if (!cancelled) {
+            setApproveAmount(
+              claim?.approved_amount != null && claim?.approved_amount !== '' ? String(claim.approved_amount)
+              : claim?.requested_amount != null ? String(claim.requested_amount)
+              : ''
+            );
+            setClaimNumber(claim?.claim_number || '');
+          }
+        } else if (sc === 404) {
+          if (!cancelled) setUnavailable(true);
+        } else if (sc === 400 && /not an approval email/i.test(detail) && emailId != null) {
+          // Passed an email_id that isn't an approval row — fall back to the
+          // latest approval.
+          try {
+            const res2 = await claimCaseService.getPartD(claimCaseId, undefined);
+            if (!cancelled) hydrate(res2.data);
+          } catch {
+            if (!cancelled) setUnavailable(true);
+          }
         }
-      };
-      if (doc.readyState === 'complete') apply();
-      else iframe.onload = apply;
-    }, 250);
+        // other errors: axios interceptor already toasted
+      } finally {
+        if (!cancelled) setLoadingData(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimCaseId, emailId]);
 
-    return () => clearTimeout(timer);
-  }, [
-    loading, claim,
-    approveAmount, claimNumber, remarks,
-    roomRentPerDay, icuRentPerDay, nursingChargesPerDay,
-    consultantVisitChargesPerDay, surgeonAnesthetistFee, others,
-    totalBillAmount, deductionsDetail, discount, coPay,
-    deductibles, totalAuthorisedAmount, amountToBePaidByInsured,
-  ]);
+  const buildFlatArgs = () => ({
+    claim,
+    approveAmount,
+    claimNumber,
+    remarks,
+    roomRentPerDay: textFields.roomRentPerDay,
+    icuRentPerDay: textFields.icuRentPerDay,
+    nursingChargesPerDay: textFields.nursingChargesPerDay,
+    consultantVisitChargesPerDay: textFields.consultantVisitChargesPerDay,
+    surgeonAnesthetistFee: textFields.surgeonAnesthetistFee,
+    others: textFields.others,
+    totalBillAmount: textFields.totalBillAmount,
+    deductionsDetail: textFields.deductionsDetail,
+    discount: textFields.discount,
+    coPay: textFields.coPay,
+    deductibles: textFields.deductibles,
+    totalAuthorisedAmount: textFields.totalAuthorisedAmount,
+    amountToBePaidByInsured: textFields.amountToBePaidByInsured,
+  });
 
-  const handlePrint = () => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
+  // Build the field-value payload (snake_case) used by both Save and Generate.
+  const fieldPayload = () => {
+    const out = {};
+    // approved_amount is the only numeric field; '' clears it.
+    out.approved_amount = approveAmount === '' || approveAmount == null
+      ? ''
+      : Number(approveAmount);
+    out.claim_number = claimNumber ?? '';
+    out.remarks = remarks ?? '';
+    PARTD_TEXT_FIELDS.forEach(([stateKey, apiKey]) => {
+      out[apiKey] = textFields[stateKey] ?? '';
+    });
+    return out;
   };
+
+  const afterSave = (data) => {
+    hydrate(data);
+    if (typeof onSaved === 'function') onSaved(data);
+  };
+
+  // Save = pure data persist. No approval trigger. Pre-approval saves go as a
+  // draft (no email_id in payload); the backend creates a draft Part-D row
+  // with claim_case_email_id IS NULL, and links it to the approval email
+  // later when the provider hits Approve in the separate modal.
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = { ...fieldPayload() };
+      if (resolvedEmailId != null) payload.email_id = resolvedEmailId;
+      const res = await claimCaseService.putPartD(claimCaseId, payload);
+      afterSave(res.data);
+      toast.success('Part-D saved');
+    } catch {
+      // interceptor toasted
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Print = persist field values (so the user doesn't lose their work) + open
+  // the browser print dialog with the populated PDF. The user then downloads
+  // the PDF and attaches it manually in the Approve modal — Print does NOT
+  // trigger any approval here.
+  const handlePrint = async () => {
+    if (!htmlRef.current) {
+      toast.error('PART_D template not loaded');
+      return;
+    }
+    setSaving(true);
+    try {
+      const flatArgs = buildFlatArgs();
+      // Post-approval: a PDF blob can be attached to the approval email so
+      // the saved letter is part of the audit trail. Pre-approval: we skip
+      // the file upload (no email to bind it to) and just persist field
+      // values; the same PDF still opens in the print dialog for download.
+      const fd = new FormData();
+      if (resolvedEmailId != null) {
+        const blob = await renderPartDPdfBlob({ htmlTemplate: htmlRef.current, ...flatArgs });
+        const filename = `PartD_${claimNumber || claim?.claim_number || claimCaseId}.pdf`;
+        fd.append('email_id', String(resolvedEmailId));
+        Object.entries(fieldPayload()).forEach(([k, v]) => fd.append(k, v == null ? '' : String(v)));
+        fd.append('file', blob, filename);
+        const res = await claimCaseService.putPartD(claimCaseId, fd);
+        afterSave(res.data);
+      } else {
+        // Draft path: JSON PUT (no file), then render the PDF locally for printing.
+        const payload = { ...fieldPayload() };
+        const res = await claimCaseService.putPartD(claimCaseId, payload);
+        afterSave(res.data);
+      }
+      printPartDHtml(renderTemplate(htmlRef.current, buildPartDFlat(flatArgs)));
+      toast.success('Part-D saved');
+    } catch {
+      // interceptor toasted
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loading = loadingTemplate || loadingData;
+  const badge = statusBadge(meta);
 
   return (
     <Modal title="Part D" onClose={onClose} size="lg">
       <div className="part-d-fill">
         {loading ? (
-          <div style={{ padding: '40px 0', textAlign: 'center' }}>
-            <Spinner />
-          </div>
+          <div style={{ padding: '40px 0', textAlign: 'center' }}><Spinner /></div>
+        ) : unavailable ? (
+          <p style={{ padding: '24px 0', color: '#6b7280' }}>
+            Part-D is available after the claim is approved.
+          </p>
         ) : !htmlRef.current ? (
           <p>No PART_D template available.</p>
         ) : (
           <>
+            {badge && (
+              <div style={{ marginBottom: 12 }}>
+                <span className={`badge badge--${badge.cls}`}>{badge.label}</span>
+              </div>
+            )}
+
             <div className="part-d-fill__inputs">
               <div className="form-row">
                 <div className="form-group">
@@ -143,111 +332,110 @@ export default function PartDPrintModal({ claim, onClose }) {
               <div className="form-row">
                 <div className="form-group">
                   <label>Room Rent / Day</label>
-                  <input type="number" value={roomRentPerDay}
-                    onChange={(e) => setRoomRentPerDay(e.target.value)} />
+                  <input type="text" placeholder="e.g. Rs.5,000/day" value={textFields.roomRentPerDay}
+                    onChange={(e) => setTextField('roomRentPerDay', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>ICU Rent / Day</label>
-                  <input type="number" value={icuRentPerDay}
-                    onChange={(e) => setIcuRentPerDay(e.target.value)} />
+                  <input type="text" placeholder="e.g. Rs.12,000/day" value={textFields.icuRentPerDay}
+                    onChange={(e) => setTextField('icuRentPerDay', e.target.value)} />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label>Nursing Charges / Day</label>
-                  <input type="number" value={nursingChargesPerDay}
-                    onChange={(e) => setNursingChargesPerDay(e.target.value)} />
+                  <input type="text" value={textFields.nursingChargesPerDay}
+                    onChange={(e) => setTextField('nursingChargesPerDay', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Consultant Visit Charges / Day</label>
-                  <input type="number" value={consultantVisitChargesPerDay}
-                    onChange={(e) => setConsultantVisitChargesPerDay(e.target.value)} />
+                  <input type="text" value={textFields.consultantVisitChargesPerDay}
+                    onChange={(e) => setTextField('consultantVisitChargesPerDay', e.target.value)} />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label>Surgeon Fee / OT / Anesthetist</label>
-                  <input type="number" value={surgeonAnesthetistFee}
-                    onChange={(e) => setSurgeonAnesthetistFee(e.target.value)} />
+                  <input type="text" value={textFields.surgeonAnesthetistFee}
+                    onChange={(e) => setTextField('surgeonAnesthetistFee', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Others</label>
-                  <input type="number" value={others}
-                    onChange={(e) => setOthers(e.target.value)} />
+                  <input type="text" placeholder="e.g. Package / N/A" value={textFields.others}
+                    onChange={(e) => setTextField('others', e.target.value)} />
                 </div>
               </div>
 
-              <h4 className="part-d-fill__group-title">Authorisation Summary (INR)</h4>
+              <h4 className="part-d-fill__group-title">Authorisation Summary</h4>
               <div className="form-row">
                 <div className="form-group">
                   <label>Total Bill Amount</label>
-                  <input type="number" value={totalBillAmount}
-                    onChange={(e) => setTotalBillAmount(e.target.value)} />
+                  <input type="text" value={textFields.totalBillAmount}
+                    onChange={(e) => setTextField('totalBillAmount', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Deductions Detail</label>
-                  <input type="number" value={deductionsDetail}
-                    onChange={(e) => setDeductionsDetail(e.target.value)} />
+                  <input type="text" value={textFields.deductionsDetail}
+                    onChange={(e) => setTextField('deductionsDetail', e.target.value)} />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label>Discount</label>
-                  <input type="number" value={discount}
-                    onChange={(e) => setDiscount(e.target.value)} />
+                  <input type="text" value={textFields.discount}
+                    onChange={(e) => setTextField('discount', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Co-Pay</label>
-                  <input type="number" value={coPay}
-                    onChange={(e) => setCoPay(e.target.value)} />
+                  <input type="text" value={textFields.coPay}
+                    onChange={(e) => setTextField('coPay', e.target.value)} />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label>Deductibles</label>
-                  <input type="number" value={deductibles}
-                    onChange={(e) => setDeductibles(e.target.value)} />
+                  <input type="text" value={textFields.deductibles}
+                    onChange={(e) => setTextField('deductibles', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Total Authorised Amount</label>
-                  <input type="number" value={totalAuthorisedAmount}
-                    onChange={(e) => setTotalAuthorisedAmount(e.target.value)} />
+                  <input type="text" value={textFields.totalAuthorisedAmount}
+                    onChange={(e) => setTextField('totalAuthorisedAmount', e.target.value)} />
                 </div>
               </div>
               <div className="form-group">
                 <label>Amount to be paid by Insured</label>
-                <input type="number" value={amountToBePaidByInsured}
-                  onChange={(e) => setAmountToBePaidByInsured(e.target.value)} />
+                <input type="text" value={textFields.amountToBePaidByInsured}
+                  onChange={(e) => setTextField('amountToBePaidByInsured', e.target.value)} />
               </div>
 
               <div className="form-group">
                 <label>Remarks</label>
-                <textarea
-                  rows={2}
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                />
+                <textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
               </div>
             </div>
-
-            <iframe
-              ref={iframeRef}
-              title="PART_D form"
-              className="part-d-fill__frame"
-            />
           </>
         )}
 
         <div className="modal-actions">
-          <button type="button" className="btn btn--ghost" onClick={onClose}>Close</button>
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={handlePrint}
-            disabled={!ready}
-          >
-            Print
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={saving}>
+            Close
           </button>
+          {!loading && !unavailable && htmlRef.current && (
+            <>
+              <button type="button" className="btn btn--ghost" onClick={handleSave} disabled={saving}>
+                {saving ? <Spinner size={16} /> : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={handlePrint}
+                disabled={saving}
+              >
+                {saving ? <Spinner size={16} /> : 'Print'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </Modal>

@@ -2539,6 +2539,33 @@
     &:hover { background: $primary-dark; }
   }
 
+  // Horizontal row that hosts Enhance + Raise Claim side by side.
+  &__cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $space-3;
+  }
+
+  // Raise Claim / View Claim — distinct from Enhance so the next-step action
+  // after approval reads visually different (green = "approved → proceed").
+  &__claim-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: 10px 18px;
+    background: #16a34a;
+    color: $text-white;
+    border: none;
+    border-radius: $radius-md;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover { background: #15803d; }
+  }
+
   // Three-button row that replaced the single Response button
   &__actions {
     display: flex;
@@ -2894,6 +2921,22 @@
     font-size: $font-size-sm;
     font-weight: 700;
     color: #16a34a;
+  }
+
+  // Provider turnaround chip. Sits next to the status pill (and amount, if
+  // present) on every RECEIVED-side row. Captures how long the provider took
+  // to reply, derived from the linked email's email_date when available so
+  // it stays accurate even when validation happens long after the reply.
+  &__tat {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    background: #f1f5f9;
+    color: #475569;
+    border-radius: $radius-full;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    letter-spacing: 0.2px;
   }
 
   // Push the row-action buttons (View Email / Form / Documents) to the right.
@@ -3553,5 +3596,138 @@
     border: 1px solid $border-color;
     border-radius: $radius-md;
     background: #fff;
+  }
+}
+
+// ── Claim review (provider side) ──
+.claim-review {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  &__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  &__stat {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+
+  &__stat-label {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  &__stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  &__heading {
+    margin: 8px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      text-align: left;
+      font-weight: 600;
+      color: #6b7280;
+      background: #f9fafb;
+    }
+  }
+
+  &__total-row td {
+    border-top: 2px solid #d1d5db;
+    border-bottom: none;
+    background: #f9fafb;
+  }
+
+  &__remarks {
+    margin: 0;
+    padding: 10px 12px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    white-space: pre-wrap;
+  }
+
+  &__empty {
+    color: #6b7280;
+    margin: 4px 0;
+    font-size: 13px;
+  }
+}
+
+// ── Claim documents grid (categorized upload cards) ──
+.claim-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.claim-doc-card {
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: #fff;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  &__title {
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  &__count {
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  &__files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 20px;
+  }
+
+  &__view {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+
+    &:hover { color: #4f46e5; }
   }
 }

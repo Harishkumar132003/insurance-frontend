@@ -10,6 +10,8 @@ const RECONSIDER_TYPES = [
   'RECONSIDER_SUBMITTED',
   'RECONSIDERATION',
   'RECONSIDERATION_REQUEST',
+  // Claim-stage reconsideration uses the same form shape as pre-auth's.
+  'CLAIM_RECONSIDER',
 ];
 const ENHANCE_TYPES = [
   'ENHANCE_SUBMITTED',
@@ -17,7 +19,14 @@ const ENHANCE_TYPES = [
   'ENHANCE',
   'ENHANCEMENT',
 ];
-const ADR_TYPES = ['ADR_SUBMITTED', 'ADDITIONAL_DOC_RESPONSE'];
+const ADR_TYPES = [
+  'ADR_SUBMITTED',
+  'ADDITIONAL_DOC_RESPONSE',
+  // Claim-stage ADR submission uses the same form shape (items checklist +
+  // extra docs + clarification) as pre-auth's ADR_SUBMITTED.
+  'CLAIM_ADR_SUBMITTED',
+];
+const CLAIM_SUBMIT_TYPES = ['CLAIM_SUBMITTED'];
 
 const LABEL_OVERRIDES = {
   uhid: 'UHID',
@@ -127,7 +136,10 @@ function SubmitView({ formValues, claim }) {
   const c = claim || {};
   const insurer = c.insurer_name || '';
   const paId = paIdFrom(formValues, claim);
-  const dataJson = formValues.data_json || c.form_data_json || null;
+  // The claim object on PreAuthForm exposes the latest pre-auth FormData as
+  // either `data_json` (canonical) or `form_data_json` (older alias). Read
+  // both so old emails with NULL form_values still render via fallback.
+  const dataJson = formValues.data_json || c.data_json || c.form_data_json || null;
   const notes = formValues.notes || '';
 
   return (
@@ -461,9 +473,93 @@ function ProviderDecisionView({ formValues, claim }) {
         </Section>
       )}
 
+      {Array.isArray(formValues.approved_breakdown) && formValues.approved_breakdown.length > 0 && (
+        <Section title="Approved breakdown" cols={1}>
+          <div style={{ gridColumn: 'span 1' }}>
+            <table className="claim-review__table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>Line item</th>
+                  <th style={{ textAlign: 'right' }}>Claimed</th>
+                  <th style={{ textAlign: 'right' }}>Approved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {formValues.approved_breakdown.map((ln, idx) => (
+                  <tr key={idx}>
+                    <td>{ln?.label || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{formatINR(ln?.claimed)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatINR(ln?.approved)}</td>
+                  </tr>
+                ))}
+                <tr className="claim-review__total-row">
+                  <td><strong>Total</strong></td>
+                  <td style={{ textAlign: 'right' }}>
+                    <strong>{formatINR(formValues.approved_breakdown.reduce((s, l) => s + (Number(l?.claimed) || 0), 0))}</strong>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <strong>{formatINR(formValues.approved_breakdown.reduce((s, l) => s + (Number(l?.approved) || 0), 0))}</strong>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+
       {(formValues.remarks || formValues.query_details) && (
         <Section title={isAdr ? 'Query details / remarks' : 'Remarks'} cols={1}>
           <ReadField label="" value={formValues.remarks || formValues.query_details} />
+        </Section>
+      )}
+    </Shell>
+  );
+}
+
+// ── Claim raise view (CLAIM_SUBMITTED) ──────────────────────────────
+function ClaimSubmitView({ formValues, claim }) {
+  const c = claim || {};
+  const items = Array.isArray(formValues.bill_breakdown) ? formValues.bill_breakdown : [];
+  const claimedAmount = formValues.claimed_amount != null && formValues.claimed_amount !== ''
+    ? formValues.claimed_amount
+    : items.reduce((sum, it) => sum + (Number(it?.amount) || 0), 0);
+  const paId = c.pa_number || c.claim_number || c.claim_case_id || '';
+  return (
+    <Shell
+      title="Claim Raised"
+      subtitle={paId ? `Reference ${paId}` : undefined}
+      accent="info"
+    >
+      <Section title="Bill breakdown" hint="Itemized hospital bill submitted with the claim" cols={1}>
+        {items.length === 0 ? (
+          <ReadField label="" value="—" />
+        ) : (
+          <table className="claim-review__table" style={{ gridColumn: 'span 1' }}>
+            <thead>
+              <tr>
+                <th>Line item</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, idx) => (
+                <tr key={idx}>
+                  <td>{it?.label || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{formatINR(it?.amount)}</td>
+                </tr>
+              ))}
+              <tr className="claim-review__total-row">
+                <td><strong>Total claimed</strong></td>
+                <td style={{ textAlign: 'right' }}><strong>{formatINR(claimedAmount)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </Section>
+
+      {formValues.remarks && (
+        <Section title="Hospital remarks" cols={1}>
+          <ReadField label="" value={formValues.remarks} />
         </Section>
       )}
     </Shell>
@@ -528,6 +624,7 @@ export default function EmailFormValues({ formValues, emailType, claim }) {
   // Provider-decision forms (Approve / Deny / ADR request) are tagged with a
   // `decision` field — they take precedence over the email_type routing.
   if (formValues.decision) return <ProviderDecisionView formValues={formValues} claim={claim} />;
+  if (CLAIM_SUBMIT_TYPES.includes(emailType)) return <ClaimSubmitView formValues={formValues} claim={claim} />;
   if (SUBMITTED_TYPES.includes(emailType)) return <SubmitView formValues={formValues} claim={claim} />;
   if (RECONSIDER_TYPES.includes(emailType)) return <ReconsiderView formValues={formValues} claim={claim} />;
   if (ENHANCE_TYPES.includes(emailType)) return <EnhanceView formValues={formValues} claim={claim} />;

@@ -1,6 +1,8 @@
 // Shared helpers for fetching, populating, and rendering the PART_D form
 // template. Used by both ProviderApproveModal (capture PDF on submit) and
-// PartDPrintModal (preview + print).
+// PartDPrintModal (preview + print + save).
+
+import html2pdf from 'html2pdf.js';
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -166,4 +168,97 @@ export function buildPartDFlat({
   flat.insurer_fax = claim?.insurer_fax || flat.insurer_fax || '';
 
   return flat;
+}
+
+// ── PDF rendering (off-screen) ──────────────────────────────────────
+// Renders the populated PART_D template into a PDF Blob without showing
+// anything on screen. Shared by ProviderApproveModal (on Approve) and
+// PartDPrintModal (Generate & Attach). `htmlTemplate` is the raw template
+// HTML the caller already fetched; remaining keys are the same field values
+// `buildPartDFlat` accepts.
+
+const PARTD_PDF_IFRAME_ID = 'partd-pdf-render-frame';
+
+function inlineComputedStyles(root, win) {
+  const nodes = [root, ...root.querySelectorAll('*')];
+  nodes.forEach((el) => {
+    if (!(el instanceof win.HTMLElement) && !(el instanceof win.SVGElement)) return;
+    const computed = win.getComputedStyle(el);
+    let cssText = '';
+    for (let i = 0; i < computed.length; i += 1) {
+      const prop = computed[i];
+      cssText += `${prop}:${computed.getPropertyValue(prop)};`;
+    }
+    el.setAttribute('style', cssText);
+  });
+}
+
+function ensureHiddenPdfIframe() {
+  let iframe = document.getElementById(PARTD_PDF_IFRAME_ID);
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = PARTD_PDF_IFRAME_ID;
+    iframe.style.cssText = 'position:fixed;width:0;height:0;border:none;left:-9999px;';
+    document.body.appendChild(iframe);
+  }
+  return iframe;
+}
+
+export async function renderPartDPdfBlob({ htmlTemplate, ...rest }) {
+  if (!htmlTemplate) throw new Error('PART_D template not loaded');
+  const flat = buildPartDFlat(rest);
+  const html = renderTemplate(htmlTemplate, flat);
+
+  const iframe = ensureHiddenPdfIframe();
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+  await new Promise((resolve) => {
+    if (doc.readyState === 'complete') resolve();
+    else iframe.onload = () => resolve();
+  });
+
+  const iframeDoc = iframe.contentDocument;
+  const iframeWin = iframe.contentWindow;
+  if (!iframeDoc?.body || !iframeWin) throw new Error('PART_D template not ready');
+  inlineComputedStyles(iframeDoc.body, iframeWin);
+
+  const contentWidth = Math.max(
+    iframeDoc.body.scrollWidth,
+    iframeDoc.documentElement.scrollWidth,
+    794,
+  );
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = [
+    'position:fixed', 'left:0', 'top:0', `width:${contentWidth}px`,
+    'background:#fff', 'color:#000', 'opacity:0', 'pointer-events:none',
+    'z-index:-1', 'margin:0', 'padding:0',
+  ].join(';');
+  const bodyStyle = iframeDoc.body.getAttribute('style') || '';
+  wrapper.setAttribute('style', `${bodyStyle};${wrapper.getAttribute('style')}`);
+  Array.from(iframeDoc.body.children).forEach((child) => {
+    wrapper.appendChild(child.cloneNode(true));
+  });
+  document.body.appendChild(wrapper);
+  try {
+    return await html2pdf()
+      .set({
+        margin: 10,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          windowWidth: contentWidth,
+          width: contentWidth,
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] },
+      })
+      .from(wrapper)
+      .outputPdf('blob');
+  } finally {
+    if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+  }
 }
