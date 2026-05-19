@@ -154,6 +154,7 @@ export const claimCaseService = {
   getAllEmails: (id, params) => api.get(`/claim-cases/${id}/emails/all`, { params }),
   getSubmissions: (id) => api.get(`/claim-cases/${id}/submissions`),
   getAllEmailsPaginated: (params) => api.get('/claim-cases/emails/all', { params }),
+  getUncategorizedCount: () => api.get('/claim-cases/emails/uncategorized-count'),
   getEmails: (id, direction) =>
     api.get(`/claim-cases/${id}/emails`, { params: direction ? { direction } : {} }),
   getEmailDetail: (id, emailId) =>
