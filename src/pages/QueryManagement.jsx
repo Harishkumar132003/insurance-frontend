@@ -338,7 +338,7 @@ export default function QueryManagement() {
                       </div>
                     )}
                     <div className="email-inbox__item-preview">
-                      {email.body?.replace(/<[^>]*>/g, '').slice(0, 120) || email.preview || 'No content'}
+                      {email.body?.replace(/<[^>]*>/g, '').slice(0, 120) || email.preview || ''}
                     </div>
                   </div>
                   {email.claim_number && (

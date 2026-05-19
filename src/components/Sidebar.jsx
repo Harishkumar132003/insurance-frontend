@@ -65,6 +65,16 @@ export default function Sidebar({ collapsed, onToggle }) {
         />
       </div>
 
+      <button
+        className="sidebar__toggle"
+        onClick={onToggle}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {collapsed
+          ? <span style={{ display: 'inline-flex', marginRight: -6 }}><IconChevronRight size={14} /><IconChevronRight size={14} /></span>
+          : <span style={{ display: 'inline-flex', marginRight: -6 }}><IconChevronLeft size={14} /><IconChevronLeft size={14} /></span>}
+      </button>
+
       <nav className="sidebar__nav">
         {filteredItems.map((item) => {
           const override = isItemActive(item);
@@ -103,10 +113,6 @@ export default function Sidebar({ collapsed, onToggle }) {
           {!collapsed && <span>Logout</span>}
         </button>
       </div>
-
-      <button className="sidebar__toggle" onClick={onToggle}>
-        {collapsed ? <IconChevronRight /> : <IconChevronLeft />}
-      </button>
     </aside>
   );
 }
