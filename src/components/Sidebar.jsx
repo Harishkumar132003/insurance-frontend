@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth, ROLES } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationsContext';
 import {
   IconDashboard,
   IconHospital,
@@ -32,7 +33,7 @@ const menuItems = [
   { path: '/policy-providers', label: 'Policy Providers', icon: IconShield, feature: 'policy_providers', roles: [SUPER_ADMIN] },
   { path: '/claim-list', label: 'PreAuth List', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN] },
   { path: '/claims', label: 'Claims', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN] },
-  { path: '/query-management', label: 'Email Inbox', icon: IconQuery, feature: 'query_management', roles: [HOSPITAL_ADMIN] },
+  { path: '/query-management', label: 'Email Inbox', icon: IconQuery, feature: 'query_management', roles: [HOSPITAL_ADMIN], hasUnreadIndicator: true },
   { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, feature: 'preauth_form', roles: [HOSPITAL_ADMIN] },
   { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
   { path: '/hospital-info', label: 'Hospital Info', icon: IconHospital, feature: 'hospital_info', roles: [HOSPITAL_ADMIN] },
@@ -44,6 +45,11 @@ const menuItems = [
 export default function Sidebar({ collapsed, onToggle }) {
   const { user, logout, hasFeature } = useAuth();
   const location = useLocation();
+  // Unread counts keyed by route path. Sourced from NotificationsContext,
+  // which fetches an initial count on mount and bumps it via SSE when a new
+  // RECEIVED email lands. Non-hospital-admin roles get 0 (no provider work).
+  const { unreadCount } = useNotifications();
+  const unreadByPath = { '/query-management': unreadCount };
 
   const filteredItems = menuItems.filter(
     (item) => item.roles.includes(user?.role) && hasFeature(item.feature)
@@ -91,6 +97,11 @@ export default function Sidebar({ collapsed, onToggle }) {
             >
               <item.icon className="sidebar__icon" />
               {!collapsed && <span>{item.label}</span>}
+              {item.hasUnreadIndicator && unreadByPath[item.path] > 0 && (
+                <span className="sidebar__unread-badge" aria-label={`${unreadByPath[item.path]} unread`}>
+                  {unreadByPath[item.path] > 99 ? '99+' : unreadByPath[item.path]}
+                </span>
+              )}
             </NavLink>
           );
         })}

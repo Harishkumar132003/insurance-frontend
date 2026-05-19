@@ -91,6 +91,7 @@
     cursor: pointer;
     width: 100%;
     text-align: left;
+    position: relative;
 
     &:hover {
       background: $bg-sidebar-hover;
@@ -107,6 +108,42 @@
     font-size: 1.25rem;
     flex-shrink: 0;
   }
+
+ &__unread-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 18px;        // 22px is chunky — 18px feels tighter
+  height: 18px;           // match min-width for perfect circle on single digits
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;       // 600 is too heavy against sidebar text; 500 matches the design system
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;  // keeps digits aligned (12 vs 99)
+  
+  // Cap very large counts visually
+  &--overflow::after {
+    content: "+";
+  }
+}
+
+&--collapsed &__unread-badge {
+  position: absolute;
+  top: 2px;               // 4px sits too far in; 2px hugs the icon better
+  right: 2px;
+  margin-left: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  font-size: 9px;
+  border: 1.5px solid #1e1b3a;  // ring matches sidebar bg so badge "lifts" off icon
+  box-sizing: content-box;       // border doesn't shrink the badge
+}
 
   &__footer {
     padding: $space-3;

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastProvider } from './components/Toast';
 import ToastBridge from './components/ToastBridge';
 import { AuthProvider, ROLES } from './context/AuthContext';
+import { NotificationsProvider } from './context/NotificationsContext';
 import PrivateRoute from './components/PrivateRoute';
 import FeatureGate from './components/FeatureGate';
 import Layout from './components/Layout';
@@ -39,6 +40,7 @@ export default function App() {
       <ToastProvider>
         <ToastBridge />
         <AuthProvider>
+          <NotificationsProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
@@ -255,6 +257,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </NotificationsProvider>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

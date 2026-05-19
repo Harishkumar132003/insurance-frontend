@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { claimCaseService, policyProviderService } from '../services/api';
 import { useAuth, ROLES } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationsContext';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
-import { IconRefresh } from '../components/icons/Icons';
+import { IconRefresh, IconCheck } from '../components/icons/Icons';
 import { useToast } from '../components/Toast';
 import './Pages.scss';
 
@@ -36,6 +37,7 @@ export default function QueryManagement() {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const { subscribe: subscribeToNotifications, refresh: refreshUnreadCount } = useNotifications();
   const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
   const [searchParams, setSearchParams] = useSearchParams();
   const filterClaimId = searchParams.get('id');
@@ -59,6 +61,11 @@ export default function QueryManagement() {
   const [viewUrl, setViewUrl] = useState(null);
   const [viewFilename, setViewFilename] = useState('');
   const [viewContentType, setViewContentType] = useState('');
+  // Track email ids currently being marked-read so we can disable the inline
+  // button + show a spinner without blocking the rest of the list.
+  const [markingReadIds, setMarkingReadIds] = useState(() => new Set());
+  // Email pending the "mark as read without categorising" confirmation modal.
+  const [pendingMarkRead, setPendingMarkRead] = useState(null);
   // Search / provider filter — same debounced-input pattern as ClaimList.
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -109,8 +116,49 @@ export default function QueryManagement() {
     fetchEmails(page);
   }, [page, pageSize, filterClaimId, search, providerFilter]);
 
+  // Live refresh: when an SSE `email.received` event fires while the user is
+  // on this page, refetch the current page so the new email appears at top.
+  useEffect(() => {
+    if (isInsuranceProvider) return undefined;
+    const unsub = subscribeToNotifications(() => {
+      fetchEmails(page);
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInsuranceProvider, subscribeToNotifications, page, pageSize, filterClaimId, search, providerFilter]);
+
   const isEmailRead = (email) =>
     isInsuranceProvider ? !!email.provider_read : !!email.is_read;
+
+  const requestMarkAsRead = (email, e) => {
+    e.stopPropagation();
+    if (markingReadIds.has(email.id)) return;
+    setPendingMarkRead(email);
+  };
+
+  const confirmMarkAsRead = async () => {
+    const email = pendingMarkRead;
+    if (!email) return;
+    setPendingMarkRead(null);
+    setMarkingReadIds((prev) => {
+      const next = new Set(prev);
+      next.add(email.id);
+      return next;
+    });
+    try {
+      await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+      fetchEmails(page);
+      refreshUnreadCount();
+    } catch {
+      // handled by interceptor
+    } finally {
+      setMarkingReadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(email.id);
+        return next;
+      });
+    }
+  };
 
   const handleEmailClick = async (email) => {
     if (isInsuranceProvider) {
@@ -199,6 +247,7 @@ export default function QueryManagement() {
       toast.success('Extracted data updated');
       setSelectedEmail(null);
       fetchEmails(page);
+      refreshUnreadCount();
     } catch {
       // handled by interceptor
     } finally {
@@ -345,6 +394,20 @@ export default function QueryManagement() {
                     <span className="badge badge--info" style={{ flexShrink: 0, alignSelf: 'center' }}>
                       {email.claim_number}
                     </span>
+                  )}
+                  {!read && !isInsuranceProvider && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={(e) => requestMarkAsRead(email, e)}
+                      disabled={markingReadIds.has(email.id)}
+                      title="Mark as read"
+                      style={{ flexShrink: 0, alignSelf: 'center' }}
+                    >
+                      {markingReadIds.has(email.id)
+                        ? <Spinner size={14} />
+                        : <><IconCheck size={14} /> Mark read</>}
+                    </button>
                   )}
                 </div>
                 );
@@ -634,6 +697,40 @@ export default function QueryManagement() {
                 </button>
               </div>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {pendingMarkRead && (
+        <Modal title="Mark as read" onClose={() => setPendingMarkRead(null)}>
+          <p style={{ marginTop: 0 }}>
+            Do you want to mark this email as read <strong>without categorising</strong> it?
+          </p>
+          <p style={{ color: '#6b7280', fontSize: 13 }}>
+            The AI-suggested status, claim number and amount will NOT be saved.
+            You can still open the email later from the case timeline.
+          </p>
+          {pendingMarkRead.subject && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '8px 12px',
+                background: '#f3f4f6',
+                borderRadius: 6,
+                fontSize: 13,
+                color: '#374151',
+              }}
+            >
+              <strong>Subject:</strong> {pendingMarkRead.subject}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button className="btn btn--ghost" onClick={() => setPendingMarkRead(null)}>
+              Cancel
+            </button>
+            <button className="btn btn--primary" onClick={confirmMarkAsRead}>
+              Mark as read
+            </button>
           </div>
         </Modal>
       )}
