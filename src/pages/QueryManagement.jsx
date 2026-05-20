@@ -575,7 +575,9 @@ export default function QueryManagement() {
                 <label>Email Type</label>
                 <select value={emailType} onChange={(e) => setEmailType(e.target.value)}>
                   {(isClaimStageEmail(selectedEmail) ? CLAIM_STAGE_EMAIL_TYPE_OPTIONS : PRE_AUTH_EMAIL_TYPE_OPTIONS).map((opt) => (
-                    <option key={opt} value={opt}>{opt.replace(/_/g, ' ')}</option>
+                    <option key={opt} value={opt}>
+                      {opt === 'ADR_NMI' ? 'ADR' : opt.replace(/_/g, ' ')}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -585,7 +587,7 @@ export default function QueryManagement() {
                     <label>Claim Status</label>
                     <select value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)}>
                       {(isClaimStageEmail(selectedEmail) ? CLAIM_STAGE_CLAIM_STATUS_OPTIONS : PRE_AUTH_CLAIM_STATUS_OPTIONS).map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
+                        <option key={opt} value={opt}>{opt === 'ADR_NMI' ? 'ADR' : opt}</option>
                       ))}
                     </select>
                   </div>

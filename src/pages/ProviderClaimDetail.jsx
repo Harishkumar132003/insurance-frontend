@@ -68,6 +68,10 @@ function statusBadgeVariant(status) {
 
 function statusLabel(status) {
   if (!status) return 'Submitted';
+  // Display override: the bare enum reads as "ADR NMI" through the generic
+  // title-case path below, but the intended on-screen label is just "ADR".
+  // Other ADR_* statuses (CLAIM_ADR_NMI, ADR_SUBMITTED, …) fall through.
+  if (status === 'ADR_NMI') return 'ADR';
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 

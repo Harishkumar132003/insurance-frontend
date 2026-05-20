@@ -324,6 +324,30 @@
     }
   }
 
+  &__tip {
+    display: flex;
+    align-items: flex-start;
+    gap: $space-2;
+    padding: $space-3 $space-4;
+    background: rgba(99, 102, 241, 0.06);
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    border-radius: $radius-md;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    line-height: 1.5;
+
+    strong {
+      color: $primary;
+      font-weight: 600;
+    }
+  }
+
+  &__tip-icon {
+    color: $primary;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
   &__card-title {
     font-size: $font-size-lg;
     font-weight: 600;
@@ -461,6 +485,7 @@
   grid-template-columns: 1fr 1fr;
   gap: $space-6;
   max-width: 700px;
+  margin: 0 auto;
 
   @include mobile {
     grid-template-columns: 1fr;
