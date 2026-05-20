@@ -5,13 +5,13 @@ export default function PreAuthChoicePage() {
   const navigate = useNavigate();
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 96px)' }}>
       <div className="page-header">
         <h1>Pre Auth Form</h1>
         <p>Choose how you want to fill the pre-authorization form</p>
       </div>
 
-      <div className="preauth-choice">
+      <div className="preauth-choice" style={{ marginTop: 'auto', marginBottom: 'auto' }}>
         <button
           className="preauth-choice__card"
           onClick={() => navigate('/pre-auth/ai')}

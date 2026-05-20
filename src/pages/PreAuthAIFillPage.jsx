@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { workflowService, policyProviderService } from '../services/api';
-import { IconArrowLeft } from '../components/icons/Icons';
+import { IconArrowLeft, IconInfo } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import './Pages.scss';
@@ -231,6 +231,14 @@ function PatientSummaryForm({ onResult }) {
               onChange={(e) => setUhid(e.target.value)}
               autoFocus
             />
+          </div>
+          <div className="workflow__tip">
+            <IconInfo size={16} className="workflow__tip-icon" />
+            <span>
+              <strong>Tip:</strong> The UHID is the unique hospital identifier assigned
+              to the patient at registration. AI will fetch demographics, diagnosis,
+              and treatment history automatically.
+            </span>
           </div>
           <button
             type="submit"
