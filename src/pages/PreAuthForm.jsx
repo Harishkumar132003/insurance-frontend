@@ -9,7 +9,30 @@ import Modal from '../components/Modal';
 import ReadOnlyForm from '../components/ReadOnlyForm';
 import EmailFormValues from '../components/EmailFormValues';
 import { useAuth, ROLES } from '../context/AuthContext';
+import { CLAIM_DOCUMENT_TYPES } from '../constants/claimDocuments';
 import './Pages.scss';
+
+// Group email attachments by their document_type, ordered by the canonical
+// claim-document categories, with anything untagged falling under "Other".
+function groupAttachmentsByType(attachments) {
+  const byKey = new Map();
+  for (const att of attachments) {
+    const key = att.document_type || 'OTHER';
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(att);
+  }
+  const ordered = [];
+  for (const c of CLAIM_DOCUMENT_TYPES) {
+    if (byKey.has(c.key)) ordered.push({ label: c.label, items: byKey.get(c.key) });
+  }
+  if (byKey.has('OTHER')) ordered.push({ label: 'Other', items: byKey.get('OTHER') });
+  return ordered;
+}
+
+// treatment_details may be a string (legacy / AI-prefill) or an array of
+// strings (the multi-entry field). Coerce to a single readable string.
+const treatmentText = (v) =>
+  Array.isArray(v) ? v.filter((s) => s && String(s).trim()).join('; ') : (v || '');
 
 const ENHANCE_TYPES = ['ENHANCE', 'ENHANCEMENT', 'ENHANCE_REQUEST', 'ENHANCE_RESPONSE'];
 const ADR_TYPES = ['ADR_NMI', 'ADR', 'ADDITIONAL_DOCUMENT_REQUEST', 'ADDITIONAL_DOC_RESPONSE'];
@@ -641,7 +664,7 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
     `Please find enclosed the cashless pre-authorisation request (Part C) for our patient ${submitResult.patient_name || '—'} ` +
     `(UHID: ${submitResult.uhid || '—'}${insured.policy_number ? `, Policy: ${insured.policy_number}` : ''}).\n\n` +
     `Diagnosis: ${ti.provisional_diagnosis || submitResult.diagnosis || '—'} (ICD-10: ${ti.icd10_code || submitResult.icd10_code || '—'})\n` +
-    `Proposed Treatment: ${ti.surgery_name || ti.treatment_details || '—'}\n` +
+    `Proposed Treatment: ${ti.surgery_name || treatmentText(ti.treatment_details) || '—'}\n` +
     `Admission: ${hosp.is_emergency ? 'Emergency' : 'Planned'} — ${hosp.admission_date || '—'}${hosp.admission_time ? ' ' + hosp.admission_time : ''}\n` +
     `Expected Stay: ${hosp.expected_days ?? '—'} day(s)${Number(hosp.icu_days) > 0 ? ' (ICU required)' : ''}\n` +
     `Requested Amount: ${formatINR(Number(hosp.costs?.total_cost) || Number(submitResult.requested_amount) || 0)}\n\n` +
@@ -1521,6 +1544,10 @@ export default function PreAuthForm() {
   const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
   const backPath = location.state?.from
     || (location.pathname.startsWith('/claims/') ? '/claims' : '/claim-list');
+  // Which stage's timeline to show, derived from the route the page was
+  // opened under: /claims/:id → CLAIM, everything else (/claim-list/:id) →
+  // PRE_AUTH. The "View Claim" / "View Pre-Auth" buttons flip between them.
+  const timelineStage = location.pathname.startsWith('/claims/') ? 'CLAIM' : 'PRE_AUTH';
   const { claimCaseId: routeClaimCaseId } = useParams();
   const [loadingCase, setLoadingCase] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
@@ -1656,7 +1683,7 @@ export default function PreAuthForm() {
         doctor_registration: doctor.registration || doctor.registration_number || doctor.doctor_registration || '',
         doctor_contact: doctor.contact || doctor.contact_number || doctor.doctor_contact || '',
         // Hospitalization / treatment — for the SubmitPortalForm prefill
-        treatment: doctor.surgery_name || doctor.treatment_details || doctor.treatment_plan || '',
+        treatment: doctor.surgery_name || treatmentText(doctor.treatment_details) || doctor.treatment_plan || '',
         admission_mode: hospitalization.is_emergency ? 'Emergency' : 'Planned',
         admission_date: hospitalization.admission_date || '',
         admission_time: hospitalization.admission_time || '',
@@ -1806,6 +1833,8 @@ export default function PreAuthForm() {
           for (const [k, v] of Object.entries(sectionData)) {
             if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
               for (const [sk, sv] of Object.entries(v)) flat[sk] = sv;
+            } else if (Array.isArray(v)) {
+              flat[k] = v.filter((s) => s != null && typeof s !== 'object' && String(s).trim()).join('; ');
             } else {
               flat[k] = v;
             }
@@ -2055,7 +2084,14 @@ export default function PreAuthForm() {
       // Sort oldest → newest first so the ADR_NMI → ADR_SUBMITTED look-ahead
       // works on chronological order; the array is reversed afterwards so the
       // timeline reads newest-first (latest at top, DRAFT at the bottom).
+      // Whether this case has any claim-stage history (drives the "View Claim"
+      // button on the pre-auth timeline). Computed from the FULL history before
+      // we filter down to the current stage below.
+      const hasClaimStageHistory = statusHistory.some((e) => e.stage === 'CLAIM');
       const sorted = [...statusHistory]
+        // Show only the timeline for the stage the page was opened under.
+        // Legacy entries with no stage default to PRE_AUTH.
+        .filter((e) => (e.stage || 'PRE_AUTH') === timelineStage)
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       // Build emailId → email_date lookup so provider TAT can be measured from
       // the actual email timestamps (more accurate than status_history
@@ -2080,7 +2116,21 @@ export default function PreAuthForm() {
         const delta = new Date(ownAt) - new Date(lastOutboundAt);
         return Number.isFinite(delta) && delta >= 0 ? delta : null;
       });
-      return sorted.map((entry, i) => {
+      // Per-step TAT: elapsed time from the immediately preceding step. Uses
+      // the same "effective time" as above (email timestamp if linked, else
+      // created_at). First/oldest step has no predecessor → null.
+      const ownAtByIndex = sorted.map((entry) =>
+        (entry.email_id != null && emailDateById.get(entry.email_id)) || entry.created_at,
+      );
+      const stepTatByIndex = sorted.map((entry, i) => {
+        if (i === 0) return null;
+        const cur = ownAtByIndex[i];
+        const prev = ownAtByIndex[i - 1];
+        if (!cur || !prev) return null;
+        const delta = new Date(cur) - new Date(prev);
+        return Number.isFinite(delta) && delta >= 0 ? delta : null;
+      });
+      const mapped = sorted.map((entry, i) => {
         // For ADR_NMI entries: find the next ADR_SUBMITTED entry that
         // (chronologically) responded to it, so the row can offer a
         // "View Submitted Documents" shortcut alongside "View Requested".
@@ -2129,11 +2179,31 @@ export default function PreAuthForm() {
           // emails are AI-parsed text with no structured form.
           isReceivedSide: RECEIVED_SIDE.has(entry.status),
           providerTatMs: tatByIndex[i],
+          stepTatMs: stepTatByIndex[i],
+          rawStage: entry.stage || 'PRE_AUTH',
         };
       }).reverse();
+
+      // Cross-stage navigation flags:
+      // - On the CLAIM timeline, the "Claim Raised" row (CLAIM SUBMITTED) gets
+      //   a "View Pre-Auth" button.
+      // - On the PRE_AUTH timeline, the newest row gets a "View Claim" button
+      //   when this case actually has claim-stage history.
+      if (timelineStage === 'CLAIM') {
+        const claimRaised = mapped.find(
+          (ev) => ev.rawStage === 'CLAIM' && ev.rawStatus === 'SUBMITTED',
+        );
+        if (claimRaised) claimRaised.showViewPreAuth = true;
+      } else if (hasClaimStageHistory && mapped.length > 0) {
+        mapped[0].showViewClaim = true;
+      }
+      return mapped;
     }
 
     // Fallback when status_history is missing
+    // The claim timeline has no claim-stage history yet → empty (the timeline
+    // renders a "No claim activity yet" message).
+    if (timelineStage === 'CLAIM') return [];
     const events = [{
       status: 'Submitted',
       variant: 'info',
@@ -2155,7 +2225,7 @@ export default function PreAuthForm() {
     }
     // Newest-first to match the status_history branch above.
     return events.reverse();
-  }, [submitResult, claimEmails, statusHistory]);
+  }, [submitResult, claimEmails, statusHistory, timelineStage]);
 
   if (loadingCase || !submitResult) {
     return (
@@ -2386,6 +2456,9 @@ export default function PreAuthForm() {
               onAction={handleStatusAction}
               pendingAction={pendingAction}
               claimOnboarded={submitResult.is_onboarded === true}
+              emptyText={timelineStage === 'CLAIM' ? 'No claim activity yet' : 'No timeline events'}
+              onViewPreAuth={() => navigate(`/claim-list/${routeClaimCaseId}`, { state: { from: backPath } })}
+              onViewClaim={() => navigate(`/claims/${routeClaimCaseId}`, { state: { from: backPath } })}
             />
           </Accordion>
         </div>
@@ -2478,6 +2551,11 @@ export default function PreAuthForm() {
                           formValues={fv || {}}
                           emailType={viewedEmail.email_type}
                           claim={submitResult}
+                          onOpenAttachment={(attachmentId) => {
+                            const att = viewedEmail.attachments?.find((a) => a.id === attachmentId)
+                              || { id: attachmentId };
+                            viewEmailAttachment(att);
+                          }}
                         />
                       </div>
                     );
@@ -2549,31 +2627,38 @@ export default function PreAuthForm() {
                 )}
 
                 {Array.isArray(viewedEmail.attachments) && viewedEmail.attachments.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4 }}>
                       Attachments ({viewedEmail.attachments.length})
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {viewedEmail.attachments.map((att) => {
-                        const isLoading = loadingAttachmentId === att.id;
-                        return (
-                          <button
-                            key={att.id}
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            onClick={() => viewEmailAttachment(att)}
-                            disabled={loadingAttachmentId !== null}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                          >
-                            {isLoading && <Spinner size={12} />}
-                            {att.original_filename}
-                            {typeof att.file_size === 'number' && (
-                              <> ({(att.file_size / 1024).toFixed(1)} KB)</>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {groupAttachmentsByType(viewedEmail.attachments).map((group) => (
+                      <div key={group.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
+                          {group.label} ({group.items.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {group.items.map((att) => {
+                            const isLoading = loadingAttachmentId === att.id;
+                            return (
+                              <button
+                                key={att.id}
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => viewEmailAttachment(att)}
+                                disabled={loadingAttachmentId !== null}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                              >
+                                {isLoading && <Spinner size={12} />}
+                                {att.original_filename}
+                                {typeof att.file_size === 'number' && (
+                                  <> ({(att.file_size / 1024).toFixed(1)} KB)</>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2663,9 +2748,10 @@ function formatProviderTat(ms) {
 
 function StatusTimeline({
   events, onViewEmail, onAction, pendingAction, claimOnboarded,
+  emptyText = 'No timeline events', onViewPreAuth, onViewClaim,
 }) {
   if (!events || events.length === 0) {
-    return <div className="claim-status-timeline__empty">No timeline events</div>;
+    return <div className="claim-status-timeline__empty">{emptyText}</div>;
   }
   // Helper: is the (emailId, mode) pair the one currently being fetched?
   const isPending = (emailId, mode) =>
@@ -2673,6 +2759,11 @@ function StatusTimeline({
   // Helper: any fetch in flight (so we can disable sibling buttons too).
   const anyPending = !!pendingAction;
   const APPROVAL_OUTCOMES = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'ENHANCEMENT_APPROVED']);
+  // Cross-stage navigation nodes: a "View Pre-Auth" node hangs off the bottom
+  // of the claim timeline, and a "View Claim" node sits at the top of the
+  // pre-auth timeline (claim is the forward/newer direction).
+  const hasViewPreAuth = !!onViewPreAuth && events.some((e) => e.showViewPreAuth);
+  const hasViewClaim = !!onViewClaim && events.some((e) => e.showViewClaim);
   // Whether to render the "View Form" button for a given entry. On the
   // hospital-side timeline, RECEIVED-side rows (insurer/provider decisions)
   // never get a "View Form" button — regardless of whether the provider is
@@ -2689,11 +2780,29 @@ function StatusTimeline({
     !(claimOnboarded && ev.isReceivedSide && !APPROVAL_OUTCOMES.has(ev.rawStatus));
   return (
     <div className="claim-status-timeline">
+      {hasViewClaim && (
+        <div className="claim-status-timeline__row">
+          <div className="claim-status-timeline__track">
+            <div className="claim-status-timeline__dot" />
+            <div className="claim-status-timeline__line" />
+          </div>
+          <div className="claim-status-timeline__content">
+            <button
+              type="button"
+              className="btn btn--primary btn--sm claim-status-timeline__stage-link"
+              onClick={onViewClaim}
+              title="View the claim timeline for this case"
+            >
+              View Claim →
+            </button>
+          </div>
+        </div>
+      )}
       {events.map((ev, idx) => (
         <div key={idx} className={`claim-status-timeline__row claim-status-timeline__row--${ev.variant || 'default'}`}>
           <div className="claim-status-timeline__track">
             <div className="claim-status-timeline__dot" />
-            {idx < events.length - 1 && <div className="claim-status-timeline__line" />}
+            {(idx < events.length - 1 || hasViewPreAuth) && <div className="claim-status-timeline__line" />}
           </div>
           <div className="claim-status-timeline__content">
             <div className="claim-status-timeline__row-head">
@@ -2704,12 +2813,12 @@ function StatusTimeline({
               {ev.amount != null && ev.amount !== '' && (
                 <span className="claim-status-timeline__amount">{formatINR(ev.amount)}</span>
               )}
-              {ev.isReceivedSide && formatProviderTat(ev.providerTatMs) && (
+              {formatProviderTat(ev.stepTatMs) && (
                 <span
                   className="claim-status-timeline__tat"
-                  title="Time taken by the provider to reply"
+                  title="Time elapsed since the previous step"
                 >
-                  Provider TAT: {formatProviderTat(ev.providerTatMs)}
+                  TAT: {formatProviderTat(ev.stepTatMs)}
                 </span>
               )}
               <div className="claim-status-timeline__row-actions">
@@ -2773,6 +2882,23 @@ function StatusTimeline({
           </div>
         </div>
       ))}
+      {hasViewPreAuth && (
+        <div className="claim-status-timeline__row">
+          <div className="claim-status-timeline__track">
+            <div className="claim-status-timeline__dot" />
+          </div>
+          <div className="claim-status-timeline__content">
+            <button
+              type="button"
+              className="btn btn--primary btn--sm claim-status-timeline__stage-link"
+              onClick={onViewPreAuth}
+              title="View the pre-authorisation timeline for this case"
+            >
+              ← View Pre-Auth
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -111,6 +111,34 @@ export const policyProviderService = {
     }
     return api.post(endpoint);
   },
+  // Providers onboarded to the current admin's hospital (feeds pre-auth selectors)
+  getForHospital: () => api.get('/hospital-providers/providers'),
+};
+
+// Hospital ↔ provider onboarding (MOU + room charges)
+export const hospitalProviderService = {
+  getAll: () => api.get('/hospital-providers'),
+  getAvailable: () => api.get('/hospital-providers/available'),
+  extractMou: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/hospital-providers/extract-mou', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  create: (fields, file) => {
+    const formData = new FormData();
+    Object.entries(fields).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) formData.append(k, v);
+    });
+    if (file) formData.append('file', file);
+    return api.post('/hospital-providers', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  update: (id, data) => api.put(`/hospital-providers/${id}`, data),
+  delete: (id) => api.delete(`/hospital-providers/${id}`),
+  viewMou: (id) => api.get(`/hospital-providers/${id}/mou`, { responseType: 'blob' }),
 };
 
 // GET & POST /hospitals/{hospital_id}/config

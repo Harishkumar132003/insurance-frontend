@@ -1,0 +1,175 @@
+.po-page {
+  padding: 1.5rem;
+
+  .po-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+  }
+
+  .po-empty {
+    margin-top: 2rem;
+  }
+
+  .po-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+  }
+
+  .po-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+
+    &__header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    &__icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: #eef2ff;
+      color: #4f46e5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    &__title {
+      h3 { margin: 0; font-size: 1rem; }
+      span { font-size: 0.75rem; color: #6b7280; }
+    }
+
+    &__body {
+      font-size: 0.85rem;
+      color: #374151;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      strong { color: #6b7280; font-weight: 600; }
+    }
+
+    &__actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: auto;
+      a { text-decoration: none; }
+    }
+
+    &__delete {
+      color: #dc2626;
+    }
+  }
+}
+
+.po-mou-frame {
+  width: 100%;
+  height: 70vh;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.po-form {
+  &__mode {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+
+    label {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+
+      &.is-active {
+        border-color: #4f46e5;
+        background: #eef2ff;
+        color: #4338ca;
+        font-weight: 600;
+      }
+    }
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1rem;
+  }
+
+  &__hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: #6b7280;
+  }
+
+  &__charges {
+    margin-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+
+    &-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      h4 { margin: 0; font-size: 0.9rem; }
+    }
+  }
+
+  &__mou {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+
+    input[type='file'] {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  &__room-row {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  // Match the styled .form-group inputs for the bare room-charge / select fields.
+  &__room-row input,
+  select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: #111827;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+
+    &:focus {
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    &::placeholder { color: #9ca3af; }
+  }
+}

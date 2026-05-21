@@ -7,10 +7,26 @@ import { IconArrowLeft, IconChevronRight, IconCheck, IconAlertCircle, IconX, Ico
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
-import ProviderApproveModal from '../components/ProviderApproveModal';
 import PartDPrintModal from '../components/PartDPrintModal';
 import EmailFormValues from '../components/EmailFormValues';
 import './Pages.scss';
+
+// Group email attachments by their document_type, ordered by the canonical
+// claim-document categories, with anything untagged falling under "Other".
+function groupAttachmentsByType(attachments) {
+  const byKey = new Map();
+  for (const att of attachments) {
+    const key = att.document_type || 'OTHER';
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(att);
+  }
+  const ordered = [];
+  for (const c of CLAIM_DOCUMENT_TYPES) {
+    if (byKey.has(c.key)) ordered.push({ label: c.label, items: byKey.get(c.key) });
+  }
+  if (byKey.has('OTHER')) ordered.push({ label: 'Other', items: byKey.get('OTHER') });
+  return ordered;
+}
 
 const SUBMITTED_TYPES = ['SUBMITTED', 'APPLIED'];
 const ENHANCE_SUBMITTED_TYPES = ['ENHANCE_SUBMITTED', 'ENHANCE_REQUEST', 'ENHANCE', 'ENHANCEMENT'];
@@ -75,6 +91,21 @@ function statusLabel(status) {
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function formatProviderTat(ms) {
+  if (ms == null || Number.isNaN(ms) || ms < 0) return null;
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 1) return '<1m';
+  const days = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins = totalMin % 60;
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (mins && !days) parts.push(`${mins}m`);
+  if (!parts.length) parts.push('0m');
+  return parts.join(' ');
+}
+
 export default function ProviderClaimDetail() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -93,9 +124,9 @@ export default function ProviderClaimDetail() {
   // when current_stage === 'CLAIM'.
   const [claimData, setClaimData] = useState(null);
 
-  // Per-action modal state. Pre-auth uses the Part-D ProviderApproveModal;
-  // claim stage uses an itemized approve modal opened via claimApproveOpen.
-  const [approveOpen, setApproveOpen] = useState(false);
+  // Per-action modal state. Pre-auth approval is the unified Part-D modal
+  // (fill → save → print → submit) opened via the `partD` state; claim stage
+  // uses an itemized approve modal opened via claimApproveOpen.
   const [claimApproveOpen, setClaimApproveOpen] = useState(false);
   // Array of { label, claimed: number, approved: string } mirroring the
   // hospital's bill_breakdown. Empty array → fallback single-amount UI.
@@ -272,6 +303,23 @@ export default function ProviderClaimDetail() {
       const sorted = [...statusHistory]
         .filter((entry) => entry.status !== 'DRAFT')
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      // Per-step TAT: elapsed time from the immediately preceding step. Uses
+      // the email timestamp when the row links to an email, else created_at.
+      const emailDateById = new Map();
+      for (const e of claimEmails) {
+        if (e.id != null && e.email_date) emailDateById.set(e.id, e.email_date);
+      }
+      const ownAtByIndex = sorted.map((entry) =>
+        (entry.email_id != null && emailDateById.get(entry.email_id)) || entry.created_at,
+      );
+      const stepTatByIndex = sorted.map((entry, i) => {
+        if (i === 0) return null;
+        const cur = ownAtByIndex[i];
+        const prev = ownAtByIndex[i - 1];
+        if (!cur || !prev) return null;
+        const delta = new Date(cur) - new Date(prev);
+        return Number.isFinite(delta) && delta >= 0 ? delta : null;
+      });
       return sorted.map((entry, i) => {
         // For ADR_NMI rows, locate the next ADR_SUBMITTED so we can offer a
         // "Response Documents" shortcut alongside "Requested Documents".
@@ -312,6 +360,7 @@ export default function ProviderClaimDetail() {
           rawStatus: entry.status,
           submittedEmailId,
           isReceivedSide: RECEIVED_SIDE.has(entry.status),
+          stepTatMs: stepTatByIndex[i],
         };
       }).reverse();
     }
@@ -322,13 +371,6 @@ export default function ProviderClaimDetail() {
       timestamp: claim.submitted_at,
     }];
   }, [claim, statusHistory]);
-
-  const closeApprove = () => setApproveOpen(false);
-
-  const handleApproveSubmitted = async () => {
-    setApproveOpen(false);
-    await loadClaimData(false);
-  };
 
   const openClaimApprove = () => {
     const items = Array.isArray(claimData?.bill_breakdown) ? claimData.bill_breakdown : [];
@@ -352,7 +394,14 @@ export default function ProviderClaimDetail() {
 
   const updateApprovedLine = (idx, value) => {
     setClaimApprovedLines((prev) =>
-      prev.map((ln, i) => (i === idx ? { ...ln, approved: value } : ln)),
+      prev.map((ln, i) => {
+        if (i !== idx) return ln;
+        // Approved per line can't exceed what was claimed for that line.
+        const cap = Number(ln.claimed) || 0;
+        const n = Number(value);
+        const capped = value !== '' && Number.isFinite(n) && n > cap ? String(cap) : value;
+        return { ...ln, approved: capped };
+      }),
     );
   };
 
@@ -370,6 +419,11 @@ export default function ProviderClaimDetail() {
       const n = Number(ln.approved);
       if (!Number.isFinite(n) || n < 0) {
         toast.error(`"${ln.label}" needs a non-negative number`);
+        return;
+      }
+      const cap = Number(ln.claimed) || 0;
+      if (n > cap) {
+        toast.error(`"${ln.label}" approved cannot exceed claimed (${formatINR(cap)})`);
         return;
       }
     }
@@ -415,8 +469,13 @@ export default function ProviderClaimDetail() {
     if (!doc?.id || !claim?.claim_case_id) return;
     try {
       const res = await documentService.view(claim.claim_case_id, doc.id);
-      const url = URL.createObjectURL(res.data);
-      window.open(url, '_blank', 'noopener');
+      const contentType = res.headers?.['content-type'] || doc.content_type || '';
+      const url = URL.createObjectURL(new Blob([res.data], { type: contentType }));
+      setEmailAttView({
+        url,
+        filename: doc.original_filename || 'document',
+        contentType,
+      });
     } catch {
       // interceptor handles
     }
@@ -582,27 +641,16 @@ export default function ProviderClaimDetail() {
           <div className="claim-detail__actions">
             <button
               className="btn btn--outline"
-              onClick={() => isClaimStage ? openClaimApprove() : setApproveOpen(true)}
+              onClick={() => isClaimStage ? openClaimApprove() : setPartD({ open: true, emailId: null })}
             >
-              <IconCheck size={16} /> {isClaimStage ? 'Claim Approve' : 'Approve'}
+              <IconCheck size={16} /> {isClaimStage ? 'Claim Approve' : 'Review & Approve'}
             </button>
             <button className="btn btn--outline" onClick={() => setNmiOpen(true)}>
               <IconAlertCircle size={16} /> {isClaimStage ? 'Claim ADR' : 'Request Additional Documents'}
             </button>
             <button className="btn btn--outline" onClick={() => setDenyOpen(true)}>
-              <IconX size={16} /> {isClaimStage ? 'Claim Denied' : 'Denied'}
+              <IconX size={16} /> {isClaimStage ? 'Claim Deny' : 'Deny'}
             </button>
-            {canRespond && !isClaimStage && (
-              <button
-                className="btn btn--outline"
-                onClick={() => setPartD({ open: true, emailId: null })}
-                title={hasApproval
-                  ? 'Edit / regenerate the Part-D authorization letter (latest approval)'
-                  : 'Issue authorization for this pre-auth (Part-D)'}
-              >
-                <IconFormEdit size={16} /> Part D
-              </button>
-            )}
           </div>
         );
       })()}
@@ -647,7 +695,7 @@ export default function ProviderClaimDetail() {
                       </tr>
                     ))}
                     <tr className="claim-review__total-row">
-                      <td><strong>Total claimed</strong></td>
+                      <td><strong>Total claim</strong></td>
                       <td style={{ textAlign: 'right' }}><strong>{formatINR(claimData.claimed_amount)}</strong></td>
                     </tr>
                   </tbody>
@@ -714,14 +762,6 @@ export default function ProviderClaimDetail() {
         </Accordion>
       </div>
 
-      {approveOpen && (
-        <ProviderApproveModal
-          claim={claim}
-          onClose={closeApprove}
-          onSubmitted={handleApproveSubmitted}
-        />
-      )}
-
       {claimApproveOpen && (() => {
         const itemized = claimApprovedLines.length > 0;
         const decisionLabel = itemized
@@ -760,7 +800,9 @@ export default function ProviderClaimDetail() {
                               type="number"
                               value={ln.approved}
                               onChange={(e) => updateApprovedLine(idx, e.target.value)}
+                              onWheel={(e) => e.currentTarget.blur()}
                               min="0"
+                              max={ln.claimed}
                               style={{ width: 120, textAlign: 'right' }}
                             />
                           </td>
@@ -791,6 +833,7 @@ export default function ProviderClaimDetail() {
                       type="number"
                       value={claimApproveAmountFallback}
                       onChange={(e) => setClaimApproveAmountFallback(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       placeholder="e.g. 150000"
                       min="0"
                     />
@@ -849,6 +892,10 @@ export default function ProviderClaimDetail() {
           emailId={partD.emailId}
           onClose={() => setPartD({ open: false, emailId: null })}
           onSaved={() => loadClaimData(false)}
+          onApproved={async () => {
+            setPartD({ open: false, emailId: null });
+            await loadClaimData(false);
+          }}
         />
       )}
 
@@ -1018,6 +1065,11 @@ export default function ProviderClaimDetail() {
                         formValues={viewedEmail.form_values}
                         emailType={viewedEmail.email_type}
                         claim={claim}
+                        onOpenAttachment={(attachmentId) => {
+                          const att = viewedEmail.attachments?.find((a) => a.id === attachmentId)
+                            || { id: attachmentId };
+                          viewEmailAttachment(att);
+                        }}
                       />
                     </div>
                   ) : (
@@ -1087,31 +1139,38 @@ export default function ProviderClaimDetail() {
                 )}
 
                 {Array.isArray(viewedEmail.attachments) && viewedEmail.attachments.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4 }}>
                       Attachments ({viewedEmail.attachments.length})
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {viewedEmail.attachments.map((att) => {
-                        const isLoading = loadingAttachmentId === att.id;
-                        return (
-                          <button
-                            key={att.id}
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            onClick={() => viewEmailAttachment(att)}
-                            disabled={loadingAttachmentId !== null}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                          >
-                            {isLoading && <Spinner size={12} />}
-                            {att.original_filename}
-                            {typeof att.file_size === 'number' && (
-                              <> ({(att.file_size / 1024).toFixed(1)} KB)</>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {groupAttachmentsByType(viewedEmail.attachments).map((group) => (
+                      <div key={group.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
+                          {group.label} ({group.items.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {group.items.map((att) => {
+                            const isLoading = loadingAttachmentId === att.id;
+                            return (
+                              <button
+                                key={att.id}
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => viewEmailAttachment(att)}
+                                disabled={loadingAttachmentId !== null}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                              >
+                                {isLoading && <Spinner size={12} />}
+                                {att.original_filename}
+                                {typeof att.file_size === 'number' && (
+                                  <> ({(att.file_size / 1024).toFixed(1)} KB)</>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1194,6 +1253,14 @@ function StatusTimeline({ events, onAction, pendingAction, claimOnboarded }) {
               </span>
               {ev.amount != null && ev.amount !== '' && (
                 <span className="claim-status-timeline__amount">{formatINR(ev.amount)}</span>
+              )}
+              {formatProviderTat(ev.stepTatMs) && (
+                <span
+                  className="claim-status-timeline__tat"
+                  title="Time elapsed since the previous step"
+                >
+                  TAT: {formatProviderTat(ev.stepTatMs)}
+                </span>
               )}
               <div className="claim-status-timeline__row-actions">
                 {showViewForm(ev) && (

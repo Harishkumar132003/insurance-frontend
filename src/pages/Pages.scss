@@ -1976,6 +1976,39 @@
   }
 }
 
+.preauth-repeat {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+  margin-top: $space-4;
+
+  &__item {
+    padding: $space-4 $space-5;
+    background: $bg-body;
+    border-radius: $radius-md;
+    border: 1px solid $border-color;
+  }
+
+  &__item-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: $space-3;
+  }
+
+  &__item-title {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $primary;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  &__add {
+    align-self: flex-start;
+  }
+}
+
 .preauth-radio-group,
 .preauth-checkbox-group {
   @include flex(row, flex-start, center, $space-4);
@@ -2871,6 +2904,23 @@
     padding: $space-4;
   }
 
+  // Cross-stage navigation pill (View Pre-Auth / View Claim) that hangs off
+  // the end of the timeline. Indigo gradient to match the node dot and stand
+  // out as a "jump to the other stage" action.
+  &__stage-link {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    border-radius: 999px;
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+
+    &:hover {
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      color: #fff;
+    }
+  }
+
   &__row {
     display: flex;
     gap: $space-4;
@@ -3262,6 +3312,14 @@
   }
 
   // ── Right column ──
+  &__amount-label {
+    font-size: $font-size-xs;
+    font-weight: 500;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   &__amount {
     font-size: $font-size-base;
     font-weight: 700;
@@ -3439,6 +3497,23 @@
   line-height: 1.35;
 }
 
+.mou-coverage-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: $font-size-xs;
+  color: $secondary;
+  background: rgba($secondary, 0.1);
+  border-radius: $radius-sm;
+  line-height: 1.35;
+
+  &::before {
+    content: '🛡';
+  }
+}
+
 // ── Email card form-values view (replaces email body when stored) ─
 .email-form-values {
   display: grid;
@@ -3595,10 +3670,82 @@
 }
 
 // ── Part D fill-and-print modal ───────────────────────────────────
+.partd-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: $space-4;
+
+  &__step {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    flex: 1;
+
+    &:last-child { flex: 0 0 auto; }
+  }
+
+  &__dot {
+    @include flex-center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: $bg-body;
+    border: 2px solid $border-color;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  &__line {
+    flex: 1;
+    height: 2px;
+    background: $border-color;
+    margin: 0 $space-2;
+  }
+
+  &__step--active {
+    color: $primary;
+    .partd-stepper__dot {
+      border-color: $primary;
+      color: $primary;
+      background: rgba(99, 102, 241, 0.08);
+    }
+  }
+
+  &__step--done {
+    color: $primary;
+    .partd-stepper__dot {
+      background: $primary;
+      border-color: $primary;
+      color: #fff;
+    }
+    .partd-stepper__line {
+      background: $primary;
+    }
+  }
+}
+
 .part-d-fill {
   display: flex;
   flex-direction: column;
   gap: $space-4;
+
+  &__readonly {
+    padding: 8px 12px;
+    background: $bg-body;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+  }
 
   &__inputs {
     display: flex;

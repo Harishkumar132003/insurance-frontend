@@ -15,14 +15,6 @@ const PRE_AUTH_FILTERS = [
   { key: 'denied', label: 'Denied', match: (c) => c.status === 'DENIED' || c.status === 'ENHANCEMENT_DENIED' },
 ];
 
-const CLAIM_FILTERS = [
-  { key: 'all', label: 'All', match: () => true },
-  { key: 'submitted', label: 'Submitted', match: (c) => c.status === 'CLAIM_SUBMITTED' },
-  { key: 'approved', label: 'Approved', match: (c) => c.status === 'CLAIM_APPROVED' || c.status === 'CLAIM_PARTIALLY_APPROVED' },
-  { key: 'adr', label: 'ADR Pending', match: (c) => c.status === 'CLAIM_ADR_NMI' },
-  { key: 'denied', label: 'Denied', match: (c) => c.status === 'CLAIM_DENIED' },
-];
-
 const STATUS_PILL = {
   DRAFT:               { label: 'Draft',               variant: 'default' },
   SUBMITTED:           { label: 'Submitted',           variant: 'info' },
@@ -74,15 +66,18 @@ function SearchIcon() {
   );
 }
 
-export default function ClaimList({ stage }) {
+export default function ClaimList({ approvedOnly }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const isInsuranceProvider = user?.role === ROLES.INSURANCE_PROVIDER;
-  const FILTERS = stage === 'CLAIM' ? CLAIM_FILTERS : PRE_AUTH_FILTERS;
-  const title = stage === 'CLAIM' ? 'Claim Tracker' : 'Pre-Auth Tracker';
-  const subtitle = stage === 'CLAIM'
-    ? 'Track and manage all claim settlements raised to insurers and TPAs.'
+  // The approved-cases view (/claims) is a flat list with no status sub-filter
+  // chips — it mixes pre-auth and claim-stage statuses, so a single "All" list
+  // is clearest. The pre-auth tracker keeps its status chips.
+  const FILTERS = PRE_AUTH_FILTERS;
+  const title = approvedOnly ? 'Claim Tracker' : 'Pre-Auth Tracker';
+  const subtitle = approvedOnly
+    ? 'All cases with an approved amount.'
     : 'Track, enhance, and manage all pre-authorisation requests sent to insurers and TPAs.';
   const [activeFilter, setActiveFilter] = useState('all');
   const [claims, setClaims] = useState([]);
@@ -99,13 +94,13 @@ export default function ClaimList({ stage }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    const params = { ...(search ? { q: search } : {}), ...(stage ? { stage } : {}) };
+    const params = { ...(search ? { q: search } : {}), ...(approvedOnly ? { approved_only: true } : {}) };
     claimCaseService.getAll(Object.keys(params).length ? params : undefined)
       .then((res) => { if (!cancelled) setClaims(Array.isArray(res.data) ? res.data : []); })
       .catch(() => { if (!cancelled) setClaims([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [search, stage]);
+  }, [search, approvedOnly]);
 
   const counts = useMemo(() => {
     const map = {};
@@ -159,18 +154,20 @@ export default function ClaimList({ stage }) {
         )}
       </div>
 
-      <div className="preauth-tracker__filters">
-        {FILTERS.map((tab) => (
-          <button
-            key={tab.key}
-            className={`preauth-tracker__filter ${activeFilter === tab.key ? 'preauth-tracker__filter--active' : ''}`}
-            onClick={() => setActiveFilter(tab.key)}
-          >
-            {tab.label}
-            <span className="preauth-tracker__filter-count">{counts[tab.key] || 0}</span>
-          </button>
-        ))}
-      </div>
+      {!approvedOnly && (
+        <div className="preauth-tracker__filters">
+          {FILTERS.map((tab) => (
+            <button
+              key={tab.key}
+              className={`preauth-tracker__filter ${activeFilter === tab.key ? 'preauth-tracker__filter--active' : ''}`}
+              onClick={() => setActiveFilter(tab.key)}
+            >
+              {tab.label}
+              <span className="preauth-tracker__filter-count">{counts[tab.key] || 0}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="page-loading"><Spinner /></div>
@@ -205,7 +202,7 @@ export default function ClaimList({ stage }) {
                 onClick={() => navigate(
                   isInsuranceProvider
                     ? `/provider-queue/${id}`
-                    : `${stage === 'CLAIM' ? '/claims' : '/claim-list'}/${id}`,
+                    : `${approvedOnly ? '/claims' : '/claim-list'}/${id}`,
                   { state: { from: location.pathname } }
                 )}
               >
@@ -236,7 +233,9 @@ export default function ClaimList({ stage }) {
 
                 {/* Right: amounts + status */}
                 <div className="preauth-card__col preauth-card__col--right">
-                  <div className="preauth-card__amount">{formatINR(requested)}</div>
+                  <div className="preauth-card__amount">
+                    <span className="preauth-card__amount-label">Requested:</span> {formatINR(requested)}
+                  </div>
                   {showApproved && (
                     <div className="preauth-card__approved">Approved: {formatINR(approved)}</div>
                   )}

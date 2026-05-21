@@ -291,7 +291,7 @@ function PolicyDetailForm({ onResult, onProviderChange }) {
   useEffect(() => {
     const fetchProviders = async () => {
       try {
-        const res = await policyProviderService.getAll();
+        const res = await policyProviderService.getForHospital();
         const list = Array.isArray(res.data) ? res.data : [];
         setProviders(list);
         if (list.length > 0) {
