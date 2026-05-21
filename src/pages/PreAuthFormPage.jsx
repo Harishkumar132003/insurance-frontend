@@ -7,6 +7,32 @@ import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import './Pages.scss';
 
+// Fields that make up one repeatable "treatment". Used for legacy migration
+// and for deriving flat fields on save.
+const TREATMENT_KEYS = [
+  'treatment_details', 'drug_route', 'surgery_name',
+  'surgery_icd_code', 'other_treatment', 'injury_cause',
+];
+
+// Ensure data_json.treating_doctor.treatments exists. Legacy records stored
+// these six fields flat on treating_doctor — migrate them into a single
+// treatment entry so old cases render in the repeatable UI.
+function ensureTreatments(dataJson) {
+  const dj = { ...(dataJson || {}) };
+  const td = { ...(dj.treating_doctor || {}) };
+  if (!Array.isArray(td.treatments)) {
+    const legacy = {};
+    let hasAny = false;
+    for (const k of TREATMENT_KEYS) {
+      if (td[k] != null && td[k] !== '') { legacy[k] = td[k]; hasAny = true; }
+      delete td[k];
+    }
+    td.treatments = hasAny ? [legacy] : [{}];
+  }
+  dj.treating_doctor = td;
+  return dj;
+}
+
 // ── Static form schema ──────────────────────────────────────────────
 
 // Common surgeries with their ICD-10-PCS codes. The pair is bidirectionally
@@ -132,15 +158,30 @@ export const FORM_SECTIONS = [
         ],
       },
     ],
+    // Each "treatment" is a repeatable bundle of these fields. Stored as an
+    // array at treating_doctor.treatments. On save, the first treatment's
+    // values are also flattened onto treating_doctor (with treatment_details
+    // joined across all entries) so the Part-C print + cover email keep
+    // reading single fields. See buildPayload.
+    repeatableGroups: [
+      {
+        key: 'treatments',
+        itemLabel: 'Treatment',
+        fields: [
+          { key: 'treatment_details', label: 'Treatment Details', type: 'textarea' },
+          { key: 'drug_route', label: 'Drug Route', type: 'select', options: DRUG_ROUTE_OPTIONS },
+          { key: 'surgery_name', label: 'Surgery Name', type: 'select', options: SURGERY_NAME_OPTIONS },
+          { key: 'surgery_icd_code', label: 'Surgery ICD Code', type: 'select', options: SURGERY_ICD_OPTIONS },
+          { key: 'other_treatment', label: 'Other Treatment', type: 'text' },
+          { key: 'injury_cause', label: 'Injury Cause', type: 'text' },
+        ],
+      },
+    ],
     fieldsAfterSubgroups: [
-      { key: 'treatment_details', label: 'Treatment Details', type: 'textarea' },
-      { key: 'drug_route', label: 'Drug Route', type: 'select', options: DRUG_ROUTE_OPTIONS },
-      { key: 'surgery_name', label: 'Surgery Name', type: 'select', options: SURGERY_NAME_OPTIONS },
-      { key: 'surgery_icd_code', label: 'Surgery ICD Code', type: 'select', options: SURGERY_ICD_OPTIONS },
-      { key: 'other_treatment', label: 'Other Treatment', type: 'text' },
-      { key: 'injury_cause', label: 'Injury Cause', type: 'text' },
-      // Toggle that gates the Accident Details subgroup below.
-      { key: 'has_accident', label: 'Was this an accident?', type: 'boolean' },
+      // Stored at section level (treating_doctor.has_accident) so the
+      // accident_details showWhen linkage keeps working. `fullWidth` drops it
+      // onto its own row.
+      { key: 'has_accident', label: 'Was this an accident?', type: 'boolean', fullWidth: true },
     ],
     additionalSubgroups: [
       {
@@ -537,7 +578,7 @@ export default function PreAuthFormPage() {
           : null;
 
         if (latestForm?.data_json) {
-          setFormData(latestForm.data_json);
+          setFormData(ensureTreatments(latestForm.data_json));
         }
         if (latestForm?.id) {
           setFormDataId(latestForm.id);
@@ -659,7 +700,9 @@ export default function PreAuthFormPage() {
         for (const [section, fields] of Object.entries(prefilled)) {
           merged[section] = { ...(merged[section] || {}), ...fields };
         }
-        return merged;
+        // AI returns the treatment fields flat → fold them into a single
+        // treatment entry so the repeatable UI renders them.
+        return ensureTreatments(merged);
       });
       setOpenSections((prev) => {
         const updated = { ...prev };
@@ -751,6 +794,28 @@ export default function PreAuthFormPage() {
           convertNumbers(sg.fields, cleaned[sg.key]);
         }
       }
+
+      // Repeatable groups: keep the array AND flatten the first entry onto the
+      // section so the Part-C print + cover email keep reading single fields.
+      // treatment_details is joined across all entries (Q1: first treatment
+      // drives the form fields, remaining details are appended).
+      for (const group of (section.repeatableGroups || [])) {
+        const list = (Array.isArray(cleaned[group.key]) ? cleaned[group.key] : [])
+          .filter((it) => it && Object.values(it).some((v) => v != null && v !== ''));
+        cleaned[group.key] = list;
+        const first = list[0] || {};
+        for (const f of group.fields) {
+          if (f.key === 'treatment_details') {
+            cleaned[f.key] = list
+              .map((it) => it.treatment_details)
+              .filter((s) => s && String(s).trim())
+              .join('; ');
+          } else {
+            cleaned[f.key] = first[f.key] ?? '';
+          }
+        }
+      }
+
       dataJson[section.name] = cleaned;
     }
     return dataJson;
@@ -846,6 +911,11 @@ export default function PreAuthFormPage() {
           for (const [subKey, subVal] of Object.entries(val)) {
             flat[subKey] = subVal;
           }
+        } else if (Array.isArray(val)) {
+          // Primitive arrays print as a joined string. Object arrays (e.g. the
+          // `treatments` group) are skipped — their flat fields are derived
+          // separately in buildPayload.
+          flat[key] = val.filter((s) => s != null && typeof s !== 'object' && String(s).trim()).join('; ');
         } else {
           flat[key] = val;
         }
@@ -1039,7 +1109,7 @@ export default function PreAuthFormPage() {
         showSuggestion = typeof suggestion === 'string' && suggestion.trim().length > 0;
       }
       return (
-        <div key={field.key} className={`form-group ${field.type === 'textarea' ? 'form-group--wide' : ''}`}>
+        <div key={field.key} className={`form-group ${(field.type === 'textarea' || field.fullWidth) ? 'form-group--wide' : ''}`}>
           <label>{field.label}</label>
           <FieldInput
             field={field}
@@ -1080,6 +1150,104 @@ export default function PreAuthFormPage() {
           </div>
         </div>
       ));
+
+  // Update one field inside one entry of a repeatable group array. Mirrors the
+  // surgery_name ↔ surgery_icd_code auto-link, scoped to that entry.
+  const setRepeatableValue = (sectionName, groupKey, index, key, value) => {
+    setFormData((prev) => {
+      const section = { ...(prev[sectionName] || {}) };
+      const list = Array.isArray(section[groupKey]) ? [...section[groupKey]] : [];
+      const item = { ...(list[index] || {}), [key]: value };
+      if (key === 'surgery_name' && value) {
+        const match = SURGERY_OPTIONS.find((s) => s.surgery_name === value);
+        if (match) item.surgery_icd_code = match.icd_10_pcs_code;
+      } else if (key === 'surgery_icd_code' && value) {
+        const match = SURGERY_OPTIONS.find((s) => s.icd_10_pcs_code === value);
+        if (match) item.surgery_name = match.surgery_name;
+      }
+      list[index] = item;
+      section[groupKey] = list;
+      return { ...prev, [sectionName]: section };
+    });
+  };
+
+  const addRepeatableItem = (sectionName, groupKey) => {
+    setFormData((prev) => {
+      const section = { ...(prev[sectionName] || {}) };
+      const list = Array.isArray(section[groupKey]) ? [...section[groupKey]] : [];
+      section[groupKey] = [...list, {}];
+      return { ...prev, [sectionName]: section };
+    });
+  };
+
+  const removeRepeatableItem = (sectionName, groupKey, index) => {
+    setFormData((prev) => {
+      const section = { ...(prev[sectionName] || {}) };
+      const list = Array.isArray(section[groupKey]) ? [...section[groupKey]] : [];
+      section[groupKey] = list.filter((_, i) => i !== index);
+      return { ...prev, [sectionName]: section };
+    });
+  };
+
+  const renderRepeatableGroups = (groups, sectionName) =>
+    (groups || []).map((group) => {
+      const rawList = (formData[sectionName] || {})[group.key];
+      const list = Array.isArray(rawList) && rawList.length ? rawList : [{}];
+      // Only allow adding another treatment once every field of every existing
+      // treatment is filled in.
+      const allFilled = list.every((item) =>
+        group.fields.every((f) => {
+          const v = (item || {})[f.key];
+          return v != null && String(v).trim() !== '';
+        }),
+      );
+      return (
+        <div key={group.key} className="preauth-repeat">
+          {list.map((item, index) => (
+            <div key={index} className="preauth-repeat__item">
+              <div className="preauth-repeat__item-head">
+                <span className="preauth-repeat__item-title">
+                  {group.itemLabel} {index + 1}
+                </span>
+                {list.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => removeRepeatableItem(sectionName, group.key, index)}
+                  >
+                    &times; Remove
+                  </button>
+                )}
+              </div>
+              <div className="preauth-section__fields">
+                {group.fields.map((field) => (
+                  <div
+                    key={field.key}
+                    className={`form-group ${field.type === 'textarea' ? 'form-group--wide' : ''}`}
+                  >
+                    <label>{field.label}</label>
+                    <FieldInput
+                      field={field}
+                      value={(item || {})[field.key] ?? ''}
+                      onChange={(key, val) => setRepeatableValue(sectionName, group.key, index, key, val)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm preauth-repeat__add"
+            onClick={() => addRepeatableItem(sectionName, group.key)}
+            disabled={!allFilled}
+            title={allFilled ? undefined : `Fill all fields in the current ${group.itemLabel.toLowerCase()}(s) first`}
+          >
+            + Add {group.itemLabel}
+          </button>
+        </div>
+      );
+    });
 
   return (
     <div>
@@ -1148,6 +1316,7 @@ export default function PreAuthFormPage() {
                       {renderFields(section.fields, section.name)}
                     </div>
                     {renderSubgroups(section.subgroups, section.name)}
+                    {renderRepeatableGroups(section.repeatableGroups, section.name)}
                     {section.fieldsAfterSubgroups && (
                       <div className="preauth-section__fields preauth-section__fields--after">
                         {renderFields(section.fieldsAfterSubgroups, section.name)}

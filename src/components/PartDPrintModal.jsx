@@ -92,6 +92,11 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
 
   const setTextField = (key, value) => setTextFields((prev) => ({ ...prev, [key]: value }));
 
+  // Approved amount can't exceed the requested cover.
+  const requestedCap = Number(claim?.requested_amount) || 0;
+  const exceedsRequested = requestedCap > 0 && Number(approveAmount) > requestedCap;
+  const fmtCap = (n) => Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
   // Re-hydrate all state from a PartDLetterResponse.
   const hydrate = (data) => {
     if (!data) return;
@@ -232,6 +237,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
   // with claim_case_email_id IS NULL, and links it to the approval email
   // later when the provider hits Approve in the separate modal.
   const handleSave = async () => {
+    if (exceedsRequested) {
+      toast.error(`Approved amount cannot exceed the requested amount (${fmtCap(requestedCap)})`);
+      return;
+    }
     setSaving(true);
     try {
       const payload = { ...fieldPayload() };
@@ -253,6 +262,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
   const handlePrint = async () => {
     if (!htmlRef.current) {
       toast.error('PART_D template not loaded');
+      return;
+    }
+    if (exceedsRequested) {
+      toast.error(`Approved amount cannot exceed the requested amount (${fmtCap(requestedCap)})`);
       return;
     }
     setSaving(true);
@@ -316,7 +329,15 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
                     type="number"
                     value={approveAmount}
                     onChange={(e) => setApproveAmount(e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    min="0"
+                    max={requestedCap || undefined}
                   />
+                  {exceedsRequested && (
+                    <small style={{ color: '#b91c1c' }}>
+                      Cannot exceed requested {fmtCap(requestedCap)}
+                    </small>
+                  )}
                 </div>
                 <div className="form-group">
                   <label>Claim Number</label>

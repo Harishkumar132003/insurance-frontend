@@ -402,7 +402,14 @@ export default function ProviderClaimDetail() {
 
   const updateApprovedLine = (idx, value) => {
     setClaimApprovedLines((prev) =>
-      prev.map((ln, i) => (i === idx ? { ...ln, approved: value } : ln)),
+      prev.map((ln, i) => {
+        if (i !== idx) return ln;
+        // Approved per line can't exceed what was claimed for that line.
+        const cap = Number(ln.claimed) || 0;
+        const n = Number(value);
+        const capped = value !== '' && Number.isFinite(n) && n > cap ? String(cap) : value;
+        return { ...ln, approved: capped };
+      }),
     );
   };
 
@@ -420,6 +427,11 @@ export default function ProviderClaimDetail() {
       const n = Number(ln.approved);
       if (!Number.isFinite(n) || n < 0) {
         toast.error(`"${ln.label}" needs a non-negative number`);
+        return;
+      }
+      const cap = Number(ln.claimed) || 0;
+      if (n > cap) {
+        toast.error(`"${ln.label}" approved cannot exceed claimed (${formatINR(cap)})`);
         return;
       }
     }
@@ -645,7 +657,7 @@ export default function ProviderClaimDetail() {
               <IconAlertCircle size={16} /> {isClaimStage ? 'Claim ADR' : 'Request Additional Documents'}
             </button>
             <button className="btn btn--outline" onClick={() => setDenyOpen(true)}>
-              <IconX size={16} /> {isClaimStage ? 'Claim Denied' : 'Denied'}
+              <IconX size={16} /> {isClaimStage ? 'Claim Deny' : 'Deny'}
             </button>
             {canRespond && !isClaimStage && (
               <button
@@ -815,7 +827,9 @@ export default function ProviderClaimDetail() {
                               type="number"
                               value={ln.approved}
                               onChange={(e) => updateApprovedLine(idx, e.target.value)}
+                              onWheel={(e) => e.currentTarget.blur()}
                               min="0"
+                              max={ln.claimed}
                               style={{ width: 120, textAlign: 'right' }}
                             />
                           </td>
@@ -846,6 +860,7 @@ export default function ProviderClaimDetail() {
                       type="number"
                       value={claimApproveAmountFallback}
                       onChange={(e) => setClaimApproveAmountFallback(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       placeholder="e.g. 150000"
                       min="0"
                     />

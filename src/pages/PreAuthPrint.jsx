@@ -18,6 +18,10 @@ function flattenDataJson(dataJson) {
         for (const [subKey, subVal] of Object.entries(val)) {
           flat[subKey] = subVal;
         }
+      } else if (Array.isArray(val)) {
+        // Primitive arrays print as a joined string; object arrays (e.g. the
+        // `treatments` group) are skipped — flat fields are derived on save.
+        flat[key] = val.filter((s) => s != null && typeof s !== 'object' && String(s).trim()).join('; ');
       } else {
         flat[key] = val;
       }

@@ -282,6 +282,11 @@ export default function ClaimRaisePage() {
     [items],
   );
 
+  // The claim can't exceed what the insurer approved at pre-auth. When an
+  // approved amount exists, it caps the total claim.
+  const approvedCap = Number(claimCase?.approved_amount) || 0;
+  const exceedsApproved = approvedCap > 0 && claimedAmount > approvedCap;
+
   const summary = claimCase?.summary || {};
   const patientName = summary.patient_name || '—';
   const insurerName = summary.provider_name || 'insurer';
@@ -421,6 +426,10 @@ export default function ClaimRaisePage() {
       toast.error('Total claimed amount must be greater than zero');
       return;
     }
+    if (exceedsApproved) {
+      toast.error(`Total claim (${formatINR(claimedAmount)}) cannot exceed the approved amount (${formatINR(approvedCap)})`);
+      return;
+    }
 
     const missingCategories = CLAIM_DOCUMENT_TYPES.filter((c) => {
       const uploaded = (docsByType[c.key] || []).length;
@@ -516,7 +525,7 @@ export default function ClaimRaisePage() {
             <button className="btn btn--ghost" onClick={() => navigate(`/claim-list/${claimCaseId}`)}>Cancel</button>
             <button
               className="btn btn--primary"
-              disabled={!canRaise || submitting}
+              disabled={!canRaise || submitting || exceedsApproved}
               onClick={handleSubmit}
             >
               {submitting ? <Spinner size={16} /> : <><IconSend size={16} /> Submit Claim</>}
@@ -564,6 +573,7 @@ export default function ClaimRaisePage() {
                   value={it.amount}
                   disabled={readOnly}
                   onChange={(e) => updateItem(idx, 'amount', e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   placeholder="0"
                   min="0"
                 />
@@ -589,7 +599,18 @@ export default function ClaimRaisePage() {
           )}
           <ReadField
             label="Total claim"
-            value={<span style={{ color: '#4f46e5', fontWeight: 700 }}>{formatINR(claimedAmount)}</span>}
+            value={(
+              <span>
+                <span style={{ color: exceedsApproved ? '#b91c1c' : '#4f46e5', fontWeight: 700 }}>
+                  {formatINR(claimedAmount)}
+                </span>
+                {exceedsApproved && (
+                  <span style={{ color: '#b91c1c', fontSize: 12, marginLeft: 8 }}>
+                    Cannot exceed approved {formatINR(approvedCap)}
+                  </span>
+                )}
+              </span>
+            )}
             span={6}
           />
         </PortalSection>
