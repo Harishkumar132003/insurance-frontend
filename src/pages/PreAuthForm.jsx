@@ -9,7 +9,25 @@ import Modal from '../components/Modal';
 import ReadOnlyForm from '../components/ReadOnlyForm';
 import EmailFormValues from '../components/EmailFormValues';
 import { useAuth, ROLES } from '../context/AuthContext';
+import { CLAIM_DOCUMENT_TYPES } from '../constants/claimDocuments';
 import './Pages.scss';
+
+// Group email attachments by their document_type, ordered by the canonical
+// claim-document categories, with anything untagged falling under "Other".
+function groupAttachmentsByType(attachments) {
+  const byKey = new Map();
+  for (const att of attachments) {
+    const key = att.document_type || 'OTHER';
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(att);
+  }
+  const ordered = [];
+  for (const c of CLAIM_DOCUMENT_TYPES) {
+    if (byKey.has(c.key)) ordered.push({ label: c.label, items: byKey.get(c.key) });
+  }
+  if (byKey.has('OTHER')) ordered.push({ label: 'Other', items: byKey.get('OTHER') });
+  return ordered;
+}
 
 const ENHANCE_TYPES = ['ENHANCE', 'ENHANCEMENT', 'ENHANCE_REQUEST', 'ENHANCE_RESPONSE'];
 const ADR_TYPES = ['ADR_NMI', 'ADR', 'ADDITIONAL_DOCUMENT_REQUEST', 'ADDITIONAL_DOC_RESPONSE'];
@@ -2080,6 +2098,20 @@ export default function PreAuthForm() {
         const delta = new Date(ownAt) - new Date(lastOutboundAt);
         return Number.isFinite(delta) && delta >= 0 ? delta : null;
       });
+      // Per-step TAT: elapsed time from the immediately preceding step. Uses
+      // the same "effective time" as above (email timestamp if linked, else
+      // created_at). First/oldest step has no predecessor → null.
+      const ownAtByIndex = sorted.map((entry) =>
+        (entry.email_id != null && emailDateById.get(entry.email_id)) || entry.created_at,
+      );
+      const stepTatByIndex = sorted.map((entry, i) => {
+        if (i === 0) return null;
+        const cur = ownAtByIndex[i];
+        const prev = ownAtByIndex[i - 1];
+        if (!cur || !prev) return null;
+        const delta = new Date(cur) - new Date(prev);
+        return Number.isFinite(delta) && delta >= 0 ? delta : null;
+      });
       return sorted.map((entry, i) => {
         // For ADR_NMI entries: find the next ADR_SUBMITTED entry that
         // (chronologically) responded to it, so the row can offer a
@@ -2129,6 +2161,7 @@ export default function PreAuthForm() {
           // emails are AI-parsed text with no structured form.
           isReceivedSide: RECEIVED_SIDE.has(entry.status),
           providerTatMs: tatByIndex[i],
+          stepTatMs: stepTatByIndex[i],
         };
       }).reverse();
     }
@@ -2478,6 +2511,11 @@ export default function PreAuthForm() {
                           formValues={fv || {}}
                           emailType={viewedEmail.email_type}
                           claim={submitResult}
+                          onOpenAttachment={(attachmentId) => {
+                            const att = viewedEmail.attachments?.find((a) => a.id === attachmentId)
+                              || { id: attachmentId };
+                            viewEmailAttachment(att);
+                          }}
                         />
                       </div>
                     );
@@ -2549,31 +2587,38 @@ export default function PreAuthForm() {
                 )}
 
                 {Array.isArray(viewedEmail.attachments) && viewedEmail.attachments.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4 }}>
                       Attachments ({viewedEmail.attachments.length})
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {viewedEmail.attachments.map((att) => {
-                        const isLoading = loadingAttachmentId === att.id;
-                        return (
-                          <button
-                            key={att.id}
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            onClick={() => viewEmailAttachment(att)}
-                            disabled={loadingAttachmentId !== null}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                          >
-                            {isLoading && <Spinner size={12} />}
-                            {att.original_filename}
-                            {typeof att.file_size === 'number' && (
-                              <> ({(att.file_size / 1024).toFixed(1)} KB)</>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {groupAttachmentsByType(viewedEmail.attachments).map((group) => (
+                      <div key={group.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
+                          {group.label} ({group.items.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {group.items.map((att) => {
+                            const isLoading = loadingAttachmentId === att.id;
+                            return (
+                              <button
+                                key={att.id}
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => viewEmailAttachment(att)}
+                                disabled={loadingAttachmentId !== null}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                              >
+                                {isLoading && <Spinner size={12} />}
+                                {att.original_filename}
+                                {typeof att.file_size === 'number' && (
+                                  <> ({(att.file_size / 1024).toFixed(1)} KB)</>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2704,12 +2749,12 @@ function StatusTimeline({
               {ev.amount != null && ev.amount !== '' && (
                 <span className="claim-status-timeline__amount">{formatINR(ev.amount)}</span>
               )}
-              {ev.isReceivedSide && formatProviderTat(ev.providerTatMs) && (
+              {formatProviderTat(ev.stepTatMs) && (
                 <span
                   className="claim-status-timeline__tat"
-                  title="Time taken by the provider to reply"
+                  title="Time elapsed since the previous step"
                 >
-                  Provider TAT: {formatProviderTat(ev.providerTatMs)}
+                  TAT: {formatProviderTat(ev.stepTatMs)}
                 </span>
               )}
               <div className="claim-status-timeline__row-actions">

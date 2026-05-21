@@ -127,8 +127,8 @@ export default function App() {
               <Route
                 path="/claims"
                 element={
-                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
-                    <FeatureGate feature="preauth_list"><ClaimList stage="CLAIM" /></FeatureGate>
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN, INSURANCE_PROVIDER]}>
+                    <FeatureGate feature="preauth_list"><ClaimList approvedOnly /></FeatureGate>
                   </PrivateRoute>
                 }
               />

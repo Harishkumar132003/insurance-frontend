@@ -229,6 +229,9 @@ export default function ClaimRaisePage() {
   const [approvalEmails, setApprovalEmails] = useState(null); // null = not yet fetched
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerSelection, setPickerSelection] = useState(new Set());
+  // Holds the list of document-category labels with no files, when the
+  // "submit anyway?" confirmation modal is open. null = modal closed.
+  const [missingDocsModal, setMissingDocsModal] = useState(null);
   // Inline preview state for the picker's "View" button.
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewFilename, setPreviewFilename] = useState('');
@@ -425,13 +428,17 @@ export default function ClaimRaisePage() {
       return uploaded + picked === 0;
     });
     if (missingCategories.length > 0) {
-      const ok = window.confirm(
-        `${missingCategories.length} document categor${missingCategories.length === 1 ? 'y has' : 'ies have'} no files ` +
-        `(${missingCategories.map((c) => c.label).join(', ')}). Submit anyway?`,
-      );
-      if (!ok) return;
+      // Soft warning via a styled modal — user can still proceed.
+      setMissingDocsModal(missingCategories.map((c) => c.label));
+      return;
     }
 
+    proceedSubmit();
+  };
+
+  const proceedSubmit = async () => {
+    setMissingDocsModal(null);
+    const validItems = items.filter((i) => i.label.trim() && Number(i.amount) > 0);
     setSubmitting(true);
     try {
       // Upload pending files one category at a time (each call carries the
@@ -581,7 +588,7 @@ export default function ClaimRaisePage() {
             </div>
           )}
           <ReadField
-            label="Total claimed"
+            label="Total claim"
             value={<span style={{ color: '#4f46e5', fontWeight: 700 }}>{formatINR(claimedAmount)}</span>}
             span={6}
           />
@@ -700,6 +707,32 @@ export default function ClaimRaisePage() {
               </div>
             </Modal>
           )}
+        </Modal>
+      )}
+
+      {missingDocsModal && (
+        <Modal title="Missing documents" onClose={() => setMissingDocsModal(null)}>
+          <p style={{ marginTop: 0 }}>
+            {missingDocsModal.length === 1
+              ? 'One document category has no files:'
+              : `${missingDocsModal.length} document categories have no files:`}
+          </p>
+          <ul style={{ margin: '8px 0 16px', paddingLeft: 20, color: '#374151', fontSize: 14 }}>
+            {missingDocsModal.map((label) => (
+              <li key={label}>{label}</li>
+            ))}
+          </ul>
+          <p style={{ color: '#6b7280', fontSize: 13 }}>
+            You can still submit the claim without these — do you want to continue?
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button className="btn btn--ghost" onClick={() => setMissingDocsModal(null)}>
+              Cancel
+            </button>
+            <button className="btn btn--primary" onClick={proceedSubmit}>
+              Submit anyway
+            </button>
+          </div>
         </Modal>
       )}
     </div>

@@ -327,7 +327,7 @@ function ReconsiderView({ formValues, claim }) {
 // ── ADR view ────────────────────────────────────────────────────────
 // Mirrors ADRPortalForm: warning-accent shell, insurer's request quote,
 // requested-documents checklist, optional clarifications block.
-function ADRView({ formValues, claim }) {
+function ADRView({ formValues, claim, onOpenAttachment }) {
   const c = claim || {};
   const insurer = c.insurer_name || '';
   const paId = paIdFrom(formValues, claim);
@@ -382,9 +382,21 @@ function ADRView({ formValues, claim }) {
               <li key={i} className="email-form-view__adr-row">
                 <span className="email-form-view__adr-label">{it.label}</span>
                 {it.attached ? (
-                  <span className="email-form-view__chip email-form-view__chip--ok">
-                    ✓ {it.filename || 'Attached'}
-                  </span>
+                  it.attachment_id && typeof onOpenAttachment === 'function' ? (
+                    <button
+                      type="button"
+                      className="email-form-view__chip email-form-view__chip--ok"
+                      onClick={() => onOpenAttachment(it.attachment_id)}
+                      title="Open file"
+                      style={{ cursor: 'pointer', border: 'none' }}
+                    >
+                      ✓ {it.filename || 'Attached'}
+                    </button>
+                  ) : (
+                    <span className="email-form-view__chip email-form-view__chip--ok">
+                      ✓ {it.filename || 'Attached'}
+                    </span>
+                  )
                 ) : (
                   <span className="email-form-view__chip email-form-view__chip--missing">
                     Missing
@@ -549,7 +561,7 @@ function ClaimSubmitView({ formValues, claim }) {
                 </tr>
               ))}
               <tr className="claim-review__total-row">
-                <td><strong>Total claimed</strong></td>
+                <td><strong>Total claim</strong></td>
                 <td style={{ textAlign: 'right' }}><strong>{formatINR(claimedAmount)}</strong></td>
               </tr>
             </tbody>
@@ -619,7 +631,7 @@ function GenericView({ formValues }) {
   );
 }
 
-export default function EmailFormValues({ formValues, emailType, claim }) {
+export default function EmailFormValues({ formValues, emailType, claim, onOpenAttachment }) {
   if (!formValues || typeof formValues !== 'object') return null;
   // Provider-decision forms (Approve / Deny / ADR request) are tagged with a
   // `decision` field — they take precedence over the email_type routing.
@@ -628,6 +640,6 @@ export default function EmailFormValues({ formValues, emailType, claim }) {
   if (SUBMITTED_TYPES.includes(emailType)) return <SubmitView formValues={formValues} claim={claim} />;
   if (RECONSIDER_TYPES.includes(emailType)) return <ReconsiderView formValues={formValues} claim={claim} />;
   if (ENHANCE_TYPES.includes(emailType)) return <EnhanceView formValues={formValues} claim={claim} />;
-  if (ADR_TYPES.includes(emailType)) return <ADRView formValues={formValues} claim={claim} />;
+  if (ADR_TYPES.includes(emailType)) return <ADRView formValues={formValues} claim={claim} onOpenAttachment={onOpenAttachment} />;
   return <GenericView formValues={formValues} />;
 }

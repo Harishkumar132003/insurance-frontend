@@ -3262,6 +3262,14 @@
   }
 
   // ── Right column ──
+  &__amount-label {
+    font-size: $font-size-xs;
+    font-weight: 500;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   &__amount {
     font-size: $font-size-base;
     font-weight: 700;

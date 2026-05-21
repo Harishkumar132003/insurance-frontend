@@ -38,6 +38,7 @@ const menuItems = [
   { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
   { path: '/hospital-info', label: 'Hospital Info', icon: IconHospital, feature: 'hospital_info', roles: [HOSPITAL_ADMIN] },
   { path: '/claim-list', label: 'Pre Auth', icon: IconClaimList, roles: [INSURANCE_PROVIDER], activePaths: ['/claim-list', '/provider-queue'] },
+  { path: '/claims', label: 'Claims', icon: IconClaimList, roles: [INSURANCE_PROVIDER], activePaths: ['/claims'] },
   // { path: '/run-workflow', label: 'Patient Lookup', icon: IconPlay, feature: 'run_workflow', roles: [HOSPITAL_ADMIN] },
   // { path: '/logs', label: 'Logs', icon: IconLogs, feature: 'logs', roles: [SUPER_ADMIN] },
 ];
@@ -58,6 +59,18 @@ export default function Sidebar({ collapsed, onToggle }) {
   const isItemActive = (item) => {
     const paths = item.activePaths;
     if (!paths) return null; // let NavLink handle it
+
+    // The provider "Pre Auth" and "Claims" tabs both drill into
+    // /provider-queue/:id, so the URL alone can't tell them apart. Use the
+    // route we navigated from (set via location.state.from on the card click)
+    // to highlight the correct tab. On a hard reload (no state) we fall back
+    // to "Pre Auth".
+    if (location.pathname.startsWith('/provider-queue')) {
+      const cameFromClaims = location.state?.from === '/claims';
+      if (item.path === '/claims') return cameFromClaims;
+      if (item.path === '/claim-list') return !cameFromClaims;
+    }
+
     return paths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`));
   };
 
