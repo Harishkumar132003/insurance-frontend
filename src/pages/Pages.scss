@@ -3653,10 +3653,82 @@
 }
 
 // ── Part D fill-and-print modal ───────────────────────────────────
+.partd-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: $space-4;
+
+  &__step {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    flex: 1;
+
+    &:last-child { flex: 0 0 auto; }
+  }
+
+  &__dot {
+    @include flex-center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: $bg-body;
+    border: 2px solid $border-color;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  &__line {
+    flex: 1;
+    height: 2px;
+    background: $border-color;
+    margin: 0 $space-2;
+  }
+
+  &__step--active {
+    color: $primary;
+    .partd-stepper__dot {
+      border-color: $primary;
+      color: $primary;
+      background: rgba(99, 102, 241, 0.08);
+    }
+  }
+
+  &__step--done {
+    color: $primary;
+    .partd-stepper__dot {
+      background: $primary;
+      border-color: $primary;
+      color: #fff;
+    }
+    .partd-stepper__line {
+      background: $primary;
+    }
+  }
+}
+
 .part-d-fill {
   display: flex;
   flex-direction: column;
   gap: $space-4;
+
+  &__readonly {
+    padding: 8px 12px;
+    background: $bg-body;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+  }
 
   &__inputs {
     display: flex;

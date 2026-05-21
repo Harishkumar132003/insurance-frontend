@@ -7,7 +7,6 @@ import { IconArrowLeft, IconChevronRight, IconCheck, IconAlertCircle, IconX, Ico
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
-import ProviderApproveModal from '../components/ProviderApproveModal';
 import PartDPrintModal from '../components/PartDPrintModal';
 import EmailFormValues from '../components/EmailFormValues';
 import './Pages.scss';
@@ -125,9 +124,9 @@ export default function ProviderClaimDetail() {
   // when current_stage === 'CLAIM'.
   const [claimData, setClaimData] = useState(null);
 
-  // Per-action modal state. Pre-auth uses the Part-D ProviderApproveModal;
-  // claim stage uses an itemized approve modal opened via claimApproveOpen.
-  const [approveOpen, setApproveOpen] = useState(false);
+  // Per-action modal state. Pre-auth approval is the unified Part-D modal
+  // (fill → save → print → submit) opened via the `partD` state; claim stage
+  // uses an itemized approve modal opened via claimApproveOpen.
   const [claimApproveOpen, setClaimApproveOpen] = useState(false);
   // Array of { label, claimed: number, approved: string } mirroring the
   // hospital's bill_breakdown. Empty array → fallback single-amount UI.
@@ -372,13 +371,6 @@ export default function ProviderClaimDetail() {
       timestamp: claim.submitted_at,
     }];
   }, [claim, statusHistory]);
-
-  const closeApprove = () => setApproveOpen(false);
-
-  const handleApproveSubmitted = async () => {
-    setApproveOpen(false);
-    await loadClaimData(false);
-  };
 
   const openClaimApprove = () => {
     const items = Array.isArray(claimData?.bill_breakdown) ? claimData.bill_breakdown : [];
@@ -649,9 +641,9 @@ export default function ProviderClaimDetail() {
           <div className="claim-detail__actions">
             <button
               className="btn btn--outline"
-              onClick={() => isClaimStage ? openClaimApprove() : setApproveOpen(true)}
+              onClick={() => isClaimStage ? openClaimApprove() : setPartD({ open: true, emailId: null })}
             >
-              <IconCheck size={16} /> {isClaimStage ? 'Claim Approve' : 'Approve'}
+              <IconCheck size={16} /> {isClaimStage ? 'Claim Approve' : 'Review & Approve'}
             </button>
             <button className="btn btn--outline" onClick={() => setNmiOpen(true)}>
               <IconAlertCircle size={16} /> {isClaimStage ? 'Claim ADR' : 'Request Additional Documents'}
@@ -659,17 +651,6 @@ export default function ProviderClaimDetail() {
             <button className="btn btn--outline" onClick={() => setDenyOpen(true)}>
               <IconX size={16} /> {isClaimStage ? 'Claim Deny' : 'Deny'}
             </button>
-            {canRespond && !isClaimStage && (
-              <button
-                className="btn btn--outline"
-                onClick={() => setPartD({ open: true, emailId: null })}
-                title={hasApproval
-                  ? 'Edit / regenerate the Part-D authorization letter (latest approval)'
-                  : 'Issue authorization for this pre-auth (Part-D)'}
-              >
-                <IconFormEdit size={16} /> Part D
-              </button>
-            )}
           </div>
         );
       })()}
@@ -780,14 +761,6 @@ export default function ProviderClaimDetail() {
           />
         </Accordion>
       </div>
-
-      {approveOpen && (
-        <ProviderApproveModal
-          claim={claim}
-          onClose={closeApprove}
-          onSubmitted={handleApproveSubmitted}
-        />
-      )}
 
       {claimApproveOpen && (() => {
         const itemized = claimApprovedLines.length > 0;
@@ -919,6 +892,10 @@ export default function ProviderClaimDetail() {
           emailId={partD.emailId}
           onClose={() => setPartD({ open: false, emailId: null })}
           onSaved={() => loadClaimData(false)}
+          onApproved={async () => {
+            setPartD({ open: false, emailId: null });
+            await loadClaimData(false);
+          }}
         />
       )}
 

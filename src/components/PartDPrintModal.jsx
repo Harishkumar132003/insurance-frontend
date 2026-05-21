@@ -64,14 +64,7 @@ const PARTD_TEXT_FIELDS = [
 
 const EMPTY_TEXT_STATE = PARTD_TEXT_FIELDS.reduce((acc, [k]) => { acc[k] = ''; return acc; }, {});
 
-function statusBadge(meta) {
-  if (!meta) return null;
-  if (!meta.is_persisted) return { label: 'Part-D not started', cls: 'default' };
-  if (meta.attachment_id == null) return { label: 'Saved (not yet printed)', cls: 'info' };
-  return { label: 'Part-D generated', cls: 'success' };
-}
-
-export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, onSaved }) {
+export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, onSaved, onApproved }) {
   const toast = useToast();
   const htmlRef = useRef('');
 
@@ -89,6 +82,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
   const [claimNumber, setClaimNumber] = useState('');
   const [remarks, setRemarks] = useState('');
   const [textFields, setTextFields] = useState(EMPTY_TEXT_STATE);
+  // Saved stage → "Proceed" reveals the finalize panel (file upload + amount +
+  // claim number + Approve). Optional signed-letter upload lives there.
+  const [showApprovePanel, setShowApprovePanel] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
 
   const setTextField = (key, value) => setTextFields((prev) => ({ ...prev, [key]: value }));
 
@@ -232,10 +229,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
     if (typeof onSaved === 'function') onSaved(data);
   };
 
-  // Save = pure data persist. No approval trigger. Pre-approval saves go as a
-  // draft (no email_id in payload); the backend creates a draft Part-D row
-  // with claim_case_email_id IS NULL, and links it to the approval email
-  // later when the provider hits Approve in the separate modal.
+  // Save draft = pure data persist. No approval trigger. Pre-approval saves go
+  // as a draft (no email_id in payload); the backend creates a draft Part-D row
+  // with claim_case_email_id IS NULL, and links it to the approval email later
+  // when the provider hits "Submit approval".
   const handleSave = async () => {
     if (exceedsRequested) {
       toast.error(`Approved amount cannot exceed the requested amount (${fmtCap(requestedCap)})`);
@@ -256,9 +253,8 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
   };
 
   // Print = persist field values (so the user doesn't lose their work) + open
-  // the browser print dialog with the populated PDF. The user then downloads
-  // the PDF and attaches it manually in the Approve modal — Print does NOT
-  // trigger any approval here.
+  // the browser print dialog with the populated PDF (for a wet signature).
+  // Print does NOT submit the approval — use "Submit approval" for that.
   const handlePrint = async () => {
     if (!htmlRef.current) {
       toast.error('PART_D template not loaded');
@@ -299,11 +295,76 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
     }
   };
 
+  // Submit approval = the final step of the unified flow. Persists the Part-D
+  // field values, renders the PDF from the filled template, then sends the
+  // provider decision (APPROVED / PARTIALLY_APPROVED) with that PDF attached.
+  // This replaces the old separate Approve modal — no re-entry, no manual PDF
+  // handoff.
+  const handleSubmitApproval = async () => {
+    if (!htmlRef.current) {
+      toast.error('PART_D template not loaded');
+      return;
+    }
+    if (approveAmount === '' || Number.isNaN(Number(approveAmount))) {
+      toast.error('Approved amount is required');
+      return;
+    }
+    if (exceedsRequested) {
+      toast.error(`Approved amount cannot exceed the requested amount (${fmtCap(requestedCap)})`);
+      return;
+    }
+    setSaving(true);
+    try {
+      // 1. Persist field values (draft pre-approval) so the bill breakdown is
+      //    saved on the Part-D row; the backend links this row to the approval
+      //    email created in step 2.
+      const savePayload = { ...fieldPayload() };
+      if (resolvedEmailId != null) savePayload.email_id = resolvedEmailId;
+      await claimCaseService.putPartD(claimCaseId, savePayload);
+
+      // 2. Use the uploaded signed letter if provided, else render the PDF
+      //    from the filled template. Send the approval decision with it.
+      let fileToSend;
+      if (uploadedFile) {
+        fileToSend = uploadedFile;
+      } else {
+        const blob = await renderPartDPdfBlob({ htmlTemplate: htmlRef.current, ...buildFlatArgs() });
+        const filename = `PartD_${claimNumber || claim?.claim_number || claimCaseId}.pdf`;
+        fileToSend = new File([blob], filename, { type: 'application/pdf' });
+      }
+      const requested = Number(claim?.requested_amount) || 0;
+      const approved = Number(approveAmount);
+      const status = (requested > 0 && approved < requested) ? 'PARTIALLY_APPROVED' : 'APPROVED';
+
+      const fd = new FormData();
+      fd.append('status', status);
+      fd.append('approved_amount', String(approved));
+      if (claimNumber.trim()) fd.append('claim_number', claimNumber.trim());
+      if (remarks.trim()) fd.append('remarks', remarks.trim());
+      fd.append('file', fileToSend);
+
+      await claimCaseService.providerAction(claimCaseId, fd);
+      toast.success('Approval submitted');
+      if (typeof onApproved === 'function') onApproved();
+      else onClose();
+    } catch {
+      // interceptor toasted
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const loading = loadingTemplate || loadingData;
-  const badge = statusBadge(meta);
+
+  // Stepper: Draft → Saved → Approved. Fill + Save, then Proceed to finalize
+  // (upload signed letter / amount / claim number) and Approve.
+  const STEPS = ['Draft', 'Saved', 'Approved'];
+  // currentStep: 0 = Draft (not saved), 1 = Saved (finalizing / awaiting
+  // approval). The Approved node lights up only after Approve completes.
+  const currentStep = !meta?.is_persisted ? 0 : 1;
 
   return (
-    <Modal title="Part D" onClose={onClose} size="lg">
+    <Modal title="Review & Approve" onClose={onClose} size="lg">
       <div className="part-d-fill">
         {loading ? (
           <div style={{ padding: '40px 0', textAlign: 'center' }}><Spinner /></div>
@@ -315,12 +376,24 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
           <p>No PART_D template available.</p>
         ) : (
           <>
-            {badge && (
-              <div style={{ marginBottom: 12 }}>
-                <span className={`badge badge--${badge.cls}`}>{badge.label}</span>
-              </div>
-            )}
+            <div className="partd-stepper">
+              {STEPS.map((label, i) => (
+                <div
+                  key={label}
+                  className={`partd-stepper__step ${
+                    i < currentStep ? 'partd-stepper__step--done'
+                    : i === currentStep ? 'partd-stepper__step--active'
+                    : ''
+                  }`}
+                >
+                  <span className="partd-stepper__dot">{i < currentStep ? '✓' : i + 1}</span>
+                  <span className="partd-stepper__label">{label}</span>
+                  {i < STEPS.length - 1 && <span className="partd-stepper__line" />}
+                </div>
+              ))}
+            </div>
 
+            {!showApprovePanel && (
             <div className="part-d-fill__inputs">
               <div className="form-row">
                 <div className="form-group">
@@ -435,27 +508,82 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
                 <textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
               </div>
             </div>
+            )}
+
+            {showApprovePanel && (
+              <div className="part-d-fill__inputs">
+                <h4 className="part-d-fill__group-title">Finalize Approval</h4>
+                <p style={{ color: '#6b7280', fontSize: 13, marginTop: -4 }}>
+                  Review the saved values below. To change them, go Back and edit the form.
+                </p>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Approved Amount</label>
+                    <div className="part-d-fill__readonly">{fmtCap(Number(approveAmount) || 0)}</div>
+                  </div>
+                  <div className="form-group">
+                    <label>Claim Number</label>
+                    <div className="part-d-fill__readonly">{claimNumber || '—'}</div>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Authorization Letter (optional)</label>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    onChange={(e) => setUploadedFile(e.target.files?.[0] || null)}
+                  />
+                  <small style={{ color: '#6b7280' }}>
+                    {uploadedFile
+                      ? `Attached: ${uploadedFile.name}`
+                      : 'Leave empty to auto-generate the letter from the template.'}
+                  </small>
+                </div>
+                <div className="form-group">
+                  <label>Remarks</label>
+                  <div className="part-d-fill__readonly">{remarks || '—'}</div>
+                </div>
+              </div>
+            )}
           </>
         )}
 
         <div className="modal-actions">
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={saving}>
-            Close
-          </button>
+          {!showApprovePanel && (
+            <button type="button" className="btn btn--ghost" onClick={onClose} disabled={saving}>
+              Close
+            </button>
+          )}
           {!loading && !unavailable && htmlRef.current && (
-            <>
-              <button type="button" className="btn btn--ghost" onClick={handleSave} disabled={saving}>
+            showApprovePanel ? (
+              // Finalize panel: go back, print the letter to sign, or approve.
+              <>
+                <button type="button" className="btn btn--ghost" onClick={() => setShowApprovePanel(false)} disabled={saving}>
+                  Back
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={handlePrint} disabled={saving}>
+                  {saving ? <Spinner size={16} /> : 'Print letter'}
+                </button>
+                <button type="button" className="btn btn--primary" onClick={handleSubmitApproval} disabled={saving}>
+                  {saving ? <Spinner size={16} /> : 'Approve'}
+                </button>
+              </>
+            ) : currentStep === 0 ? (
+              // Draft: save first.
+              <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving}>
                 {saving ? <Spinner size={16} /> : 'Save'}
               </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={handlePrint}
-                disabled={saving}
-              >
-                {saving ? <Spinner size={16} /> : 'Print'}
-              </button>
-            </>
+            ) : (
+              // Saved: update edits, or proceed to the finalize panel.
+              <>
+                <button type="button" className="btn btn--ghost" onClick={handleSave} disabled={saving}>
+                  {saving ? <Spinner size={16} /> : 'Update'}
+                </button>
+                <button type="button" className="btn btn--primary" onClick={() => setShowApprovePanel(true)} disabled={saving}>
+                  Proceed
+                </button>
+              </>
+            )
           )}
         </div>
       </div>
