@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { IconX } from './icons/Icons';
 import './Modal.scss';
 
-export default function Modal({ title, children, onClose, size }) {
+export default function Modal({ title, children, onClose, size, closeOnOverlayClick = true }) {
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === 'Escape') onClose();
@@ -12,7 +12,7 @@ export default function Modal({ title, children, onClose, size }) {
   }, [onClose]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={closeOnOverlayClick ? onClose : undefined}>
       <div className={`modal-content${size === 'lg' ? ' modal-content--lg' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{title}</h3>

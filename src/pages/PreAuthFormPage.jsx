@@ -514,7 +514,7 @@ export default function PreAuthFormPage() {
   useEffect(() => {
     const fetchProviders = async () => {
       try {
-        const res = await policyProviderService.getAll();
+        const res = await policyProviderService.getForHospital();
         const list = Array.isArray(res.data) ? res.data : [];
         setProviders(list);
         // Don't set default provider if AI data will handle it
@@ -1090,8 +1090,35 @@ export default function PreAuthFormPage() {
     return undefined;
   };
 
+  // Room Type options come from the selected provider's MOU room charges.
+  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
+  const roomTypeOptions = (selectedProvider?.room_charges?.room_type || [])
+    .filter((r) => r && r.room)
+    .map((r) => ({
+      value: r.room,
+      label: r.per_day_rent != null ? `${r.room} — ₹${r.per_day_rent}` : r.room,
+    }));
+
+  // MOU coverage hint shown under cost-estimate fields (Room Rent / ICU / OT).
+  const mouCoverageHint = (fieldKey, sectionName) => {
+    const rc = selectedProvider?.room_charges;
+    if (!rc) return '';
+    if (fieldKey === 'icu_charges' && rc.icu != null) return `Insurance covers ₹${rc.icu} per day`;
+    if (fieldKey === 'ot_charges' && rc.ot_charge != null) return `Insurance covers ₹${rc.ot_charge}`;
+    if (fieldKey === 'room_rent') {
+      const room = getValue(sectionName, 'room_type');
+      const match = (rc.room_type || []).find((r) => r.room === room);
+      if (match && match.per_day_rent != null) return `Insurance covers ₹${match.per_day_rent} per day`;
+    }
+    return '';
+  };
+
   const renderFields = (fields, sectionName, subgroupKey) =>
-    fields.filter((f) => shouldShow(f, sectionName)).map((field) => {
+    fields.filter((f) => shouldShow(f, sectionName)).map((rawField) => {
+      const field =
+        rawField.key === 'room_type'
+          ? { ...rawField, type: 'select', options: roomTypeOptions }
+          : rawField;
       const suggestion = getPolicySuggestion(subgroupKey, field.key);
       const fieldValue = getValue(sectionName, field.key, subgroupKey);
       // Chronic-conditions: only show the suggestion when the user has
@@ -1118,6 +1145,9 @@ export default function PreAuthFormPage() {
           />
           {showSuggestion && (
             <small className="policy-suggestion">{suggestionText}</small>
+          )}
+          {subgroupKey === 'costs' && mouCoverageHint(field.key, sectionName) && (
+            <small className="mou-coverage-hint">{mouCoverageHint(field.key, sectionName)}</small>
           )}
         </div>
       );

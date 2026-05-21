@@ -3497,6 +3497,23 @@
   line-height: 1.35;
 }
 
+.mou-coverage-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: $font-size-xs;
+  color: $secondary;
+  background: rgba($secondary, 0.1);
+  border-radius: $radius-sm;
+  line-height: 1.35;
+
+  &::before {
+    content: '🛡';
+  }
+}
+
 // ── Email card form-values view (replaces email body when stored) ─
 .email-form-values {
   display: grid;

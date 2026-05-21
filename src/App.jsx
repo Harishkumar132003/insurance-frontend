@@ -30,6 +30,7 @@ import GlobalVariablesPage from './pages/GlobalVariablesPage';
 import QueryManagement from './pages/QueryManagement';
 import ProviderQueue from './pages/ProviderQueue';
 import ProviderClaimDetail from './pages/ProviderClaimDetail';
+import ProviderOnboarding from './pages/ProviderOnboarding';
 import './styles/global.scss';
 
 const { SUPER_ADMIN, HOSPITAL_ADMIN, INSURANCE_PROVIDER } = ROLES;
@@ -251,6 +252,14 @@ export default function App() {
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
                     <FeatureGate feature="hospital_info"><HospitalInfo /></FeatureGate>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/provider-onboarding"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <ProviderOnboarding />
                   </PrivateRoute>
                 }
               />

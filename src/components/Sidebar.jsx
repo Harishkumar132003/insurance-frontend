@@ -36,6 +36,7 @@ const menuItems = [
   { path: '/query-management', label: 'Email Inbox', icon: IconQuery, feature: 'query_management', roles: [HOSPITAL_ADMIN], hasUnreadIndicator: true },
   { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, feature: 'preauth_form', roles: [HOSPITAL_ADMIN] },
   { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
+  { path: '/provider-onboarding', label: 'Provider Onboarding', icon: IconShield, roles: [HOSPITAL_ADMIN] },
   { path: '/hospital-info', label: 'Hospital Info', icon: IconHospital, feature: 'hospital_info', roles: [HOSPITAL_ADMIN] },
   { path: '/claim-list', label: 'Pre Auth', icon: IconClaimList, roles: [INSURANCE_PROVIDER], activePaths: ['/claim-list', '/provider-queue'] },
   { path: '/claims', label: 'Claims', icon: IconClaimList, roles: [INSURANCE_PROVIDER], activePaths: ['/claims'] },
