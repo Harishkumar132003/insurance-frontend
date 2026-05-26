@@ -1096,7 +1096,7 @@ export default function PreAuthFormPage() {
     .filter((r) => r && r.room)
     .map((r) => ({
       value: r.room,
-      label: r.per_day_rent != null ? `${r.room} — ₹${r.per_day_rent}` : r.room,
+      label: r.room,
     }));
 
   // MOU coverage hint shown under cost-estimate fields (Room Rent / ICU / OT).

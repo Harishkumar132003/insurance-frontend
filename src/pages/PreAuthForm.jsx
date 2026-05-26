@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { claimCaseService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
+import { claimCaseService, claimService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
 import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle, IconMail, IconFormEdit, IconEdit } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
@@ -1554,6 +1554,10 @@ export default function PreAuthForm() {
   const [claimEmails, setClaimEmails] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showUnreadPopup, setShowUnreadPopup] = useState(false);
+  // True when an in-progress claim draft exists on this case (no `claims`
+  // row yet, but a form_data row with stage=CLAIM, status=DRAFT). Drives the
+  // "Resume Claim Draft" button label.
+  const [hasClaimDraft, setHasClaimDraft] = useState(false);
 
   // Timeline reply compose state
   const [showReplyCompose, setShowReplyCompose] = useState(false);
@@ -1706,6 +1710,16 @@ export default function PreAuthForm() {
           ? docsRes.data
           : (Array.isArray(cc.documents) ? cc.documents : []),
       });
+      // Probe for an in-progress claim draft (only meaningful before a claim
+      // is raised). Non-blocking — a failure just hides the resume button.
+      if (cc.has_claim !== true && !isInsuranceProvider) {
+        claimService.getDraft(routeClaimCaseId)
+          .then((d) => setHasClaimDraft(!!d?.is_persisted))
+          .catch(() => setHasClaimDraft(false));
+      } else {
+        setHasClaimDraft(false);
+      }
+
       const count = cc.unread_count || 0;
       setUnreadCount(count);
       // The "Uncategorized Emails" prompt is meant for the hospital-admin
@@ -2351,7 +2365,11 @@ export default function PreAuthForm() {
                 className="claim-detail__claim-btn"
                 onClick={() => navigate(`/claim/${routeClaimCaseId}`)}
               >
-                {hasClaim ? 'View Claim' : <><IconPlus size={16} /> Raise Claim</>}
+                {hasClaim
+                  ? 'View Claim'
+                  : hasClaimDraft
+                    ? <><IconPlus size={16} /> Resume Claim Draft</>
+                    : <><IconPlus size={16} /> Raise Claim</>}
               </button>
             )}
           </div>

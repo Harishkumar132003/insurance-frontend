@@ -165,6 +165,7 @@ export default function QueryManagement() {
       if (!email.provider_read) {
         try {
           await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+          refreshUnreadCount();
         } catch {
           // non-blocking — still navigate
         }
@@ -176,6 +177,7 @@ export default function QueryManagement() {
       if (!email.is_read) {
         try {
           await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+          refreshUnreadCount();
         } catch {
           // non-blocking — still navigate
         }
