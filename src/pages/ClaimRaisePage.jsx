@@ -93,8 +93,26 @@ function ReadField({ label, value, span = 1 }) {
   );
 }
 
-function EmailPreview({ subject, to, cc, body }) {
+// `editable` opts into the Edit/Preview/Undo flow: read-only + live-synced
+// until the user clicks Edit (frozen textarea), Preview re-renders the edited
+// text formatted, Undo discards edits and resumes live-sync. Default false →
+// plain read-only preview.
+function EmailPreview({
+  subject, to, cc, body,
+  editable = false, isEdited = false,
+  onEditStart, onBodyChange, onRegenerate,
+}) {
   const [open, setOpen] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+  const startEdit = () => {
+    if (!isEdited) onEditStart();
+    setShowEditor(true);
+  };
+  const undo = () => {
+    onRegenerate();
+    setShowEditor(false);
+  };
+  const inEditor = editable && isEdited && showEditor;
   return (
     <div className="portal-form__preview">
       <button
@@ -114,7 +132,39 @@ function EmailPreview({ subject, to, cc, body }) {
             <div className="portal-form__preview-row"><span>Cc</span><code>{cc.join(', ')}</code></div>
           )}
           <div className="portal-form__preview-row"><span>Subject</span><code>{subject}</code></div>
-          <pre className="portal-form__preview-text">{body}</pre>
+          {editable && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, margin: '4px 0 8px' }}>
+              {inEditor ? (
+                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setShowEditor(false)} title="View the edited email in formatted form">
+                  Preview
+                </button>
+              ) : (
+                <button type="button" className="btn btn--ghost btn--sm" onClick={startEdit} title="Edit the email text before sending">
+                  Edit
+                </button>
+              )}
+              {isEdited && (
+                <button type="button" className="btn btn--ghost btn--sm" onClick={undo} title="Discard edits and rebuild the email from the form">
+                  Undo
+                </button>
+              )}
+            </div>
+          )}
+          {inEditor ? (
+            <textarea
+              value={body}
+              onChange={(e) => onBodyChange(e.target.value)}
+              rows={Math.max(8, body.split('\n').length + 1)}
+              style={{ width: '100%', fontFamily: 'monospace', fontSize: 13, padding: 10, border: '1px solid #d1d5db', borderRadius: 6, resize: 'vertical' }}
+            />
+          ) : (
+            <pre className="portal-form__preview-text">{body}</pre>
+          )}
+          {editable && isEdited && (
+            <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>
+              Manual edits are kept — changing the form fields above will no longer update this email. Use “Undo” to rebuild from the form.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -341,7 +391,7 @@ export default function ClaimRaisePage() {
   const insurerName = summary.provider_name || 'insurer';
   const paId = claimCase?.claim_number || claimCase?.id || claimCaseId;
   const subject = `[${paId}] Claim Submission — ${summary.patient_name || ''}`.trim();
-  const body = useMemo(() => {
+  const autoBody = useMemo(() => {
     const lines = [
       `Dear ${insurerName} Team,`,
       ``,
@@ -367,6 +417,10 @@ export default function ClaimRaisePage() {
     ];
     return lines.filter((l) => l !== '').join('\n');
   }, [claimCase, claimedAmount, items, docsByType, remarks, paId, patientName, insurerName, pickedAttachments]);
+  // editedBody === null → live-synced to autoBody. Non-null → user-frozen text.
+  const [editedBody, setEditedBody] = useState(null);
+  const isBodyEdited = editedBody !== null;
+  const body = isBodyEdited ? editedBody : autoBody;
 
   const updateItem = (idx, key, value) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [key]: value } : it)));
@@ -824,6 +878,11 @@ export default function ClaimRaisePage() {
           to={claimCase.policy_provider_email}
           cc={claimCase.cc_emails}
           body={body}
+          editable={!readOnly}
+          isEdited={isBodyEdited}
+          onEditStart={() => setEditedBody(autoBody)}
+          onBodyChange={setEditedBody}
+          onRegenerate={() => setEditedBody(null)}
         />
       </PortalShell>
 
