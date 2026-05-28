@@ -287,6 +287,38 @@ export default function ProviderClaimDetail() {
     };
   }, [claimEmails]);
 
+  // Latest SENT email from the hospital that's still awaiting a provider
+  // decision. Used by PartDPrintModal to surface this round's request
+  // (additional amount, reason) so the provider doesn't just see the
+  // cumulative already-approved figure.
+  const pendingRequest = useMemo(() => {
+    const REQUEST_TYPES = new Set([
+      ...SUBMITTED_TYPES,
+      ...ENHANCE_SUBMITTED_TYPES,
+      ...RECONSIDER_TYPES,
+      ...ADR_SUBMITTED_TYPES,
+    ]);
+    const sent = (claimEmails || [])
+      .filter((e) => e.direction === 'SENT' && REQUEST_TYPES.has(e.email_type))
+      .sort((a, b) => new Date(b.email_date || b.created_at || 0) - new Date(a.email_date || a.created_at || 0));
+    if (sent.length === 0) return null;
+    const latest = sent[0];
+    const fv = latest.form_values || {};
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    return {
+      email_type: latest.email_type,
+      email_date: latest.email_date || latest.created_at,
+      additional_amount: num(fv.additional_amount),
+      approved_so_far: num(fv.approved_so_far),
+      revised_total: num(fv.revised_total),
+      reason_category: fv.reason_category || null,
+      reason_detail: fv.reason_detail || null,
+    };
+  }, [claimEmails]);
+
   const statusHistory = claim?.status_history || [];
 
   const statusEvents = useMemo(() => {
@@ -592,6 +624,11 @@ export default function ProviderClaimDetail() {
     Number.isFinite(reqNum) && reqNum > 0 &&
     Number.isFinite(apprNum) && apprNum >= reqNum;
 
+  const isCancelled = claim.status === 'CANCELLED' || claim.claim_status === 'CANCELLED';
+  const cancelEvent = isCancelled && Array.isArray(claim.status_history)
+    ? claim.status_history.find((h) => h.status === 'CANCELLED')
+    : null;
+
   return (
     <div className="claim-detail">
       <div className="claim-detail__header">
@@ -609,6 +646,38 @@ export default function ProviderClaimDetail() {
           {statusLabel(claim.main_status || claim.claim_status)}
         </span>
       </div>
+
+      {isCancelled && (
+        <div
+          style={{
+            margin: '0 0 16px',
+            padding: '12px 16px',
+            background: '#f3f4f6',
+            border: '1px solid #d1d5db',
+            borderLeft: '4px solid #6b7280',
+            borderRadius: 8,
+            color: '#374151',
+            fontSize: 14,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>This case has been cancelled by the hospital.</div>
+          {cancelEvent && (
+            <div style={{ fontSize: 13, color: '#6b7280' }}>
+              {cancelEvent.created_at && (
+                <>Cancelled on {new Date(cancelEvent.created_at).toLocaleString('en-IN', {
+                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                })}</>
+              )}
+              {cancelEvent.remarks && (
+                <> · Reason: <span style={{ color: '#374151' }}>{cancelEvent.remarks}</span></>
+              )}
+            </div>
+          )}
+          <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+            No further action is required on this case.
+          </div>
+        </div>
+      )}
 
       <div className="claim-detail__stats">
         <div className="claim-detail__stat">
@@ -890,6 +959,7 @@ export default function ProviderClaimDetail() {
           claim={claim}
           claimCaseId={claim.claim_case_id}
           emailId={partD.emailId}
+          pendingRequest={pendingRequest}
           onClose={() => setPartD({ open: false, emailId: null })}
           onSaved={() => loadClaimData(false)}
           onApproved={async () => {

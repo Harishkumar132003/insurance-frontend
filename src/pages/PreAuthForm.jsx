@@ -1558,6 +1558,11 @@ export default function PreAuthForm() {
   // row yet, but a form_data row with stage=CLAIM, status=DRAFT). Drives the
   // "Resume Claim Draft" button label.
   const [hasClaimDraft, setHasClaimDraft] = useState(false);
+  // Cancel-case flow state. The modal collects a required reason; the banner
+  // surfaces the cancellation in the header.
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   // Timeline reply compose state
   const [showReplyCompose, setShowReplyCompose] = useState(false);
@@ -1742,6 +1747,26 @@ export default function PreAuthForm() {
   }, [routeClaimCaseId]);
 
   const handleRefresh = () => loadClaimData(false);
+
+  const handleConfirmCancel = async () => {
+    const reason = cancelReason.trim();
+    if (!reason) {
+      toast.error('Please enter a cancellation reason');
+      return;
+    }
+    setCancelling(true);
+    try {
+      await claimCaseService.cancel(routeClaimCaseId, reason);
+      toast.success('Case cancelled');
+      setCancelOpen(false);
+      setCancelReason('');
+      await loadClaimData(false);
+    } catch {
+      // interceptor toasted
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const handleTimelineReplySuccess = async () => {
     setShowReplyCompose(false);
@@ -2262,6 +2287,15 @@ export default function PreAuthForm() {
   const approvedDisplay = submitResult.approved_amount !== '' && submitResult.approved_amount != null
     ? submitResult.approved_amount
     : null;
+  const isCancelled = submitResult.status === 'CANCELLED'
+    || submitResult.claim_status === 'CANCELLED'
+    || submitResult.main_status === 'CANCELLED';
+  // Pull the most recent CANCELLED history entry to surface the date + reason
+  // in the banner. Status history comes pre-sorted (newest first) from
+  // loadClaimData.
+  const cancelEvent = isCancelled && Array.isArray(submitResult.status_history)
+    ? submitResult.status_history.find((h) => h.status === 'CANCELLED')
+    : null;
 
   return (
     <div className="claim-detail">
@@ -2283,18 +2317,73 @@ export default function PreAuthForm() {
         </span>
       </div>
 
-      {/* Stat cards */}
-      <div className="claim-detail__stats">
-        <div className="claim-detail__stat">
-          <div className="claim-detail__stat-label">REQUESTED</div>
-          <div className="claim-detail__stat-value">{formatINR(requestedAmount)}</div>
-        </div>
-        <div className="claim-detail__stat">
-          <div className="claim-detail__stat-label">APPROVED</div>
-          <div className="claim-detail__stat-value claim-detail__stat-value--approved">
-            {formatINR(approvedDisplay)}
+      {isCancelled && (
+        <div
+          style={{
+            margin: '0 0 16px',
+            padding: '12px 16px',
+            background: '#f3f4f6',
+            border: '1px solid #d1d5db',
+            borderLeft: '4px solid #6b7280',
+            borderRadius: 8,
+            color: '#374151',
+            fontSize: 14,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>This case has been cancelled.</div>
+          {cancelEvent && (
+            <div style={{ fontSize: 13, color: '#6b7280' }}>
+              {cancelEvent.created_at && (
+                <>Cancelled on {new Date(cancelEvent.created_at).toLocaleString('en-IN', {
+                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                })}</>
+              )}
+              {cancelEvent.remarks && (
+                <> · Reason: <span style={{ color: '#374151' }}>{cancelEvent.remarks}</span></>
+              )}
+            </div>
+          )}
+          <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+            No further action is allowed on this case.
           </div>
         </div>
+      )}
+
+      {/* Stat cards */}
+      <div className="claim-detail__stats">
+        {timelineStage === 'CLAIM' ? (
+          <>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">CLAIM RAISED</div>
+              <div className="claim-detail__stat-value">
+                {submitResult.claim_summary?.claimed_amount != null
+                  ? formatINR(submitResult.claim_summary.claimed_amount)
+                  : '—'}
+              </div>
+            </div>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">CLAIM APPROVED</div>
+              <div className="claim-detail__stat-value claim-detail__stat-value--approved">
+                {submitResult.claim_summary?.approved_amount != null
+                  ? formatINR(submitResult.claim_summary.approved_amount)
+                  : '—'}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">REQUESTED</div>
+              <div className="claim-detail__stat-value">{formatINR(requestedAmount)}</div>
+            </div>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">APPROVED</div>
+              <div className="claim-detail__stat-value claim-detail__stat-value--approved">
+                {formatINR(approvedDisplay)}
+              </div>
+            </div>
+          </>
+        )}
         <div className="claim-detail__stat">
           <div className="claim-detail__stat-label">DIAGNOSIS</div>
           <div className="claim-detail__stat-value">{diagnosis}</div>
@@ -2306,7 +2395,7 @@ export default function PreAuthForm() {
       </div>
 
       {/* DRAFT action bar — Print Part C (signed-copy upload) + Submit Pre-Auth */}
-      {!showReplyCompose && isDraft && (
+      {!showReplyCompose && isDraft && !isCancelled && (
         <div className="actionbar actionbar--info">
           <div className="actionbar__msg">
             <div className="actionbar__icon"><IconSend size={18} /></div>
@@ -2342,7 +2431,7 @@ export default function PreAuthForm() {
       )}
 
       {/* Row of follow-up CTAs — Enhance/ADR/Reconsider + Raise Claim share one row. */}
-      {!showReplyCompose && (() => {
+      {!showReplyCompose && !isCancelled && (() => {
         const approved = Number(submitResult?.approved_amount);
         const hasApprovedAmount = Number.isFinite(approved) && approved > 0;
         const hasClaim = submitResult?.has_claim === true;
@@ -2352,7 +2441,18 @@ export default function PreAuthForm() {
         // remains accessible regardless of any in-flight pre-auth round.
         const blockNewClaim = alreadyRaised && !hasClaim;
         const showClaimBtn = !isInsuranceProvider && submitResult && (hasApprovedAmount || hasClaim) && !blockNewClaim;
-        if (!showRaiseBtn && !showClaimBtn) return null;
+        // Cancel is available for the hospital admin only when the ball is in
+        // their court — i.e. NOT while waiting on the provider to act. We read
+        // the latest timeline status (latestStageStatus) rather than
+        // claim_case.status, because on pre-auth the raw status column lags
+        // (it keeps the last hospital-sent state even after the insurer
+        // responds). The timeline reflects the true current state.
+        const awaitingProviderStatuses = new Set([
+          'SUBMITTED', 'ENHANCE_SUBMITTED', 'RECONSIDER', 'RECONSIDER_SUBMITTED', 'ADR_SUBMITTED',
+        ]);
+        const awaitingProvider = awaitingProviderStatuses.has(latestStageStatus);
+        const showCancelBtn = !isInsuranceProvider && !isDraft && !awaitingProvider;
+        if (!showRaiseBtn && !showClaimBtn && !showCancelBtn) return null;
         return (
           <div className="claim-detail__cta-row">
             {showRaiseBtn && (
@@ -2372,6 +2472,17 @@ export default function PreAuthForm() {
                     : <><IconPlus size={16} /> Raise Claim</>}
               </button>
             )}
+            {showCancelBtn && (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setCancelOpen(true)}
+                style={{ color: '#b91c1c', borderColor: '#fecaca' }}
+                title="Cancel this case — no further action will be allowed"
+              >
+                Cancel Case
+              </button>
+            )}
           </div>
         );
       })()}
@@ -2380,7 +2491,7 @@ export default function PreAuthForm() {
           (APPLIED → Submit, APPROVED / PARTIALLY_APPROVED → Enhance,
           ADR_NMI → ADR, DENIED → Reconsider). The legacy email-template
           ApplyStep is now only a fallback for unexpected combinations. */}
-      {showReplyCompose && (() => {
+      {showReplyCompose && !isCancelled && (() => {
         const useSubmitForm = replyEmailType === 'APPLIED';
         const useEnhanceForm =
           replyEmailType === 'ENHANCE_SUBMITTED' &&
@@ -2700,6 +2811,56 @@ export default function PreAuthForm() {
                 </a>
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {cancelOpen && (
+        <Modal
+          title="Cancel this case?"
+          onClose={() => { if (!cancelling) { setCancelOpen(false); setCancelReason(''); } }}
+        >
+          <p style={{ marginTop: 0 }}>
+            This will mark the case as <strong>cancelled</strong> and stop all further action
+            on it (no replies, enhancements, claim raise, or provider decision).
+            {!submitResult.is_onboarded && ' A cancellation email will be sent to the insurer.'}
+          </p>
+          <div style={{ marginTop: 12 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+              Reason <span style={{ color: '#b91c1c' }}>*</span>
+            </label>
+            <textarea
+              rows={4}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Patient discharged against medical advice; treatment plan changed; duplicate case"
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontFamily: 'inherit',
+                fontSize: 14,
+              }}
+              autoFocus
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button
+              className="btn btn--ghost"
+              onClick={() => { setCancelOpen(false); setCancelReason(''); }}
+              disabled={cancelling}
+            >
+              Keep Case
+            </button>
+            <button
+              className="btn btn--primary"
+              onClick={handleConfirmCancel}
+              disabled={cancelling || !cancelReason.trim()}
+              style={{ background: '#b91c1c', borderColor: '#b91c1c' }}
+            >
+              {cancelling ? <Spinner size={16} /> : 'Confirm Cancel'}
+            </button>
           </div>
         </Modal>
       )}

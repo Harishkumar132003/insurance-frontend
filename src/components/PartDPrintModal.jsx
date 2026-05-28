@@ -64,7 +64,7 @@ const PARTD_TEXT_FIELDS = [
 
 const EMPTY_TEXT_STATE = PARTD_TEXT_FIELDS.reduce((acc, [k]) => { acc[k] = ''; return acc; }, {});
 
-export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, onSaved, onApproved }) {
+export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRequest, onClose, onSaved, onApproved }) {
   const toast = useToast();
   const htmlRef = useRef('');
 
@@ -89,8 +89,12 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
 
   const setTextField = (key, value) => setTextFields((prev) => ({ ...prev, [key]: value }));
 
-  // Approved amount can't exceed the requested cover.
-  const requestedCap = Number(claim?.requested_amount) || 0;
+  // The Approved Amount field represents this round's approval increment
+  // (the backend ADDS it to claim_case.approved_amount). So the cap is what
+  // the hospital just asked for in this round:
+  //   • Enhancement / reconsider → `additional_amount` (e.g. ₹10K)
+  //   • Original pre-auth → `claim.requested_amount` (the full ask)
+  const requestedCap = Number(pendingRequest?.additional_amount) || Number(claim?.requested_amount) || 0;
   const exceedsRequested = requestedCap > 0 && Number(approveAmount) > requestedCap;
   const fmtCap = (n) => Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
@@ -104,7 +108,15 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
       claim_case_email_id: data.claim_case_email_id ?? null,
     });
     if (data.claim_case_email_id != null) setResolvedEmailId(data.claim_case_email_id);
-    setApproveAmount(data.approved_amount != null ? String(data.approved_amount) : '');
+    // Only hydrate the Approved Amount from a *persisted* Part-D row. The
+    // backend's stub response (is_persisted=false) returns the cumulative
+    // claim_case.approved_amount, which would mislead the provider into
+    // approving the wrong increment.
+    if (data.is_persisted) {
+      setApproveAmount(data.approved_amount != null ? String(data.approved_amount) : '');
+    } else {
+      setApproveAmount('');
+    }
     setClaimNumber(data.claim_number ?? '');
     setRemarks(data.remarks ?? '');
     setTextFields(
@@ -150,22 +162,17 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
         // to Save/Print which calls providerAction first.
         if (sc === 400 && /no approval email/i.test(detail)) {
           if (!cancelled) {
-            setApproveAmount(
-              claim?.approved_amount != null && claim?.approved_amount !== '' ? String(claim.approved_amount)
-              : claim?.requested_amount != null ? String(claim.requested_amount)
-              : ''
-            );
+            // Leave Approved Amount blank — the provider must explicitly type
+            // the amount they're approving this round. The "Hospital's request"
+            // banner above the field shows them the relevant numbers.
+            setApproveAmount('');
             setClaimNumber(claim?.claim_number || '');
           }
         } else if (sc === 404 && emailId == null) {
           // GET returned 404 (no part-d row and no approval). Same as above:
           // open the editor and let Save/Print create the approval inline.
           if (!cancelled) {
-            setApproveAmount(
-              claim?.approved_amount != null && claim?.approved_amount !== '' ? String(claim.approved_amount)
-              : claim?.requested_amount != null ? String(claim.requested_amount)
-              : ''
-            );
+            setApproveAmount('');
             setClaimNumber(claim?.claim_number || '');
           }
         } else if (sc === 404) {
@@ -332,7 +339,12 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
         const filename = `PartD_${claimNumber || claim?.claim_number || claimCaseId}.pdf`;
         fileToSend = new File([blob], filename, { type: 'application/pdf' });
       }
-      const requested = Number(claim?.requested_amount) || 0;
+      // Compare against THIS round's ask (additional_amount for enhancements,
+      // claim.requested_amount for the original PA). The backend coerces the
+      // bare status to ENHANCEMENT_APPROVED / PARTIALLY_APPROVED based on prior
+      // approvals — we just need to send the right "fully vs partially" hint
+      // for this round.
+      const requested = Number(pendingRequest?.additional_amount) || Number(claim?.requested_amount) || 0;
       const approved = Number(approveAmount);
       const status = (requested > 0 && approved < requested) ? 'PARTIALLY_APPROVED' : 'APPROVED';
 
@@ -395,6 +407,83 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
 
             {!showApprovePanel && (
             <div className="part-d-fill__inputs">
+              {(() => {
+                if (!pendingRequest) return null;
+                const isIncremental = pendingRequest.additional_amount != null
+                  || pendingRequest.revised_total != null
+                  || pendingRequest.approved_so_far != null;
+                const fallbackRequested = !isIncremental && Number(claim?.requested_amount) > 0
+                  ? Number(claim.requested_amount)
+                  : null;
+                if (!isIncremental && fallbackRequested == null
+                    && !pendingRequest.reason_category && !pendingRequest.reason_detail) {
+                  return null;
+                }
+                return (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: '12px 14px',
+                      background: 'rgba(79, 70, 229, 0.06)',
+                      border: '1px solid rgba(79, 70, 229, 0.25)',
+                      borderRadius: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        letterSpacing: 0.5,
+                        textTransform: 'uppercase',
+                        color: '#4338ca',
+                        marginBottom: 8,
+                      }}
+                    >
+                      Hospital&apos;s request
+                    </div>
+                    {isIncremental ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: '#6b7280' }}>Additional amount</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: '#4338ca' }}>
+                            {pendingRequest.additional_amount != null ? fmtCap(pendingRequest.additional_amount) : '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: '#6b7280' }}>Already approved</div>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: '#374151' }}>
+                            {pendingRequest.approved_so_far != null ? fmtCap(pendingRequest.approved_so_far) : '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: '#6b7280' }}>New total if approved</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: '#16a34a' }}>
+                            {pendingRequest.revised_total != null ? fmtCap(pendingRequest.revised_total) : '—'}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      fallbackRequested != null && (
+                        <div>
+                          <div style={{ fontSize: 11, color: '#6b7280' }}>Requested amount</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: '#4338ca' }}>
+                            {fmtCap(fallbackRequested)}
+                          </div>
+                        </div>
+                      )
+                    )}
+                    {(pendingRequest.reason_category || pendingRequest.reason_detail) && (
+                      <div style={{ marginTop: 10, fontSize: 13, color: '#374151' }}>
+                        {pendingRequest.reason_category && (
+                          <strong>{pendingRequest.reason_category}</strong>
+                        )}
+                        {pendingRequest.reason_category && pendingRequest.reason_detail && ' — '}
+                        {pendingRequest.reason_detail}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="form-row">
                 <div className="form-group">
                   <label>Approved Amount</label>
@@ -405,6 +494,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, onClose, 
                     onWheel={(e) => e.currentTarget.blur()}
                     min="0"
                     max={requestedCap || undefined}
+                    placeholder={requestedCap > 0 ? `Up to ${fmtCap(requestedCap)}` : ''}
                   />
                   {exceedsRequested && (
                     <small style={{ color: '#b91c1c' }}>

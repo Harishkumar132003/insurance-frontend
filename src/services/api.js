@@ -168,6 +168,7 @@ export const formTemplateService = {
 export const claimCaseService = {
   getAll: (params) => api.get('/claim-cases', { params }),
   getById: (id) => api.get(`/claim-cases/${id}`),
+  cancel: (id, reason) => api.post(`/claim-cases/${id}/cancel`, { reason }),
   getProviderQueue: (params) => api.get('/claim-cases/provider-queue', { params }),
   // Accepts either a FormData (Approve / Partially-Approve flow attaches a
   // populated PART_D PDF as `file`) or a plain JSON object (Deny / NMI).
