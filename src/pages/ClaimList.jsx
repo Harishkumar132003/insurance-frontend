@@ -198,7 +198,7 @@ export default function ClaimList({ approvedOnly }) {
               userSelect: 'none',
             }}
           >
-            <span>All stages</span>
+            <span>Include claim stage</span>
             <span
               role="switch"
               aria-checked={allStages}

@@ -1759,7 +1759,7 @@ export default function PreAuthForm() {
         : null;
 
       const summary = cc.summary || {};
-      const dj = latestForm?.data_json || {};
+      const dj = latestForm?.sections || {};
       const insured = dj.patient_insured || {};
       const doctor = dj.treating_doctor || {};
       const hospitalization = dj.hospitalization || {};

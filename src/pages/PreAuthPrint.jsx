@@ -90,7 +90,7 @@ export default function PreAuthPrint() {
         const latestForm = Array.isArray(cc.form_data) && cc.form_data.length > 0
           ? cc.form_data[cc.form_data.length - 1]
           : null;
-        flatRef.current = flattenDataJson(latestForm?.data_json || {});
+        flatRef.current = flattenDataJson(latestForm?.sections || {});
         htmlRef.current = html;
         setClaim(cc);
         if (!html) {

@@ -249,7 +249,7 @@ export default function ProviderClaimDetail() {
         diagnosis: summary.diagnosis,
         icd10_code: summary.icd_10,
         submitted_at: cc.created_at || null,
-        form_data_json: latestForm?.data_json || null,
+        form_data_json: latestForm?.sections || null,
         is_onboarded: cc.is_onboarded === true,
       });
       setClaimEmails(Array.isArray(emailsRes.data) ? emailsRes.data : []);
