@@ -130,6 +130,16 @@ export default function QueryManagement() {
   const isEmailRead = (email) =>
     isInsuranceProvider ? !!email.provider_read : !!email.is_read;
 
+  const isCancelledCase = (email) => email.case_status === 'CANCELLED';
+
+  // Decide which detail page to open for a hospital-admin email click. Cases
+  // that have moved into the claim stage live under /claims; everything else
+  // (pre-auth, draft, etc.) stays on /claim-list.
+  const routeForCase = (email) =>
+    email.current_stage === 'CLAIM'
+      ? `/claims/${email.claim_case_id}`
+      : `/claim-list/${email.claim_case_id}`;
+
   const requestMarkAsRead = (email, e) => {
     e.stopPropagation();
     if (markingReadIds.has(email.id)) return;
@@ -165,6 +175,7 @@ export default function QueryManagement() {
       if (!email.provider_read) {
         try {
           await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+          refreshUnreadCount();
         } catch {
           // non-blocking — still navigate
         }
@@ -172,15 +183,31 @@ export default function QueryManagement() {
       navigate(`/provider-queue/${email.claim_case_id}`, { state: { from: '/query-management' } });
       return;
     }
-    if (email.is_onboard_claim) {
+    // Cancelled case: no categorisation is possible (backend rejects it), so
+    // skip the editor entirely, mark the email read, and open the read-only
+    // detail page.
+    if (isCancelledCase(email)) {
       if (!email.is_read) {
         try {
           await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+          refreshUnreadCount();
         } catch {
           // non-blocking — still navigate
         }
       }
-      navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } });
+      navigate(routeForCase(email), { state: { from: '/query-management' } });
+      return;
+    }
+    if (email.is_onboard_claim) {
+      if (!email.is_read) {
+        try {
+          await claimCaseService.markEmailRead(email.claim_case_id, email.id);
+          refreshUnreadCount();
+        } catch {
+          // non-blocking — still navigate
+        }
+      }
+      navigate(routeForCase(email), { state: { from: '/query-management' } });
       return;
     }
     if (!email.is_read) {
@@ -197,7 +224,7 @@ export default function QueryManagement() {
       setNewDocLabel('');
       setRemark(email.ai_denial_reason || '');
     } else {
-      navigate(`/claim-list/${email.claim_case_id}`, { state: { from: '/query-management' } });
+      navigate(routeForCase(email), { state: { from: '/query-management' } });
     }
   };
 
@@ -380,7 +407,29 @@ export default function QueryManagement() {
                         {formatDate(email.email_date || email.date)}
                       </span>
                     </div>
-                    <div className="email-inbox__item-subject">{email.subject}</div>
+                    <div className="email-inbox__item-subject">
+                      {email.subject}
+                      {isCancelledCase(email) && (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            display: 'inline-block',
+                            background: '#f3f4f6',
+                            border: '1px solid #d1d5db',
+                            color: '#6b7280',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            letterSpacing: 0.5,
+                            padding: '1px 6px',
+                            borderRadius: 999,
+                            textTransform: 'uppercase',
+                            verticalAlign: 'middle',
+                          }}
+                        >
+                          Cancelled
+                        </span>
+                      )}
+                    </div>
                     {(email.patient_name || email.provider_name) && (
                       <div style={{ fontSize: 12, color: '#6b7280', margin: '2px 0' }}>
                         {[email.patient_name, email.provider_name].filter(Boolean).join(' · ')}
@@ -395,7 +444,7 @@ export default function QueryManagement() {
                       {email.claim_number}
                     </span>
                   )}
-                  {!read && !isInsuranceProvider && (
+                  {!read && !isInsuranceProvider && !isCancelledCase(email) && (
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"

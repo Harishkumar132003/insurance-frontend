@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { claimCaseService } from '../services/api';
 import { useAuth, ROLES } from '../context/AuthContext';
 import EmptyState from '../components/EmptyState';
@@ -35,6 +35,7 @@ const STATUS_PILL = {
   ADR_NMI:             { label: 'ADR Pending',         variant: 'warning' },
   DENIED:              { label: 'Denied',              variant: 'danger' },
   ENHANCEMENT_DENIED:  { label: 'Enhancement Denied',  variant: 'danger' },
+  CANCELLED:           { label: 'Cancelled',           variant: 'default' },
 };
 
 function formatINR(amount) {
@@ -85,6 +86,16 @@ export default function ClaimList({ approvedOnly }) {
   // Search state — debounced so we don't fire a request on every keystroke.
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  // Stage toggle — default OFF means pre-auth-only. Persisted in the URL so
+  // reloads and back-navigation keep the choice.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const allStages = searchParams.get('all_stages') === '1';
+  const toggleAllStages = () => {
+    const next = new URLSearchParams(searchParams);
+    if (allStages) next.delete('all_stages');
+    else next.set('all_stages', '1');
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput.trim()), 300);
@@ -94,13 +105,19 @@ export default function ClaimList({ approvedOnly }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    const params = { ...(search ? { q: search } : {}), ...(approvedOnly ? { approved_only: true } : {}) };
+    const params = {
+      ...(search ? { q: search } : {}),
+      ...(approvedOnly ? { approved_only: true } : {}),
+      // /claim-list defaults to pre-auth only; toggle ON drops the filter
+      // so claim-stage cases show too. /claims (approvedOnly) is unaffected.
+      ...(!approvedOnly && !allStages ? { stage: 'PRE_AUTH' } : {}),
+    };
     claimCaseService.getAll(Object.keys(params).length ? params : undefined)
       .then((res) => { if (!cancelled) setClaims(Array.isArray(res.data) ? res.data : []); })
       .catch(() => { if (!cancelled) setClaims([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [search, approvedOnly]);
+  }, [search, approvedOnly, allStages]);
 
   const counts = useMemo(() => {
     const map = {};
@@ -155,7 +172,10 @@ export default function ClaimList({ approvedOnly }) {
       </div>
 
       {!approvedOnly && (
-        <div className="preauth-tracker__filters">
+        <div
+          className="preauth-tracker__filters"
+          style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
+        >
           {FILTERS.map((tab) => (
             <button
               key={tab.key}
@@ -166,6 +186,50 @@ export default function ClaimList({ approvedOnly }) {
               <span className="preauth-tracker__filter-count">{counts[tab.key] || 0}</span>
             </button>
           ))}
+          <label
+            style={{
+              marginLeft: 'auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              color: '#374151',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <span>Include claim stage</span>
+            <span
+              role="switch"
+              aria-checked={allStages}
+              tabIndex={0}
+              onClick={toggleAllStages}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAllStages(); } }}
+              style={{
+                position: 'relative',
+                display: 'inline-block',
+                width: 36,
+                height: 20,
+                background: allStages ? '#4f46e5' : '#d1d5db',
+                borderRadius: 999,
+                transition: 'background 0.15s',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  left: allStages ? 18 : 2,
+                  width: 16,
+                  height: 16,
+                  background: '#fff',
+                  borderRadius: '50%',
+                  transition: 'left 0.15s',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                }}
+              />
+            </span>
+          </label>
         </div>
       )}
 
@@ -233,14 +297,53 @@ export default function ClaimList({ approvedOnly }) {
 
                 {/* Right: amounts + status */}
                 <div className="preauth-card__col preauth-card__col--right">
-                  <div className="preauth-card__amount">
-                    <span className="preauth-card__amount-label">Requested:</span> {formatINR(requested)}
-                  </div>
-                  {showApproved && (
-                    <div className="preauth-card__approved">Approved: {formatINR(approved)}</div>
+                  {approvedOnly ? (
+                    <>
+                      <div className="preauth-card__amount">
+                        <span className="preauth-card__amount-label">Claim Raised:</span>{' '}
+                        {claim.claim_raised_amount != null
+                          ? formatINR(claim.claim_raised_amount)
+                          : <span style={{ color: '#9ca3af', fontWeight: 400 }}>—</span>}
+                      </div>
+                      <div className="preauth-card__approved">
+                        Claim Approved:{' '}
+                        {claim.claim_approved_amount != null
+                          ? formatINR(claim.claim_approved_amount)
+                          : <span style={{ color: '#9ca3af' }}>
+                              {claim.claim_raised_amount != null ? 'Pending' : '—'}
+                            </span>}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="preauth-card__amount">
+                        <span className="preauth-card__amount-label">Requested:</span> {formatINR(requested)}
+                      </div>
+                      {showApproved && (
+                        <div className="preauth-card__approved">Approved: {formatINR(approved)}</div>
+                      )}
+                    </>
                   )}
                   {submittedAgo && <div className="preauth-card__ago">{submittedAgo}</div>}
                   <div className="preauth-card__badges">
+                    {isInsuranceProvider && claim.awaiting_provider_action && (
+                      <span
+                        title="This case is waiting for your decision"
+                        style={{
+                          background: '#ef4444',
+                          color: '#fff',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          letterSpacing: 0.5,
+                          padding: '3px 8px',
+                          borderRadius: 999,
+                          textTransform: 'uppercase',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Action Needed
+                      </span>
+                    )}
                     {adrOverdue && <span className="preauth-card__overdue">ADR OVERDUE</span>}
                     <span className={`preauth-card__status preauth-card__status--${pill.variant}`}>
                       <span className="preauth-card__status-dot" />

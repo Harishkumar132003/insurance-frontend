@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { claimCaseService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
+import { claimCaseService, claimService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
 import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle, IconMail, IconFormEdit, IconEdit } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
@@ -533,8 +533,30 @@ function FilesList({ files, onAdd, onRemove, addLabel = 'Add file' }) {
   );
 }
 
-function EmailPreview({ subject, to, cc, body }) {
+// `editable` opts a single caller into the Edit/Regenerate flow. When false
+// (default) this stays a plain read-only preview — the other reply forms are
+// unaffected. When true, the body is read-only + live-synced until the user
+// clicks Edit (switches to a frozen textarea); Regenerate discards edits and
+// resumes live-sync.
+function EmailPreview({
+  subject, to, cc, body,
+  editable = false, isEdited = false,
+  onEditStart, onBodyChange, onRegenerate,
+}) {
   const [open, setOpen] = useState(false);
+  // Local editor↔preview toggle (only relevant once `isEdited`). Lets the user
+  // type in the textarea, hit "Preview" to see it formatted, and "Edit" to go
+  // back — all without discarding their edits.
+  const [showEditor, setShowEditor] = useState(false);
+  const startEdit = () => {
+    if (!isEdited) onEditStart();
+    setShowEditor(true);
+  };
+  const regenerate = () => {
+    onRegenerate();
+    setShowEditor(false);
+  };
+  const inEditor = editable && isEdited && showEditor;
   return (
     <div className="portal-form__preview">
       <button
@@ -554,7 +576,54 @@ function EmailPreview({ subject, to, cc, body }) {
             <div className="portal-form__preview-row"><span>Cc</span><code>{cc.join(', ')}</code></div>
           )}
           <div className="portal-form__preview-row"><span>Subject</span><code>{subject}</code></div>
-          <pre className="portal-form__preview-text">{body}</pre>
+          {editable && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, margin: '4px 0 8px' }}>
+              {inEditor ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setShowEditor(false)}
+                  title="View the edited email in formatted form"
+                >
+                  Preview
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={startEdit}
+                  title="Edit the email text before sending"
+                >
+                  Edit
+                </button>
+              )}
+              {isEdited && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={regenerate}
+                  title="Discard edits and rebuild the email from the form"
+                >
+                  Undo
+                </button>
+              )}
+            </div>
+          )}
+          {inEditor ? (
+            <textarea
+              value={body}
+              onChange={(e) => onBodyChange(e.target.value)}
+              rows={Math.max(8, body.split('\n').length + 1)}
+              style={{ width: '100%', fontFamily: 'monospace', fontSize: 13, padding: 10, border: '1px solid #d1d5db', borderRadius: 6, resize: 'vertical' }}
+            />
+          ) : (
+            <pre className="portal-form__preview-text">{body}</pre>
+          )}
+          {editable && isEdited && (
+            <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>
+              Manual edits are kept — changing the form fields above will no longer update this email. Use “Undo” to rebuild from the form.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -659,7 +728,7 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
   const hosp = dj.hospitalization || {};
   const insured = dj.patient_insured || {};
   const subject = `[${paId}] Cashless Pre-Auth — ${submitResult.patient_name || ''} — ${insured.policy_number || ''}`.trim();
-  const body =
+  const autoBody =
     `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
     `Please find enclosed the cashless pre-authorisation request (Part C) for our patient ${submitResult.patient_name || '—'} ` +
     `(UHID: ${submitResult.uhid || '—'}${insured.policy_number ? `, Policy: ${insured.policy_number}` : ''}).\n\n` +
@@ -671,6 +740,10 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
     (notes ? `Clinical notes: ${notes}\n\n` : '') +
     `All supporting documents are attached. Request your earliest review and authorisation.\n\n` +
     `Regards,\nHospital Insurance Desk`;
+  // editedBody === null → live-synced to autoBody. Non-null → user-frozen text.
+  const [editedBody, setEditedBody] = useState(null);
+  const isEdited = editedBody !== null;
+  const body = isEdited ? editedBody : autoBody;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -789,6 +862,11 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
         to={submitResult.policy_provider_email}
         cc={submitResult.cc_emails}
         body={body}
+        editable
+        isEdited={isEdited}
+        onEditStart={() => setEditedBody(autoBody)}
+        onBodyChange={setEditedBody}
+        onRegenerate={() => setEditedBody(null)}
       />
 
       {docViewUrl && (
@@ -855,7 +933,7 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
 
   const paId = submitResult.pa_number || submitResult.claim_number || submitResult.claim_case_id;
   const subject = `[${paId}] Enhancement Request — ${submitResult.patient_name || ''}`.trim();
-  const body =
+  const autoBody =
     `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
     `With reference to the approval received against ${paId} for ${submitResult.patient_name || '—'} ` +
     `(UHID: ${submitResult.uhid || '—'}), we request an enhancement of cover.\n\n` +
@@ -866,6 +944,10 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
     `Revised total: ${formatINR(revisedTotal)}\n` +
     `\nRevised invoices and clinical notes are attached.\n\n` +
     `Regards,\nHospital Insurance Desk`;
+  // editedBody === null → live-synced to autoBody. Non-null → user-frozen text.
+  const [editedBody, setEditedBody] = useState(null);
+  const isEdited = editedBody !== null;
+  const body = isEdited ? editedBody : autoBody;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -1006,6 +1088,11 @@ function EnhancePortalForm({ submitResult, onClose, onSubmit, sending }) {
         to={submitResult.policy_provider_email}
         cc={submitResult.cc_emails}
         body={body}
+        editable
+        isEdited={isEdited}
+        onEditStart={() => setEditedBody(autoBody)}
+        onBodyChange={setEditedBody}
+        onRegenerate={() => setEditedBody(null)}
       />
     </PortalShell>
   );
@@ -1100,7 +1187,7 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
     ? `\nAdditional documents:\n${extraFiles.map((f) => `• ${f.name}`).join('\n')}\n`
     : '';
 
-  const body =
+  const autoBody =
     `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
     `In response to your additional document request for ${submitResult.patient_name || '—'} ` +
     `(${paId}, UHID: ${submitResult.uhid || '—'}), please find the requested documents:\n\n` +
@@ -1109,6 +1196,10 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
     (clarification ? `\nClarifications: ${clarification}\n` : '') +
     `\nKindly process at the earliest.\n\n` +
     `Regards,\nHospital Insurance Desk`;
+  // editedBody === null → live-synced to autoBody. Non-null → user-frozen text.
+  const [editedBody, setEditedBody] = useState(null);
+  const isEdited = editedBody !== null;
+  const body = isEdited ? editedBody : autoBody;
 
   // Labels of the checked checklist rows — sent as `documents_list` so the
   // backend can record exactly which insurer-requested items the hospital is
@@ -1280,6 +1371,11 @@ function ADRPortalForm({ submitResult, adrEmails, onClose, onSubmit, sending }) 
         to={submitResult.policy_provider_email}
         cc={submitResult.cc_emails}
         body={body}
+        editable
+        isEdited={isEdited}
+        onEditStart={() => setEditedBody(autoBody)}
+        onBodyChange={setEditedBody}
+        onRegenerate={() => setEditedBody(null)}
       />
 
       {showAddItem && (
@@ -1361,7 +1457,7 @@ function ReconsiderPortalForm({ submitResult, onClose, onSubmit, sending }) {
   const doctorLine = doctorName
     ? `Co-signing physician: ${doctorName}${doctorQualification ? ` (${doctorQualification}` : ''}${doctorRegistration ? `${doctorQualification ? ', ' : ' ('}Reg. ${doctorRegistration}` : ''}${doctorQualification || doctorRegistration ? ')' : ''}${doctorContact ? ` · ${doctorContact}` : ''}\n`
     : '';
-  const body =
+  const autoBody =
     `Dear ${submitResult.insurer_name || 'Claims'} Team,\n\n` +
     `We respectfully request reconsideration of the denial against ${paId} for ${submitResult.patient_name || '—'} ` +
     `(UHID: ${submitResult.uhid || '—'}).\n\n` +
@@ -1373,6 +1469,10 @@ function ReconsiderPortalForm({ submitResult, onClose, onSubmit, sending }) {
     (escalate ? `\nThis case is being escalated to your medical review board for second opinion.\n` : '') +
     `\nSupporting clinical documentation is attached.\n\n` +
     `Regards,\nHospital Insurance Desk`;
+  // editedBody === null → live-synced to autoBody. Non-null → user-frozen text.
+  const [editedBody, setEditedBody] = useState(null);
+  const isEdited = editedBody !== null;
+  const body = isEdited ? editedBody : autoBody;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -1529,6 +1629,11 @@ function ReconsiderPortalForm({ submitResult, onClose, onSubmit, sending }) {
         to={submitResult.policy_provider_email}
         cc={submitResult.cc_emails}
         body={body}
+        editable
+        isEdited={isEdited}
+        onEditStart={() => setEditedBody(autoBody)}
+        onBodyChange={setEditedBody}
+        onRegenerate={() => setEditedBody(null)}
       />
     </PortalShell>
   );
@@ -1554,6 +1659,15 @@ export default function PreAuthForm() {
   const [claimEmails, setClaimEmails] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showUnreadPopup, setShowUnreadPopup] = useState(false);
+  // True when an in-progress claim draft exists on this case (no `claims`
+  // row yet, but a form_data row with stage=CLAIM, status=DRAFT). Drives the
+  // "Resume Claim Draft" button label.
+  const [hasClaimDraft, setHasClaimDraft] = useState(false);
+  // Cancel-case flow state. The modal collects a required reason; the banner
+  // surfaces the cancellation in the header.
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   // Timeline reply compose state
   const [showReplyCompose, setShowReplyCompose] = useState(false);
@@ -1645,7 +1759,7 @@ export default function PreAuthForm() {
         : null;
 
       const summary = cc.summary || {};
-      const dj = latestForm?.data_json || {};
+      const dj = latestForm?.sections || {};
       const insured = dj.patient_insured || {};
       const doctor = dj.treating_doctor || {};
       const hospitalization = dj.hospitalization || {};
@@ -1706,6 +1820,16 @@ export default function PreAuthForm() {
           ? docsRes.data
           : (Array.isArray(cc.documents) ? cc.documents : []),
       });
+      // Probe for an in-progress claim draft (only meaningful before a claim
+      // is raised). Non-blocking — a failure just hides the resume button.
+      if (cc.has_claim !== true && !isInsuranceProvider) {
+        claimService.getDraft(routeClaimCaseId)
+          .then((d) => setHasClaimDraft(!!d?.is_persisted))
+          .catch(() => setHasClaimDraft(false));
+      } else {
+        setHasClaimDraft(false);
+      }
+
       const count = cc.unread_count || 0;
       setUnreadCount(count);
       // The "Uncategorized Emails" prompt is meant for the hospital-admin
@@ -1728,6 +1852,26 @@ export default function PreAuthForm() {
   }, [routeClaimCaseId]);
 
   const handleRefresh = () => loadClaimData(false);
+
+  const handleConfirmCancel = async () => {
+    const reason = cancelReason.trim();
+    if (!reason) {
+      toast.error('Please enter a cancellation reason');
+      return;
+    }
+    setCancelling(true);
+    try {
+      await claimCaseService.cancel(routeClaimCaseId, reason);
+      toast.success('Case cancelled');
+      setCancelOpen(false);
+      setCancelReason('');
+      await loadClaimData(false);
+    } catch {
+      // interceptor toasted
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const handleTimelineReplySuccess = async () => {
     setShowReplyCompose(false);
@@ -2248,6 +2392,15 @@ export default function PreAuthForm() {
   const approvedDisplay = submitResult.approved_amount !== '' && submitResult.approved_amount != null
     ? submitResult.approved_amount
     : null;
+  const isCancelled = submitResult.status === 'CANCELLED'
+    || submitResult.claim_status === 'CANCELLED'
+    || submitResult.main_status === 'CANCELLED';
+  // Pull the most recent CANCELLED history entry to surface the date + reason
+  // in the banner. Status history comes pre-sorted (newest first) from
+  // loadClaimData.
+  const cancelEvent = isCancelled && Array.isArray(submitResult.status_history)
+    ? submitResult.status_history.find((h) => h.status === 'CANCELLED')
+    : null;
 
   return (
     <div className="claim-detail">
@@ -2269,18 +2422,73 @@ export default function PreAuthForm() {
         </span>
       </div>
 
-      {/* Stat cards */}
-      <div className="claim-detail__stats">
-        <div className="claim-detail__stat">
-          <div className="claim-detail__stat-label">REQUESTED</div>
-          <div className="claim-detail__stat-value">{formatINR(requestedAmount)}</div>
-        </div>
-        <div className="claim-detail__stat">
-          <div className="claim-detail__stat-label">APPROVED</div>
-          <div className="claim-detail__stat-value claim-detail__stat-value--approved">
-            {formatINR(approvedDisplay)}
+      {isCancelled && (
+        <div
+          style={{
+            margin: '0 0 16px',
+            padding: '12px 16px',
+            background: '#f3f4f6',
+            border: '1px solid #d1d5db',
+            borderLeft: '4px solid #6b7280',
+            borderRadius: 8,
+            color: '#374151',
+            fontSize: 14,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>This case has been cancelled.</div>
+          {cancelEvent && (
+            <div style={{ fontSize: 13, color: '#6b7280' }}>
+              {cancelEvent.created_at && (
+                <>Cancelled on {new Date(cancelEvent.created_at).toLocaleString('en-IN', {
+                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                })}</>
+              )}
+              {cancelEvent.remarks && (
+                <> · Reason: <span style={{ color: '#374151' }}>{cancelEvent.remarks}</span></>
+              )}
+            </div>
+          )}
+          <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+            No further action is allowed on this case.
           </div>
         </div>
+      )}
+
+      {/* Stat cards */}
+      <div className="claim-detail__stats">
+        {timelineStage === 'CLAIM' ? (
+          <>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">CLAIM RAISED</div>
+              <div className="claim-detail__stat-value">
+                {submitResult.claim_summary?.claimed_amount != null
+                  ? formatINR(submitResult.claim_summary.claimed_amount)
+                  : '—'}
+              </div>
+            </div>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">CLAIM APPROVED</div>
+              <div className="claim-detail__stat-value claim-detail__stat-value--approved">
+                {submitResult.claim_summary?.approved_amount != null
+                  ? formatINR(submitResult.claim_summary.approved_amount)
+                  : '—'}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">REQUESTED</div>
+              <div className="claim-detail__stat-value">{formatINR(requestedAmount)}</div>
+            </div>
+            <div className="claim-detail__stat">
+              <div className="claim-detail__stat-label">APPROVED</div>
+              <div className="claim-detail__stat-value claim-detail__stat-value--approved">
+                {formatINR(approvedDisplay)}
+              </div>
+            </div>
+          </>
+        )}
         <div className="claim-detail__stat">
           <div className="claim-detail__stat-label">DIAGNOSIS</div>
           <div className="claim-detail__stat-value">{diagnosis}</div>
@@ -2292,7 +2500,7 @@ export default function PreAuthForm() {
       </div>
 
       {/* DRAFT action bar — Print Part C (signed-copy upload) + Submit Pre-Auth */}
-      {!showReplyCompose && isDraft && (
+      {!showReplyCompose && isDraft && !isCancelled && (
         <div className="actionbar actionbar--info">
           <div className="actionbar__msg">
             <div className="actionbar__icon"><IconSend size={18} /></div>
@@ -2328,7 +2536,7 @@ export default function PreAuthForm() {
       )}
 
       {/* Row of follow-up CTAs — Enhance/ADR/Reconsider + Raise Claim share one row. */}
-      {!showReplyCompose && (() => {
+      {!showReplyCompose && !isCancelled && (() => {
         const approved = Number(submitResult?.approved_amount);
         const hasApprovedAmount = Number.isFinite(approved) && approved > 0;
         const hasClaim = submitResult?.has_claim === true;
@@ -2338,7 +2546,18 @@ export default function PreAuthForm() {
         // remains accessible regardless of any in-flight pre-auth round.
         const blockNewClaim = alreadyRaised && !hasClaim;
         const showClaimBtn = !isInsuranceProvider && submitResult && (hasApprovedAmount || hasClaim) && !blockNewClaim;
-        if (!showRaiseBtn && !showClaimBtn) return null;
+        // Cancel is available for the hospital admin only when the ball is in
+        // their court — i.e. NOT while waiting on the provider to act. We read
+        // the latest timeline status (latestStageStatus) rather than
+        // claim_case.status, because on pre-auth the raw status column lags
+        // (it keeps the last hospital-sent state even after the insurer
+        // responds). The timeline reflects the true current state.
+        const awaitingProviderStatuses = new Set([
+          'SUBMITTED', 'ENHANCE_SUBMITTED', 'RECONSIDER', 'RECONSIDER_SUBMITTED', 'ADR_SUBMITTED',
+        ]);
+        const awaitingProvider = awaitingProviderStatuses.has(latestStageStatus);
+        const showCancelBtn = !isInsuranceProvider && !isDraft && !awaitingProvider;
+        if (!showRaiseBtn && !showClaimBtn && !showCancelBtn) return null;
         return (
           <div className="claim-detail__cta-row">
             {showRaiseBtn && (
@@ -2351,7 +2570,22 @@ export default function PreAuthForm() {
                 className="claim-detail__claim-btn"
                 onClick={() => navigate(`/claim/${routeClaimCaseId}`)}
               >
-                {hasClaim ? 'View Claim' : <><IconPlus size={16} /> Raise Claim</>}
+                {hasClaim
+                  ? 'View Claim'
+                  : hasClaimDraft
+                    ? <><IconPlus size={16} /> Resume Claim Draft</>
+                    : <><IconPlus size={16} /> Raise Claim</>}
+              </button>
+            )}
+            {showCancelBtn && (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setCancelOpen(true)}
+                style={{ color: '#b91c1c', borderColor: '#fecaca' }}
+                title="Cancel this case — no further action will be allowed"
+              >
+                Cancel Case
               </button>
             )}
           </div>
@@ -2362,7 +2596,7 @@ export default function PreAuthForm() {
           (APPLIED → Submit, APPROVED / PARTIALLY_APPROVED → Enhance,
           ADR_NMI → ADR, DENIED → Reconsider). The legacy email-template
           ApplyStep is now only a fallback for unexpected combinations. */}
-      {showReplyCompose && (() => {
+      {showReplyCompose && !isCancelled && (() => {
         const useSubmitForm = replyEmailType === 'APPLIED';
         const useEnhanceForm =
           replyEmailType === 'ENHANCE_SUBMITTED' &&
@@ -2682,6 +2916,56 @@ export default function PreAuthForm() {
                 </a>
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {cancelOpen && (
+        <Modal
+          title="Cancel this case?"
+          onClose={() => { if (!cancelling) { setCancelOpen(false); setCancelReason(''); } }}
+        >
+          <p style={{ marginTop: 0 }}>
+            This will mark the case as <strong>cancelled</strong> and stop all further action
+            on it (no replies, enhancements, claim raise, or provider decision).
+            {!submitResult.is_onboarded && ' A cancellation email will be sent to the insurer.'}
+          </p>
+          <div style={{ marginTop: 12 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+              Reason <span style={{ color: '#b91c1c' }}>*</span>
+            </label>
+            <textarea
+              rows={4}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Patient discharged against medical advice; treatment plan changed; duplicate case"
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontFamily: 'inherit',
+                fontSize: 14,
+              }}
+              autoFocus
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button
+              className="btn btn--ghost"
+              onClick={() => { setCancelOpen(false); setCancelReason(''); }}
+              disabled={cancelling}
+            >
+              Keep Case
+            </button>
+            <button
+              className="btn btn--primary"
+              onClick={handleConfirmCancel}
+              disabled={cancelling || !cancelReason.trim()}
+              style={{ background: '#b91c1c', borderColor: '#b91c1c' }}
+            >
+              {cancelling ? <Spinner size={16} /> : 'Confirm Cancel'}
+            </button>
           </div>
         </Modal>
       )}

@@ -577,8 +577,8 @@ export default function PreAuthFormPage() {
           ? cc.form_data[cc.form_data.length - 1]
           : null;
 
-        if (latestForm?.data_json) {
-          setFormData(ensureTreatments(latestForm.data_json));
+        if (latestForm?.sections) {
+          setFormData(ensureTreatments(latestForm.sections));
         }
         if (latestForm?.id) {
           setFormDataId(latestForm.id);
@@ -836,7 +836,7 @@ export default function PreAuthFormPage() {
 
       if (formDataId) {
         // Edit mode — same PATCH for both buttons
-        await formDataService.update(formDataId, { data_json: payload });
+        await formDataService.update(formDataId, { sections: payload });
         if (files.length > 0) {
           const fd = new FormData();
           files.forEach((file) => fd.append('files', file));
@@ -850,7 +850,7 @@ export default function PreAuthFormPage() {
         const fd = new FormData();
         fd.append('uhid', uhid.trim());
         fd.append('policy_provider_id', selectedProviderId);
-        fd.append('data_json', JSON.stringify(payload));
+        fd.append('sections', JSON.stringify(payload));
         files.forEach((file) => fd.append('files', file));
 
         const res = await formDataService.submit(fd);
@@ -1096,7 +1096,7 @@ export default function PreAuthFormPage() {
     .filter((r) => r && r.room)
     .map((r) => ({
       value: r.room,
-      label: r.per_day_rent != null ? `${r.room} — ₹${r.per_day_rent}` : r.room,
+      label: r.room,
     }));
 
   // MOU coverage hint shown under cost-estimate fields (Room Rent / ICU / OT).

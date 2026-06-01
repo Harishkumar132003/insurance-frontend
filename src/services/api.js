@@ -168,6 +168,7 @@ export const formTemplateService = {
 export const claimCaseService = {
   getAll: (params) => api.get('/claim-cases', { params }),
   getById: (id) => api.get(`/claim-cases/${id}`),
+  cancel: (id, reason) => api.post(`/claim-cases/${id}/cancel`, { reason }),
   getProviderQueue: (params) => api.get('/claim-cases/provider-queue', { params }),
   // Accepts either a FormData (Approve / Partially-Approve flow attaches a
   // populated PART_D PDF as `file`) or a plain JSON object (Deny / NMI).
@@ -247,6 +248,12 @@ export const claimService = {
   // should not surface a global error toast.
   get: (claimCaseId) =>
     api.get(`/claim-cases/${claimCaseId}/claim`, { silentStatuses: [404] }).then((r) => r.data),
+  getDraft: (claimCaseId) =>
+    api.get(`/claim-cases/${claimCaseId}/claim-draft`).then((r) => r.data),
+  saveDraft: (claimCaseId, payload) =>
+    api.put(`/claim-cases/${claimCaseId}/claim-draft`, payload).then((r) => r.data),
+  deleteDraft: (claimCaseId) =>
+    api.delete(`/claim-cases/${claimCaseId}/claim-draft`).then((r) => r.data),
 };
 
 // Form data

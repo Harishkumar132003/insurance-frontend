@@ -93,8 +93,26 @@ function ReadField({ label, value, span = 1 }) {
   );
 }
 
-function EmailPreview({ subject, to, cc, body }) {
+// `editable` opts into the Edit/Preview/Undo flow: read-only + live-synced
+// until the user clicks Edit (frozen textarea), Preview re-renders the edited
+// text formatted, Undo discards edits and resumes live-sync. Default false →
+// plain read-only preview.
+function EmailPreview({
+  subject, to, cc, body,
+  editable = false, isEdited = false,
+  onEditStart, onBodyChange, onRegenerate,
+}) {
   const [open, setOpen] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+  const startEdit = () => {
+    if (!isEdited) onEditStart();
+    setShowEditor(true);
+  };
+  const undo = () => {
+    onRegenerate();
+    setShowEditor(false);
+  };
+  const inEditor = editable && isEdited && showEditor;
   return (
     <div className="portal-form__preview">
       <button
@@ -114,7 +132,39 @@ function EmailPreview({ subject, to, cc, body }) {
             <div className="portal-form__preview-row"><span>Cc</span><code>{cc.join(', ')}</code></div>
           )}
           <div className="portal-form__preview-row"><span>Subject</span><code>{subject}</code></div>
-          <pre className="portal-form__preview-text">{body}</pre>
+          {editable && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, margin: '4px 0 8px' }}>
+              {inEditor ? (
+                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setShowEditor(false)} title="View the edited email in formatted form">
+                  Preview
+                </button>
+              ) : (
+                <button type="button" className="btn btn--ghost btn--sm" onClick={startEdit} title="Edit the email text before sending">
+                  Edit
+                </button>
+              )}
+              {isEdited && (
+                <button type="button" className="btn btn--ghost btn--sm" onClick={undo} title="Discard edits and rebuild the email from the form">
+                  Undo
+                </button>
+              )}
+            </div>
+          )}
+          {inEditor ? (
+            <textarea
+              value={body}
+              onChange={(e) => onBodyChange(e.target.value)}
+              rows={Math.max(8, body.split('\n').length + 1)}
+              style={{ width: '100%', fontFamily: 'monospace', fontSize: 13, padding: 10, border: '1px solid #d1d5db', borderRadius: 6, resize: 'vertical' }}
+            />
+          ) : (
+            <pre className="portal-form__preview-text">{body}</pre>
+          )}
+          {editable && isEdited && (
+            <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>
+              Manual edits are kept — changing the form fields above will no longer update this email. Use “Undo” to rebuild from the form.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -218,10 +268,18 @@ export default function ClaimRaisePage() {
   const emptyPending = () => Object.fromEntries(CLAIM_DOCUMENT_TYPES.map((c) => [c.key, []]));
   // Raise mode: File[] per category, in browser memory until Submit.
   const [pendingFiles, setPendingFiles] = useState(emptyPending);
-  // Read-only mode: server documents grouped by category (only populated when
-  // a claim has already been raised on this case).
+  // Server documents (claim_case_documents rows) grouped by category. Used in
+  // both read-only mode (claim raised) and draft-edit mode (unsent uploads
+  // persisted under an in-progress draft).
   const [savedDocsByType, setSavedDocsByType] = useState(emptyPending);
   const [submitting, setSubmitting] = useState(false);
+  // Draft state: true once a server-side claim-draft row was loaded for this
+  // case. Distinct from `existingClaim` (read-only) — drafts are still editable.
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftUpdatedAt, setDraftUpdatedAt] = useState(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   // "Pick from emails" picker for Authorization Letters: list of selected
   // approval-email attachments to materialise server-side at submit time.
   const [pickedAttachments, setPickedAttachments] = useState([]);
@@ -265,6 +323,33 @@ export default function ClaimRaisePage() {
             if (d.document_type && grouped[d.document_type]) grouped[d.document_type].push(d);
           });
           setSavedDocsByType(grouped);
+        } else {
+          // No claim yet — try to resume an in-progress draft. Drafts persist
+          // bill breakdown + remarks on the server, and any files uploaded
+          // during the draft live as ClaimCaseDocument rows with
+          // sent_email_id=NULL.
+          const [draft, docsRes] = await Promise.all([
+            claimService.getDraft(claimCaseId).catch(() => null),
+            documentService.list(claimCaseId).catch(() => ({ data: [] })),
+          ]);
+          if (cancelled) return;
+          if (draft?.is_persisted) {
+            setDraftLoaded(true);
+            setDraftUpdatedAt(draft.updated_at || null);
+            if (Array.isArray(draft.bill_breakdown) && draft.bill_breakdown.length) {
+              setItems(draft.bill_breakdown.map((i) => ({ label: i.label, amount: String(i.amount ?? '') })));
+            }
+            setRemarks(draft.remarks || '');
+          }
+          // Unsent documents (sent_email_id IS NULL) belong to the in-progress
+          // draft regardless of whether the form_data row exists yet.
+          const grouped = emptyPending();
+          (docsRes.data || []).forEach((d) => {
+            if (!d.sent_email_id && d.document_type && grouped[d.document_type]) {
+              grouped[d.document_type].push(d);
+            }
+          });
+          setSavedDocsByType(grouped);
         }
       } catch {
         // Toast already fired by the response interceptor.
@@ -275,7 +360,21 @@ export default function ClaimRaisePage() {
     return () => { cancelled = true; };
   }, [claimCaseId]);
 
-  const docsByType = readOnly ? savedDocsByType : pendingFiles;
+  // In read-only mode the server is the only source. In edit mode, merge any
+  // already-uploaded draft docs (server-side, have an `id`) with not-yet-
+  // uploaded local files (File objects, no `id`). DocCategoryCard renders both
+  // uniformly and routes the delete handler based on the item's `id`.
+  const docsByType = useMemo(() => {
+    if (readOnly) return savedDocsByType;
+    const merged = {};
+    CLAIM_DOCUMENT_TYPES.forEach((c) => {
+      merged[c.key] = [
+        ...(savedDocsByType[c.key] || []),
+        ...(pendingFiles[c.key] || []),
+      ];
+    });
+    return merged;
+  }, [readOnly, savedDocsByType, pendingFiles]);
 
   const claimedAmount = useMemo(
     () => items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0),
@@ -292,7 +391,7 @@ export default function ClaimRaisePage() {
   const insurerName = summary.provider_name || 'insurer';
   const paId = claimCase?.claim_number || claimCase?.id || claimCaseId;
   const subject = `[${paId}] Claim Submission — ${summary.patient_name || ''}`.trim();
-  const body = useMemo(() => {
+  const autoBody = useMemo(() => {
     const lines = [
       `Dear ${insurerName} Team,`,
       ``,
@@ -318,6 +417,10 @@ export default function ClaimRaisePage() {
     ];
     return lines.filter((l) => l !== '').join('\n');
   }, [claimCase, claimedAmount, items, docsByType, remarks, paId, patientName, insurerName, pickedAttachments]);
+  // editedBody === null → live-synced to autoBody. Non-null → user-frozen text.
+  const [editedBody, setEditedBody] = useState(null);
+  const isBodyEdited = editedBody !== null;
+  const body = isBodyEdited ? editedBody : autoBody;
 
   const updateItem = (idx, key, value) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [key]: value } : it)));
@@ -332,10 +435,25 @@ export default function ClaimRaisePage() {
     }));
   };
 
-  const handleRemovePending = (categoryKey, idx) => {
+  const handleRemoveFile = async (categoryKey, idx) => {
+    const serverCount = (savedDocsByType[categoryKey] || []).length;
+    if (idx < serverCount) {
+      // Server doc — delete via API and drop from savedDocsByType.
+      const doc = savedDocsByType[categoryKey][idx];
+      try {
+        await documentService.delete(claimCaseId, doc.id);
+        setSavedDocsByType((prev) => ({
+          ...prev,
+          [categoryKey]: (prev[categoryKey] || []).filter((_, i) => i !== idx),
+        }));
+      } catch { /* interceptor handles */ }
+      return;
+    }
+    // Local File — drop from pendingFiles by its local index.
+    const localIdx = idx - serverCount;
     setPendingFiles((prev) => ({
       ...prev,
-      [categoryKey]: (prev[categoryKey] || []).filter((_, i) => i !== idx),
+      [categoryKey]: (prev[categoryKey] || []).filter((_, i) => i !== localIdx),
     }));
   };
 
@@ -414,6 +532,71 @@ export default function ClaimRaisePage() {
     });
     setPickedAttachments(flat);
     setPickerOpen(false);
+  };
+
+  const handleSaveDraft = async () => {
+    if (readOnly) return;
+    setSavingDraft(true);
+    try {
+      // Upload any not-yet-uploaded files first so they persist alongside the
+      // draft form_data row.
+      for (const cat of CLAIM_DOCUMENT_TYPES) {
+        const filesForCat = pendingFiles[cat.key] || [];
+        if (filesForCat.length === 0) continue;
+        const fd = new FormData();
+        filesForCat.forEach((f) => fd.append('files', f));
+        fd.append('document_type', cat.key);
+        await documentService.upload(claimCaseId, fd);
+      }
+      if (pickedAttachments.length > 0) {
+        await documentService.fromEmail(claimCaseId, {
+          attachment_ids: pickedAttachments.map((a) => a.attachment_id),
+        });
+      }
+
+      const validItems = items.filter((i) => i.label.trim());
+      const saved = await claimService.saveDraft(claimCaseId, {
+        bill_breakdown: validItems
+          .filter((i) => Number(i.amount) > 0)
+          .map((i) => ({ label: i.label.trim(), amount: Number(i.amount) })),
+        claimed_amount: claimedAmount > 0 ? Number(claimedAmount.toFixed(2)) : null,
+        remarks: remarks.trim() || null,
+      });
+
+      // Refresh server-side docs so newly uploaded items show as "uploaded"
+      // rather than "pending" on the next render.
+      const docsRes = await documentService.list(claimCaseId);
+      const grouped = emptyPending();
+      (docsRes.data || []).forEach((d) => {
+        if (!d.sent_email_id && d.document_type && grouped[d.document_type]) {
+          grouped[d.document_type].push(d);
+        }
+      });
+      setSavedDocsByType(grouped);
+      setPendingFiles(emptyPending());
+      setPickedAttachments([]);
+      setDraftLoaded(true);
+      setDraftUpdatedAt(saved.updated_at || new Date().toISOString());
+      toast.success('Draft saved');
+    } catch {
+      // interceptor handles
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleDiscardDraft = async () => {
+    setConfirmDiscardOpen(false);
+    setDiscarding(true);
+    try {
+      await claimService.deleteDraft(claimCaseId);
+      toast.success('Draft discarded');
+      navigate(`/claim-list/${claimCaseId}`);
+    } catch {
+      // interceptor handles
+    } finally {
+      setDiscarding(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -523,9 +706,26 @@ export default function ClaimRaisePage() {
         ) : (
           <>
             <button className="btn btn--ghost" onClick={() => navigate(`/claim-list/${claimCaseId}`)}>Cancel</button>
+            {draftLoaded && (
+              <button
+                className="btn btn--ghost"
+                onClick={() => setConfirmDiscardOpen(true)}
+                disabled={savingDraft || submitting || discarding}
+                style={{ color: '#b91c1c' }}
+              >
+                Discard Draft
+              </button>
+            )}
+            <button
+              className="btn btn--ghost"
+              disabled={!canRaise || savingDraft || submitting || discarding}
+              onClick={handleSaveDraft}
+            >
+              {savingDraft ? <Spinner size={16} /> : 'Save Draft'}
+            </button>
             <button
               className="btn btn--primary"
-              disabled={!canRaise || submitting || exceedsApproved}
+              disabled={!canRaise || submitting || savingDraft || discarding || exceedsApproved}
               onClick={handleSubmit}
             >
               {submitting ? <Spinner size={16} /> : <><IconSend size={16} /> Submit Claim</>}
@@ -538,6 +738,33 @@ export default function ClaimRaisePage() {
             <div className="claim-detail__warning">
               A claim can only be raised after some amount has been approved on the pre-auth.
             </div>
+          </div>
+        )}
+
+        {!readOnly && draftLoaded && (
+          <div
+            style={{
+              margin: '0 0 12px',
+              padding: '10px 14px',
+              background: 'rgba(79, 70, 229, 0.08)',
+              border: '1px solid rgba(79, 70, 229, 0.25)',
+              borderRadius: 8,
+              color: '#3730a3',
+              fontSize: 13,
+            }}
+          >
+            Draft loaded
+            {draftUpdatedAt && (
+              <>
+                {' '}· last saved{' '}
+                {new Date(draftUpdatedAt).toLocaleString('en-IN', {
+                  day: '2-digit',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </>
+            )}
           </div>
         )}
 
@@ -624,10 +851,10 @@ export default function ClaimRaisePage() {
                 files={docsByType[c.key] || []}
                 picked={c.key === 'AUTHORIZATION_LETTERS' && !readOnly ? pickedAttachments : []}
                 onPick={(files) => handleAddFiles(c.key, files)}
-                onRemove={(idx) => handleRemovePending(c.key, idx)}
+                onRemove={(idx) => handleRemoveFile(c.key, idx)}
                 onRemovePicked={handleRemovePicked}
                 onPickFromEmails={c.key === 'AUTHORIZATION_LETTERS' && !readOnly ? openEmailPicker : undefined}
-                onView={readOnly ? handleViewSaved : undefined}
+                onView={handleViewSaved}
                 readOnly={readOnly}
               />
             ))}
@@ -651,6 +878,11 @@ export default function ClaimRaisePage() {
           to={claimCase.policy_provider_email}
           cc={claimCase.cc_emails}
           body={body}
+          editable={!readOnly}
+          isEdited={isBodyEdited}
+          onEditStart={() => setEditedBody(autoBody)}
+          onBodyChange={setEditedBody}
+          onRegenerate={() => setEditedBody(null)}
         />
       </PortalShell>
 
@@ -728,6 +960,32 @@ export default function ClaimRaisePage() {
               </div>
             </Modal>
           )}
+        </Modal>
+      )}
+
+      {confirmDiscardOpen && (
+        <Modal title="Discard draft?" onClose={() => setConfirmDiscardOpen(false)}>
+          <p style={{ marginTop: 0 }}>
+            This will permanently delete the saved draft and any files uploaded
+            with it. The pre-auth itself is not affected.
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button
+              className="btn btn--ghost"
+              onClick={() => setConfirmDiscardOpen(false)}
+              disabled={discarding}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn--primary"
+              onClick={handleDiscardDraft}
+              disabled={discarding}
+              style={{ background: '#b91c1c', borderColor: '#b91c1c' }}
+            >
+              {discarding ? <Spinner size={16} /> : 'Discard'}
+            </button>
+          </div>
         </Modal>
       )}
 
