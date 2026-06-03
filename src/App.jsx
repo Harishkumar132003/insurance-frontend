@@ -21,6 +21,7 @@ import PreAuthPrint from './pages/PreAuthPrint';
 import PreAuthChoicePage from './pages/PreAuthChoicePage';
 import PreAuthAIFillPage from './pages/PreAuthAIFillPage';
 import ClaimRaisePage from './pages/ClaimRaisePage';
+import InvoiceList from './pages/InvoiceList';
 import Email from './pages/Email';
 import Prompts from './pages/Prompts';
 import SummaryPrompts from './pages/SummaryPrompts';
@@ -220,6 +221,14 @@ export default function App() {
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
                     <FeatureGate feature="preauth_form"><ClaimRaisePage /></FeatureGate>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/invoices"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <InvoiceList />
                   </PrivateRoute>
                 }
               />

@@ -1,0 +1,285 @@
+@use '../styles/variables' as *;
+@use '../styles/mixins' as *;
+
+.raise-invoice {
+  display: flex;
+  flex-direction: column;
+  gap: $space-5;
+  margin: -$space-6;             // edge-to-edge inside modal-body padding
+  padding: $space-5 $space-6 $space-3;
+
+  // ── Summary strip ──
+  &__summary {
+    display: flex;
+    align-items: stretch;
+    gap: $space-3;
+    padding: $space-3 $space-4;
+    background: linear-gradient(180deg, rgba($primary, 0.06), rgba($primary, 0.02));
+    border: 1px solid rgba($primary, 0.18);
+    border-radius: $radius-md;
+  }
+
+  &__summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__summary-divider {
+    width: 1px;
+    background: rgba($primary, 0.15);
+  }
+
+  &__summary-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  &__summary-value {
+    font-size: $font-size-lg;
+    font-weight: 700;
+    color: $text-primary;
+
+    &--accent { color: $primary; }
+    &--danger { color: $danger; }
+  }
+
+  // ── Sections ──
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+  }
+
+  &__section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: $space-3;
+    padding-bottom: $space-2;
+    border-bottom: 1px dashed $border-color;
+
+    h4 {
+      margin: 0;
+      font-size: $font-size-sm;
+      font-weight: 700;
+      color: $text-primary;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+  }
+
+  &__hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    font-style: italic;
+
+    &--ok {
+      color: #15803d;
+      font-style: normal;
+      font-weight: 600;
+    }
+  }
+
+  // ── Grid + field ──
+  &__grid {
+    display: grid;
+    gap: $space-3 $space-4;
+
+    &--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    @media (max-width: 640px) {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    input,
+    select {
+      width: 100%;
+      padding: 9px 12px;
+      font-size: $font-size-sm;
+      font-family: inherit;
+      color: $text-primary;
+      border: 1px solid $border-color;
+      border-radius: $radius-sm;
+      background: $bg-card;
+      transition: border-color $transition-fast, box-shadow $transition-fast;
+
+      &:focus {
+        outline: none;
+        border-color: $primary;
+        box-shadow: 0 0 0 3px rgba($primary, 0.15);
+      }
+
+      &::placeholder { color: $text-light; }
+    }
+  }
+
+  &__field-label {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-primary;
+    letter-spacing: 0.2px;
+  }
+
+  &__req {
+    color: $danger;
+    margin-left: 2px;
+  }
+
+  &__field-hint {
+    font-size: 11px;
+    color: $text-secondary;
+  }
+
+  // ── Empty-state CTA when no payments yet ──
+  &__empty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: $space-2;
+    padding: $space-4;
+    border: 1px dashed $border-color;
+    border-radius: $radius-md;
+    background: $bg-body;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+
+    &:hover {
+      border-color: $primary;
+      color: $primary;
+      background: rgba($primary, 0.04);
+    }
+  }
+
+  // ── Payments table-like list ──
+  &__payments {
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+    padding: $space-3;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    background: $bg-body;
+  }
+
+  &__payments-head,
+  &__payment-row {
+    display: grid;
+    grid-template-columns: 150px 130px 1fr 32px;
+    gap: $space-2;
+    align-items: center;
+  }
+
+  &__payments-head {
+    padding: 0 4px 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: $text-secondary;
+    font-weight: 600;
+  }
+
+  &__payment-row {
+    input {
+      width: 100%;
+      padding: 7px 10px;
+      font-size: $font-size-sm;
+      font-family: inherit;
+      color: $text-primary;
+      border: 1px solid $border-color;
+      border-radius: $radius-sm;
+      background: $bg-card;
+      transition: border-color $transition-fast, box-shadow $transition-fast;
+
+      &:focus {
+        outline: none;
+        border-color: $primary;
+        box-shadow: 0 0 0 2px rgba($primary, 0.15);
+      }
+    }
+  }
+
+  &__row-remove {
+    @include flex-center;
+    width: 28px;
+    height: 28px;
+    border-radius: $radius-sm;
+    border: none;
+    background: transparent;
+    color: $text-secondary;
+    cursor: pointer;
+    transition: background $transition-fast, color $transition-fast;
+
+    &:hover {
+      background: rgba($danger, 0.08);
+      color: $danger;
+    }
+  }
+
+  &__add-row {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    padding: 6px 10px;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $primary;
+    background: transparent;
+    border: none;
+    border-radius: $radius-sm;
+    cursor: pointer;
+
+    &:hover { background: rgba($primary, 0.08); }
+  }
+
+  &__payments-total {
+    display: flex;
+    justify-content: space-between;
+    gap: $space-3;
+    margin-top: $space-2;
+    padding-top: $space-2;
+    border-top: 1px dashed $border-color;
+    font-size: $font-size-xs;
+    color: $text-secondary;
+
+    strong {
+      color: $text-primary;
+      font-weight: 700;
+    }
+
+    &--danger,
+    &--danger strong {
+      color: $danger;
+    }
+  }
+
+  // ── Footer ──
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: $space-3;
+    margin: $space-3 (-$space-6) (-$space-6);
+    padding: $space-4 $space-6;
+    border-top: 1px solid $border-color;
+    background: $bg-body;
+  }
+}

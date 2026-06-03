@@ -256,6 +256,28 @@ export const claimService = {
     api.delete(`/claim-cases/${claimCaseId}/claim-draft`).then((r) => r.data),
 };
 
+// Invoice (post-claim-approval settlement record). One per case.
+// Status (INVOICE_RAISED / PAID / UNPAID) is fully manual — the modal captures
+// the insurer's invoice number + amount + payments[], and the user toggles
+// status from the case detail page.
+export const invoiceService = {
+  // scope: 'to_invoice' (default) | 'invoiced'
+  list: (scope) => api.get('/invoices', { params: scope ? { scope } : undefined }),
+  // 404 OK — used as a "does an invoice exist?" probe on the case detail page.
+  get: (claimCaseId) =>
+    api.get(`/invoices/${claimCaseId}`, { silentStatuses: [404] }).then((r) => r.data),
+  raise: (claimCaseId, payload) =>
+    api.post(`/invoices/${claimCaseId}`, payload).then((r) => r.data),
+  addPayment: (claimCaseId, payment) =>
+    api.post(`/invoices/${claimCaseId}/payments`, payment).then((r) => r.data),
+  updateStatus: (claimCaseId, status) =>
+    api.patch(`/invoices/${claimCaseId}/status`, { status }).then((r) => r.data),
+  // Pass null/empty to clear the reference.
+  updateReference: (claimCaseId, referenceId) =>
+    api.patch(`/invoices/${claimCaseId}/reference`, { reference_id: referenceId || null })
+      .then((r) => r.data),
+};
+
 // Form data
 export const formDataService = {
   submit: (formData) => api.post('/form-data/submit-form', formData, {

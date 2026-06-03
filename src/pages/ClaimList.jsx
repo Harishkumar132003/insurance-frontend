@@ -313,6 +313,22 @@ export default function ClaimList({ approvedOnly }) {
                               {claim.claim_raised_amount != null ? 'Pending' : '—'}
                             </span>}
                       </div>
+                      {claim.invoice_status && (
+                        <div style={{ fontSize: 12, color: '#374151', marginTop: 4 }}>
+                          Invoice:{' '}
+                          <strong style={{
+                            color: claim.invoice_status === 'PAID'
+                              ? '#15803d'
+                              : claim.invoice_status === 'UNPAID'
+                                ? '#b91c1c'
+                                : '#1d4ed8',
+                          }}>
+                            {claim.invoice_status === 'INVOICE_RAISED'
+                              ? 'Raised'
+                              : claim.invoice_status === 'PAID' ? 'Paid' : 'Unpaid'}
+                          </strong>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>

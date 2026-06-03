@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { claimCaseService, claimService, emailTemplateService, emailService, documentService, formTemplateService } from '../services/api';
+import { claimCaseService, claimService, emailTemplateService, emailService, documentService, formTemplateService, invoiceService } from '../services/api';
 import { IconSend, IconArrowLeft, IconChevronRight, IconPlus, IconX, IconCheck, IconAlertCircle, IconMail, IconFormEdit, IconEdit } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import ClaimTimeline from '../components/ClaimTimeline';
 import Modal from '../components/Modal';
 import ReadOnlyForm from '../components/ReadOnlyForm';
 import EmailFormValues from '../components/EmailFormValues';
+import RaiseInvoiceModal from '../components/RaiseInvoiceModal';
 import { useAuth, ROLES } from '../context/AuthContext';
 import { CLAIM_DOCUMENT_TYPES } from '../constants/claimDocuments';
 import './Pages.scss';
@@ -1668,6 +1669,11 @@ export default function PreAuthForm() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  // Invoice raise modal + payment-adding state. The detail page shows the
+  // "Raise Invoice" button on claim-approved cases; once raised, an invoice
+  // card replaces the button and surfaces payment/status controls.
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [updatingInvoiceStatus, setUpdatingInvoiceStatus] = useState(false);
 
   // Timeline reply compose state
   const [showReplyCompose, setShowReplyCompose] = useState(false);
@@ -1777,6 +1783,7 @@ export default function PreAuthForm() {
         is_onboarded: cc.is_onboarded === true,
         has_claim: cc.has_claim === true,
         claim_summary: cc.claim_summary || null,
+        invoice: cc.invoice || null,
         current_stage: cc.current_stage,
         status_history: cc.status_history || [],
         // from cc.summary
@@ -1852,6 +1859,25 @@ export default function PreAuthForm() {
   }, [routeClaimCaseId]);
 
   const handleRefresh = () => loadClaimData(false);
+
+  const handleInvoiceRaised = async () => {
+    setInvoiceModalOpen(false);
+    await loadClaimData(false);
+  };
+
+  const handleUpdateInvoiceStatus = async (nextStatus) => {
+    if (!routeClaimCaseId) return;
+    setUpdatingInvoiceStatus(true);
+    try {
+      await invoiceService.updateStatus(routeClaimCaseId, nextStatus);
+      toast.success(`Invoice marked ${nextStatus === 'PAID' ? 'paid' : nextStatus === 'UNPAID' ? 'unpaid' : 'raised'}`);
+      await loadClaimData(false);
+    } catch {
+      // handled
+    } finally {
+      setUpdatingInvoiceStatus(false);
+    }
+  };
 
   const handleConfirmCancel = async () => {
     const reason = cancelReason.trim();
@@ -2546,6 +2572,15 @@ export default function PreAuthForm() {
         // remains accessible regardless of any in-flight pre-auth round.
         const blockNewClaim = alreadyRaised && !hasClaim;
         const showClaimBtn = !isInsuranceProvider && submitResult && (hasApprovedAmount || hasClaim) && !blockNewClaim;
+        // Raise Invoice CTA — only on the claim detail page (/claims/:id),
+        // when the claim has an approved amount and no invoice exists yet.
+        const claimApprovedAmount = Number(submitResult?.claim_summary?.approved_amount) || 0;
+        const showRaiseInvoiceBtn =
+          !isInsuranceProvider
+          && timelineStage === 'CLAIM'
+          && hasClaim
+          && claimApprovedAmount > 0
+          && !submitResult?.invoice;
         // Cancel is available for the hospital admin only when the ball is in
         // their court — i.e. NOT while waiting on the provider to act. We read
         // the latest timeline status (latestStageStatus) rather than
@@ -2557,7 +2592,7 @@ export default function PreAuthForm() {
         ]);
         const awaitingProvider = awaitingProviderStatuses.has(latestStageStatus);
         const showCancelBtn = !isInsuranceProvider && !isDraft && !awaitingProvider;
-        if (!showRaiseBtn && !showClaimBtn && !showCancelBtn) return null;
+        if (!showRaiseBtn && !showClaimBtn && !showCancelBtn && !showRaiseInvoiceBtn) return null;
         return (
           <div className="claim-detail__cta-row">
             {showRaiseBtn && (
@@ -2577,6 +2612,15 @@ export default function PreAuthForm() {
                     : <><IconPlus size={16} /> Raise Claim</>}
               </button>
             )}
+            {showRaiseInvoiceBtn && (
+              <button
+                type="button"
+                className="claim-detail__claim-btn"
+                onClick={() => setInvoiceModalOpen(true)}
+              >
+                <IconPlus size={16} /> Raise Invoice
+              </button>
+            )}
             {showCancelBtn && (
               <button
                 type="button"
@@ -2591,6 +2635,20 @@ export default function PreAuthForm() {
           </div>
         );
       })()}
+
+      {/* Invoice card — only shown on the claim detail page (/claims/:id)
+          once an invoice has been raised. Replaces the "Raise Invoice" CTA
+          and surfaces the insurer invoice id / amount / payments / status. */}
+      {!isCancelled && timelineStage === 'CLAIM' && submitResult?.invoice && (
+        <InvoiceCard
+          invoice={submitResult.invoice}
+          claimCaseId={routeClaimCaseId}
+          updating={updatingInvoiceStatus}
+          onUpdateStatus={handleUpdateInvoiceStatus}
+          onRefresh={() => loadClaimData(false)}
+          isInsuranceProvider={isInsuranceProvider}
+        />
+      )}
 
       {/* Inline reply compose — branches between structured portal forms
           (APPLIED → Submit, APPROVED / PARTIALLY_APPROVED → Enhance,
@@ -2990,6 +3048,15 @@ export default function PreAuthForm() {
           </div>
         </Modal>
       )}
+
+      {invoiceModalOpen && (
+        <RaiseInvoiceModal
+          claimCaseId={routeClaimCaseId}
+          claimApprovedAmount={submitResult?.claim_summary?.approved_amount}
+          onClose={() => setInvoiceModalOpen(false)}
+          onRaised={handleInvoiceRaised}
+        />
+      )}
     </div>
   );
 }
@@ -3245,5 +3312,468 @@ function ClaimSidebar({ submitResult }) {
         <KV label="Contact" value={submitResult.doctor_contact} />
       </InfoCard>
     </aside>
+  );
+}
+
+// ── Invoice card (post-claim-approval) ──────────────────────────────
+
+const INVOICE_STATUS_META = {
+  INVOICE_RAISED: { label: 'Invoice Raised', color: '#1d4ed8', bg: '#dbeafe' },
+  PAID:           { label: 'Paid',           color: '#15803d', bg: '#dcfce7' },
+  UNPAID:         { label: 'Unpaid',         color: '#b91c1c', bg: '#fee2e2' },
+};
+
+function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh, isInsuranceProvider }) {
+  const toast = useToast();
+  const [addingPayment, setAddingPayment] = useState(false);
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+  // Inline reference-id edit. Editable at any point after the invoice is
+  // raised so the hospital can fill in the settlement UTR / cross-ref later.
+  const [editingRef, setEditingRef] = useState(false);
+  const [refDraft, setRefDraft] = useState(invoice.reference_id || '');
+  const [savingRef, setSavingRef] = useState(false);
+
+  const startEditRef = () => {
+    setRefDraft(invoice.reference_id || '');
+    setEditingRef(true);
+  };
+  const cancelEditRef = () => {
+    setEditingRef(false);
+    setRefDraft(invoice.reference_id || '');
+  };
+  const saveRef = async () => {
+    const next = refDraft.trim();
+    if (next === (invoice.reference_id || '')) {
+      setEditingRef(false);
+      return;
+    }
+    setSavingRef(true);
+    try {
+      await invoiceService.updateReference(claimCaseId, next || null);
+      toast.success(next ? 'Reference updated' : 'Reference cleared');
+      setEditingRef(false);
+      if (onRefresh) await onRefresh();
+    } catch {
+      // handled
+    } finally {
+      setSavingRef(false);
+    }
+  };
+
+  const meta = INVOICE_STATUS_META[invoice.status] || INVOICE_STATUS_META.INVOICE_RAISED;
+  const insurerAmount = Number(invoice.insurer_amount) || 0;
+  const paidTotal = Number(invoice.paid_total) || 0;
+  const outstanding = insurerAmount - paidTotal;
+  const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+
+  const handleSubmitPayment = async (e) => {
+    e.preventDefault();
+    const amt = Number(paymentAmount);
+    if (!amt || amt <= 0) {
+      toast.error('Enter a payment amount');
+      return;
+    }
+    setSubmittingPayment(true);
+    try {
+      await invoiceService.addPayment(claimCaseId, {
+        payment_date: paymentDate,
+        amount: amt,
+        note: paymentNote.trim() || null,
+      });
+      toast.success('Payment added');
+      setPaymentAmount('');
+      setPaymentNote('');
+      setAddingPayment(false);
+      if (onRefresh) await onRefresh();
+    } catch {
+      // handled
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        margin: '0 0 16px',
+        padding: 16,
+        background: '#fff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 8,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 12, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600 }}>
+            Invoice
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginTop: 4 }}>
+            #{invoice.insurer_invoice_id}
+          </div>
+          <div style={{ marginTop: 4 }}>
+            {editingRef ? (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="text"
+                  value={refDraft}
+                  onChange={(e) => setRefDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); saveRef(); }
+                    if (e.key === 'Escape') { e.preventDefault(); cancelEditRef(); }
+                  }}
+                  placeholder="e.g. UTR123456789"
+                  autoFocus
+                  disabled={savingRef}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 13,
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    minWidth: 220,
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={saveRef}
+                  disabled={savingRef}
+                  className="btn btn--primary btn--sm"
+                  style={{ padding: '4px 10px', fontSize: 12 }}
+                >
+                  {savingRef ? <Spinner size={12} /> : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditRef}
+                  disabled={savingRef}
+                  className="btn btn--ghost btn--sm"
+                  style={{ padding: '4px 8px', fontSize: 12 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : invoice.reference_id ? (
+              <button
+                type="button"
+                onClick={!isInsuranceProvider ? startEditRef : undefined}
+                disabled={isInsuranceProvider}
+                title={!isInsuranceProvider ? 'Click to edit reference' : undefined}
+                style={{
+                  fontSize: 13,
+                  color: '#6b7280',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: !isInsuranceProvider ? 'pointer' : 'default',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Ref: <span style={{ color: '#374151', fontWeight: 500 }}>{invoice.reference_id}</span>
+                {!isInsuranceProvider && (
+                  <span style={{ color: '#4f46e5', marginLeft: 6, fontWeight: 500 }}>Edit</span>
+                )}
+              </button>
+            ) : !isInsuranceProvider ? (
+              <button
+                type="button"
+                onClick={startEditRef}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 12,
+                  color: '#4f46e5',
+                  background: 'none',
+                  border: '1px dashed #c7d2fe',
+                  borderRadius: 6,
+                  padding: '3px 8px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontWeight: 500,
+                }}
+              >
+                <IconPlus size={12} /> Add reference
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <span
+          style={{
+            background: meta.bg,
+            color: meta.color,
+            fontSize: 12,
+            fontWeight: 700,
+            padding: '4px 12px',
+            borderRadius: 999,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
+          {meta.label}
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 14, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+        <Stat label="Insurer Amount" value={formatINR(insurerAmount)} />
+        <Stat label="Paid" value={formatINR(paidTotal)} color={paidTotal > 0 ? '#15803d' : undefined} />
+        <Stat
+          label="Outstanding"
+          value={formatINR(Math.max(outstanding, 0))}
+          color={outstanding > 0 ? '#b45309' : '#15803d'}
+        />
+      </div>
+
+      {payments.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+            Payments ({payments.length})
+          </div>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+                <th style={{ padding: '6px 8px', fontWeight: 500 }}>Date</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500 }}>Amount</th>
+                <th style={{ padding: '6px 8px', fontWeight: 500 }}>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((p) => (
+                <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '6px 8px' }}>{p.payment_date}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: 600 }}>{formatINR(p.amount)}</td>
+                  <td style={{ padding: '6px 8px', color: '#6b7280' }}>{p.note || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!isInsuranceProvider && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+          {!addingPayment && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setAddingPayment(true)}
+            >
+              <IconPlus size={14} /> Add Payment
+            </button>
+          )}
+          {invoice.status !== 'PAID' && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => onUpdateStatus('PAID')}
+              disabled={updating}
+              style={{ color: '#15803d', borderColor: '#bbf7d0' }}
+            >
+              Mark as Paid
+            </button>
+          )}
+          {invoice.status !== 'UNPAID' && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => onUpdateStatus('UNPAID')}
+              disabled={updating}
+              style={{ color: '#b91c1c', borderColor: '#fecaca' }}
+            >
+              Mark as Unpaid
+            </button>
+          )}
+          {invoice.status !== 'INVOICE_RAISED' && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => onUpdateStatus('INVOICE_RAISED')}
+              disabled={updating}
+            >
+              Reopen
+            </button>
+          )}
+        </div>
+      )}
+
+      {addingPayment && !isInsuranceProvider && (
+        <form
+          onSubmit={handleSubmitPayment}
+          style={{
+            marginTop: 14,
+            padding: 14,
+            background: '#f9fafb',
+            border: '1px solid #e5e7eb',
+            borderRadius: 8,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#374151',
+                textTransform: 'uppercase',
+                letterSpacing: 0.4,
+              }}
+            >
+              New payment
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAddingPayment(false);
+                setPaymentAmount('');
+                setPaymentNote('');
+              }}
+              disabled={submittingPayment}
+              title="Close"
+              aria-label="Close"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#6b7280',
+                padding: 2,
+                display: 'inline-flex',
+              }}
+            >
+              <IconX size={14} />
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '160px 160px 1fr',
+              gap: 10,
+              alignItems: 'flex-end',
+            }}
+          >
+            <PaymentField label="Date">
+              <input
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                required
+                style={PAYMENT_INPUT_STYLE}
+              />
+            </PaymentField>
+            <PaymentField label="Amount (₹)">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="0"
+                required
+                style={PAYMENT_INPUT_STYLE}
+              />
+            </PaymentField>
+            <PaymentField label="Note" optional>
+              <input
+                type="text"
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="UTR / mode / remarks"
+                style={PAYMENT_INPUT_STYLE}
+              />
+            </PaymentField>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              marginTop: 14,
+              paddingTop: 12,
+              borderTop: '1px dashed #e5e7eb',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                setAddingPayment(false);
+                setPaymentAmount('');
+                setPaymentNote('');
+              }}
+              disabled={submittingPayment}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn--primary btn--sm"
+              disabled={submittingPayment}
+            >
+              {submittingPayment ? <Spinner size={14} /> : 'Add Payment'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// Shared input styling for the inline "New payment" form. Kept inline so we
+// don't need a separate SCSS file for this single card.
+const PAYMENT_INPUT_STYLE = {
+  width: '100%',
+  padding: '8px 10px',
+  fontSize: 13,
+  fontFamily: 'inherit',
+  color: '#111827',
+  border: '1px solid #d1d5db',
+  borderRadius: 6,
+  background: '#fff',
+  boxSizing: 'border-box',
+};
+
+function PaymentField({ label, optional, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: '#374151',
+          textTransform: 'uppercase',
+          letterSpacing: 0.3,
+        }}
+      >
+        {label}
+        {optional && (
+          <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: 4 }}>
+            (optional)
+          </span>
+        )}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Stat({ label, value, color }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 17, fontWeight: 700, color: color || '#111827', marginTop: 4 }}>
+        {value}
+      </div>
+    </div>
   );
 }
