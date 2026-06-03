@@ -33,6 +33,7 @@ const menuItems = [
   { path: '/policy-providers', label: 'Policy Providers', icon: IconShield, feature: 'policy_providers', roles: [SUPER_ADMIN] },
   { path: '/claim-list', label: 'PreAuth List', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN] },
   { path: '/claims', label: 'Claims', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN] },
+  { path: '/invoices', label: 'Raise Invoice', icon: IconClaimList, roles: [HOSPITAL_ADMIN] },
   { path: '/query-management', label: 'Email Inbox', icon: IconQuery, feature: 'query_management', roles: [HOSPITAL_ADMIN], hasUnreadIndicator: true },
   { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, feature: 'preauth_form', roles: [HOSPITAL_ADMIN] },
   { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
