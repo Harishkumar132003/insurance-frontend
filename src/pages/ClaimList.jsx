@@ -319,13 +319,15 @@ export default function ClaimList({ approvedOnly }) {
                           <strong style={{
                             color: claim.invoice_status === 'PAID'
                               ? '#15803d'
-                              : claim.invoice_status === 'UNPAID'
-                                ? '#b91c1c'
-                                : '#1d4ed8',
+                              : claim.invoice_status === 'PARTIALLY_PAID'
+                                ? '#b45309'
+                                : '#b91c1c',
                           }}>
-                            {claim.invoice_status === 'INVOICE_RAISED'
-                              ? 'Raised'
-                              : claim.invoice_status === 'PAID' ? 'Paid' : 'Unpaid'}
+                            {claim.invoice_status === 'PAID'
+                              ? 'Paid'
+                              : claim.invoice_status === 'PARTIALLY_PAID'
+                                ? 'Partially Paid'
+                                : 'Unpaid'}
                           </strong>
                         </div>
                       )}

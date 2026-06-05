@@ -256,13 +256,45 @@ export const claimService = {
     api.delete(`/claim-cases/${claimCaseId}/claim-draft`).then((r) => r.data),
 };
 
+// Hospital-admin dashboard — one consolidated payload powering all widgets.
+export const dashboardService = {
+  // period: '7d' | '30d' | '90d' | 'this_month' | 'this_year' | 'custom'
+  // start / end: ISO date strings (required when period='custom').
+  hospitalAdmin: ({ period, start, end } = {}) => {
+    const params = {};
+    if (period) params.period = period;
+    if (start)  params.start  = start;
+    if (end)    params.end    = end;
+    return api.get(
+      '/dashboard/hospital-admin',
+      Object.keys(params).length ? { params } : undefined,
+    );
+  },
+  // Platform-wide rollup for super admins. Same period/start/end contract.
+  superAdmin: ({ period, start, end } = {}) => {
+    const params = {};
+    if (period) params.period = period;
+    if (start)  params.start  = start;
+    if (end)    params.end    = end;
+    return api.get(
+      '/dashboard/super-admin',
+      Object.keys(params).length ? { params } : undefined,
+    );
+  },
+};
+
 // Invoice (post-claim-approval settlement record). One per case.
 // Status (INVOICE_RAISED / PAID / UNPAID) is fully manual — the modal captures
 // the insurer's invoice number + amount + payments[], and the user toggles
 // status from the case detail page.
 export const invoiceService = {
-  // scope: 'to_invoice' (default) | 'invoiced'
-  list: (scope) => api.get('/invoices', { params: scope ? { scope } : undefined }),
+  // scope: 'to_invoice' (default) | 'invoiced'. Optional q substring filter.
+  list: (scope, q) => {
+    const params = {};
+    if (scope) params.scope = scope;
+    if (q && q.trim()) params.q = q.trim();
+    return api.get('/invoices', { params: Object.keys(params).length ? params : undefined });
+  },
   // 404 OK — used as a "does an invoice exist?" probe on the case detail page.
   get: (claimCaseId) =>
     api.get(`/invoices/${claimCaseId}`, { silentStatuses: [404] }).then((r) => r.data),
@@ -270,12 +302,12 @@ export const invoiceService = {
     api.post(`/invoices/${claimCaseId}`, payload).then((r) => r.data),
   addPayment: (claimCaseId, payment) =>
     api.post(`/invoices/${claimCaseId}/payments`, payment).then((r) => r.data),
-  updateStatus: (claimCaseId, status) =>
-    api.patch(`/invoices/${claimCaseId}/status`, { status }).then((r) => r.data),
-  // Pass null/empty to clear the reference.
-  updateReference: (claimCaseId, referenceId) =>
-    api.patch(`/invoices/${claimCaseId}/reference`, { reference_id: referenceId || null })
-      .then((r) => r.data),
+  // Partial update — pass only the fields you want changed
+  // ({ payment_date, amount, reference_id, note }).
+  updatePayment: (claimCaseId, paymentId, payload) =>
+    api.patch(`/invoices/${claimCaseId}/payments/${paymentId}`, payload).then((r) => r.data),
+  deletePayment: (claimCaseId, paymentId) =>
+    api.delete(`/invoices/${claimCaseId}/payments/${paymentId}`).then((r) => r.data),
 };
 
 // Form data

@@ -26,7 +26,7 @@ export default function RaiseInvoiceModal({
   const [insurerAmount, setInsurerAmount] = useState(
     claimApprovedAmount != null ? String(Number(claimApprovedAmount)) : ''
   );
-  const [referenceId, setReferenceId] = useState('');
+  // Reference now lives ON each payment, not on the invoice itself.
   const [payments, setPayments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -46,7 +46,10 @@ export default function RaiseInvoiceModal({
   const removePayment = (idx) =>
     setPayments((prev) => prev.filter((_, i) => i !== idx));
   const addPayment = () =>
-    setPayments((prev) => [...prev, { payment_date: todayISO(), amount: '', note: '' }]);
+    setPayments((prev) => [
+      ...prev,
+      { payment_date: todayISO(), amount: '', reference_id: '', note: '' },
+    ]);
 
   const canSubmit =
     insurerInvoiceId.trim() &&
@@ -62,6 +65,7 @@ export default function RaiseInvoiceModal({
       .map((p) => ({
         payment_date: p.payment_date || todayISO(),
         amount: Number(p.amount),
+        reference_id: p.reference_id?.trim() || null,
         note: p.note?.trim() || null,
       }));
     setSubmitting(true);
@@ -69,7 +73,6 @@ export default function RaiseInvoiceModal({
       const invoice = await invoiceService.raise(claimCaseId, {
         insurer_invoice_id: insurerInvoiceId.trim(),
         insurer_amount: insurerNum,
-        reference_id: referenceId.trim() || null,
         payments: cleanedPayments,
       });
       toast.success('Invoice raised');
@@ -139,18 +142,6 @@ export default function RaiseInvoiceModal({
                 required
               />
             </Field>
-            <Field
-              label="Reference ID"
-              hint="Optional cross-reference (UTR, settlement ID, etc.)"
-              span={2}
-            >
-              <input
-                type="text"
-                value={referenceId}
-                onChange={(e) => setReferenceId(e.target.value)}
-                placeholder="e.g. UTR123456789"
-              />
-            </Field>
           </div>
         </section>
 
@@ -174,14 +165,18 @@ export default function RaiseInvoiceModal({
             </button>
           ) : (
             <div className="raise-invoice__payments">
-              <div className="raise-invoice__payments-head">
+              <div className="raise-invoice__payments-head raise-invoice__payment-row--4col">
                 <span>Date</span>
                 <span>Amount (₹)</span>
+                <span>Reference</span>
                 <span>Note</span>
                 <span />
               </div>
               {payments.map((p, idx) => (
-                <div key={idx} className="raise-invoice__payment-row">
+                <div
+                  key={idx}
+                  className="raise-invoice__payment-row raise-invoice__payment-row--4col"
+                >
                   <input
                     type="date"
                     value={p.payment_date}
@@ -197,9 +192,15 @@ export default function RaiseInvoiceModal({
                   />
                   <input
                     type="text"
+                    value={p.reference_id}
+                    onChange={(e) => setPayment(idx, { reference_id: e.target.value })}
+                    placeholder="UTR / settlement id"
+                  />
+                  <input
+                    type="text"
                     value={p.note}
                     onChange={(e) => setPayment(idx, { note: e.target.value })}
-                    placeholder="UTR / mode / remarks"
+                    placeholder="Note"
                   />
                   <button
                     type="button"
