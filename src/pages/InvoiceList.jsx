@@ -4,6 +4,7 @@ import { invoiceService } from '../services/api';
 import EmptyState from '../components/EmptyState';
 import Spinner from '../components/Spinner';
 import './Pages.scss';
+import './InvoiceList.scss';
 
 const TABS = [
   { key: 'to_invoice', label: 'Ready to Raise' },
@@ -11,9 +12,9 @@ const TABS = [
 ];
 
 const INVOICE_STATUS_PILL = {
-  INVOICE_RAISED: { label: 'Invoice Raised', variant: 'info' },
-  PAID: { label: 'Paid', variant: 'success' },
-  UNPAID: { label: 'Unpaid', variant: 'danger' },
+  PAID:           { label: 'Paid',           variant: 'success' },
+  PARTIALLY_PAID: { label: 'Partially Paid', variant: 'warning' },
+  UNPAID:         { label: 'Unpaid',         variant: 'danger' },
 };
 
 function formatINR(amount) {
@@ -35,18 +36,40 @@ function formatAgo(str) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M14 14l4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function InvoiceList() {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState('to_invoice');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Debounced search — typing fires after 300ms idle so we don't hit the
+  // backend on every keystroke. `search` is the debounced value that drives
+  // the actual request; `searchInput` is the raw input value.
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  // Live counts for the tab badges — fetched once per debounced search term
+  // by querying both scopes and just keeping `.length`.
+  const [counts, setCounts] = useState({ to_invoice: 0, invoiced: 0 });
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     invoiceService
-      .list(activeTab)
+      .list(activeTab, search)
       .then((res) => {
         if (!cancelled) setRows(Array.isArray(res.data) ? res.data : []);
       })
@@ -59,7 +82,27 @@ export default function InvoiceList() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, search]);
+
+  // Refresh tab badges whenever the search term changes (cheap — two queries,
+  // same filter). The active tab also overlaps with the main list request,
+  // but Axios's HTTP cache will collapse it in flight.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      invoiceService.list('to_invoice', search).catch(() => ({ data: [] })),
+      invoiceService.list('invoiced', search).catch(() => ({ data: [] })),
+    ]).then(([a, b]) => {
+      if (cancelled) return;
+      setCounts({
+        to_invoice: Array.isArray(a.data) ? a.data.length : 0,
+        invoiced: Array.isArray(b.data) ? b.data.length : 0,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [search]);
 
   return (
     <div className="preauth-tracker">
@@ -72,17 +115,40 @@ export default function InvoiceList() {
         </div>
       </div>
 
-      <div
-        className="preauth-tracker__filters"
-        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-      >
+      <div className="preauth-tracker__search">
+        <span className="preauth-tracker__search-ico"><SearchIcon /></span>
+        <input
+          type="search"
+          className="preauth-tracker__search-input"
+          placeholder="Search by UHID, patient name, claim number, invoice id…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
+        {searchInput && (
+          <button
+            type="button"
+            className="preauth-tracker__search-clear"
+            onClick={() => setSearchInput('')}
+            aria-label="Clear search"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {/* Tab strip — underlined active tab, count badge per tab. */}
+      <div className="invoice-tabs" role="tablist">
         {TABS.map((tab) => (
           <button
             key={tab.key}
-            className={`preauth-tracker__filter ${activeTab === tab.key ? 'preauth-tracker__filter--active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.key}
+            className={`invoice-tabs__tab ${activeTab === tab.key ? 'invoice-tabs__tab--active' : ''}`}
             onClick={() => setActiveTab(tab.key)}
           >
-            {tab.label}
+            <span>{tab.label}</span>
+            <span className="invoice-tabs__count">{counts[tab.key] ?? 0}</span>
           </button>
         ))}
       </div>
@@ -95,9 +161,11 @@ export default function InvoiceList() {
         <div className="table-card">
           <EmptyState
             message={
-              activeTab === 'to_invoice'
-                ? 'No claim-approved cases ready to raise'
-                : 'No invoices raised yet'
+              search
+                ? 'No matches for your search'
+                : activeTab === 'to_invoice'
+                  ? 'No claim-approved cases ready to raise'
+                  : 'No invoices raised yet'
             }
           />
         </div>

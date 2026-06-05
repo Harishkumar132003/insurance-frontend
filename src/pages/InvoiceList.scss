@@ -1,0 +1,55 @@
+@use '../styles/variables' as *;
+
+.invoice-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: $space-2;
+  margin: 0 0 $space-4;
+  border-bottom: 1px solid $border-color;
+
+  &__tab {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: $space-3 $space-4;
+    margin-bottom: -1px;                 // overlap the bottom border
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color $transition-fast, border-color $transition-fast;
+
+    &:hover {
+      color: $text-primary;
+    }
+
+    &--active {
+      color: $primary;
+      border-bottom-color: $primary;
+      font-weight: 600;
+    }
+  }
+
+  &__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 7px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: $radius-full;
+    background: $bg-body;
+    color: $text-secondary;
+
+    .invoice-tabs__tab--active & {
+      background: rgba($primary, 0.12);
+      color: $primary;
+    }
+  }
+}

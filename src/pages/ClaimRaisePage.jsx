@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { claimCaseService, claimService, documentService } from '../services/api';
 import { IconArrowLeft, IconChevronRight, IconSend, IconX, IconMail } from '../components/icons/Icons';
@@ -258,6 +258,26 @@ function DocCategoryCard({ category, files, picked = [], onPick, onRemove, onRem
 export default function ClaimRaisePage() {
   const { claimCaseId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  // PreAuthForm passes the path we came from (e.g. /claims/:id when the user
+  // drilled in via the Raise Invoice tab). We bounce back there on Back /
+  // post-submit / post-discard, and forward the original origin (e.g.
+  // /invoices) on `state.from` so the sidebar highlight survives the round
+  // trip. Falls back to /claim-list/:id for deep links / hard reloads.
+  const backToCasePath = location.state?.from || `/claim-list/${claimCaseId}`;
+  const backToCaseState = location.state?.origin
+    ? { state: { from: location.state.origin } }
+    : undefined;
+  const goBackToCase = () => navigate(backToCasePath, backToCaseState);
+  const goBackToList = () => {
+    // "Back to list" (only used when the case can't be loaded). Prefer the
+    // origin tab if we have one, otherwise the bare PreAuth list.
+    if (typeof location.state?.origin === 'string') {
+      navigate(location.state.origin);
+    } else {
+      navigate('/claim-list');
+    }
+  };
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -591,7 +611,7 @@ export default function ClaimRaisePage() {
     try {
       await claimService.deleteDraft(claimCaseId);
       toast.success('Draft discarded');
-      navigate(`/claim-list/${claimCaseId}`);
+      goBackToCase();
     } catch {
       // interceptor handles
     } finally {
@@ -661,7 +681,7 @@ export default function ClaimRaisePage() {
         email_body: body,
       });
       toast.success(result.is_onboarded ? 'Submitted successfully' : 'Email sent successfully');
-      navigate(`/claim-list/${claimCaseId}`);
+      goBackToCase();
     } catch {
       // interceptor handles
     } finally {
@@ -680,7 +700,7 @@ export default function ClaimRaisePage() {
     return (
       <div className="claim-detail" style={{ padding: 24 }}>
         <p>Claim case not found.</p>
-        <button className="btn btn--ghost" onClick={() => navigate('/claim-list')}>
+        <button className="btn btn--ghost" onClick={goBackToList}>
           <IconArrowLeft size={14} /> Back to list
         </button>
       </div>
@@ -692,7 +712,7 @@ export default function ClaimRaisePage() {
   return (
     <div className="claim-detail" style={{ padding: '16px 24px' }}>
       <div style={{ marginBottom: 12 }}>
-        <button className="btn btn--ghost btn--sm" onClick={() => navigate(`/claim-list/${claimCaseId}`)}>
+        <button className="btn btn--ghost btn--sm" onClick={goBackToCase}>
           <IconArrowLeft size={14} /> Back to claim
         </button>
       </div>
@@ -702,10 +722,10 @@ export default function ClaimRaisePage() {
         subtitle={`${patientName} · UHID ${claimCase.uhid || '—'} · ${insurerName}`}
         accent="info"
         footer={readOnly ? (
-          <button className="btn btn--ghost" onClick={() => navigate(`/claim-list/${claimCaseId}`)}>Close</button>
+          <button className="btn btn--ghost" onClick={goBackToCase}>Close</button>
         ) : (
           <>
-            <button className="btn btn--ghost" onClick={() => navigate(`/claim-list/${claimCaseId}`)}>Cancel</button>
+            <button className="btn btn--ghost" onClick={goBackToCase}>Cancel</button>
             {draftLoaded && (
               <button
                 className="btn btn--ghost"

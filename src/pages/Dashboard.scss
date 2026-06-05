@@ -1,6 +1,143 @@
 @use '../styles/variables' as *;
 @use '../styles/mixins' as *;
 
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: $space-5;
+
+  &__header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: $space-4;
+    flex-wrap: wrap;
+  }
+
+  &__period {
+    position: relative;
+    display: inline-flex;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    padding: 3px;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+
+  &__period-btn {
+    background: transparent;
+    border: none;
+    padding: 6px 12px;
+    font-size: $font-size-xs;
+    font-weight: 500;
+    color: $text-secondary;
+    border-radius: $radius-sm;
+    cursor: pointer;
+    transition: background $transition-fast, color $transition-fast;
+    white-space: nowrap;
+
+    &:hover { color: $text-primary; }
+
+    &--active {
+      background: $primary;
+      color: $text-white;
+      font-weight: 600;
+
+      &:hover { color: $text-white; }
+    }
+
+    &--custom {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-left: 1px solid $border-color;
+      margin-left: 3px;
+      padding-left: 12px;
+
+      svg { display: block; }
+    }
+  }
+
+  &__range-pop {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 20;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    box-shadow: $shadow-lg;
+    padding: $space-3 $space-4;
+    min-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+  }
+
+  &__range-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: $space-3;
+  }
+
+  &__range-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+
+    input {
+      padding: 7px 10px;
+      font-size: $font-size-sm;
+      font-family: inherit;
+      color: $text-primary;
+      border: 1px solid $border-color;
+      border-radius: $radius-sm;
+      background: $bg-card;
+
+      &:focus {
+        outline: none;
+        border-color: $primary;
+        box-shadow: 0 0 0 2px rgba($primary, 0.15);
+      }
+    }
+  }
+
+  &__range-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: $space-2;
+    padding-top: $space-2;
+    border-top: 1px dashed $border-color;
+  }
+
+  // ── KPI strip ──
+  &__kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: $space-4;
+  }
+
+  &__row {
+    display: grid;
+    gap: $space-4;
+
+    &--funnel-activity { grid-template-columns: 3fr 2fr; }
+    &--insurers-status { grid-template-columns: 3fr 2fr; }
+    &--trend-extras    { grid-template-columns: 3fr 2fr; }
+
+    @media (max-width: 1100px) {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+// Existing stat-card kept for backwards-compat (other roles' dashboards may use it)
 .dashboard__stats {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -20,20 +157,523 @@
     flex-shrink: 0;
   }
 
-  &__info {
-    display: flex;
-    flex-direction: column;
-  }
-
+  &__info { display: flex; flex-direction: column; }
   &__value {
     font-size: $font-size-2xl;
     font-weight: 700;
     color: $text-primary;
     line-height: 1.2;
   }
+  &__label { font-size: $font-size-sm; color: $text-secondary; }
+}
+
+// ── KPI cards ────────────────────────────────────────────────────────
+
+.kpi-card {
+  position: relative;
+  text-align: left;
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-lg;
+  padding: $space-4 $space-5;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform $transition-fast, box-shadow $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: $shadow-md;
+    border-color: rgba($primary, 0.3);
+  }
 
   &__label {
-    font-size: $font-size-sm;
+    font-size: 11px;
+    font-weight: 700;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  &__value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-top: 6px;
+  }
+
+  &__subtitle {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    margin-top: 4px;
+  }
+
+  &__accent {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 3px;
+  }
+}
+
+// ── Generic card frame ──────────────────────────────────────────────
+
+.dashboard-card {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-lg;
+  padding: $space-4 $space-5;
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+  min-width: 0;
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: $space-3;
+    flex-wrap: wrap;
+
+    h3 {
+      margin: 0;
+      font-size: $font-size-base;
+      font-weight: 700;
+      color: $text-primary;
+    }
+  }
+
+  &__hint {
+    font-size: $font-size-xs;
     color: $text-secondary;
   }
+
+  &__empty {
+    padding: $space-5 0;
+    text-align: center;
+    font-size: $font-size-sm;
+    color: $text-light;
+  }
+}
+
+// ── Money funnel ────────────────────────────────────────────────────
+
+.funnel {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+.funnel__row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: $space-3;
+  align-items: center;
+}
+
+.funnel__label {
+  display: flex;
+  flex-direction: column;
+
+  &-name {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $text-primary;
+  }
+
+  &-count {
+    font-size: 11px;
+    color: $text-secondary;
+    margin-top: 2px;
+  }
+}
+
+.funnel__bar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+}
+
+.funnel__bar {
+  position: relative;
+  height: 28px;
+  background: linear-gradient(90deg, $primary, $primary-light);
+  border-radius: $radius-sm;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: $text-white;
+  min-width: 64px;
+  transition: width $transition-base;
+}
+
+.funnel__bar-amount {
+  font-size: $font-size-xs;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.funnel__conv {
+  font-size: $font-size-xs;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: $radius-full;
+  white-space: nowrap;
+
+  &--good { background: #dcfce7; color: #15803d; }
+  &--mid  { background: #fef3c7; color: #b45309; }
+  &--low  { background: #fee2e2; color: #b91c1c; }
+}
+
+// ── Activity feed ───────────────────────────────────────────────────
+
+.activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.activity__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: $space-3;
+  padding: $space-3 $space-2;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  align-items: center;
+  transition: background $transition-fast;
+
+  &:hover { background: $bg-body; }
+
+  & + & { border-top: 1px solid $border-color; }
+}
+
+.activity__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: $radius-full;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+
+  &--success { background: #dcfce7; color: #15803d; }
+  &--info    { background: #dbeafe; color: #1d4ed8; }
+  &--warning { background: #fef3c7; color: #b45309; }
+  &--danger  { background: #fee2e2; color: #b91c1c; }
+  &--default { background: #f3f4f6; color: #6b7280; }
+}
+
+.activity__pill-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+
+.activity__title {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $text-primary;
+}
+
+.activity__sub { color: $text-secondary; font-weight: 400; }
+
+.activity__remarks {
+  font-size: $font-size-xs;
+  color: $text-secondary;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.activity__right { text-align: right; }
+.activity__amount { font-size: $font-size-sm; font-weight: 700; color: $text-primary; }
+.activity__time { font-size: 11px; color: $text-secondary; }
+
+// ── Insurer table ───────────────────────────────────────────────────
+
+.insurer-table-wrap { overflow-x: auto; }
+
+.insurer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $font-size-sm;
+
+  th {
+    text-align: left;
+    padding: $space-2 $space-3;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: $text-secondary;
+    font-weight: 600;
+    border-bottom: 1px solid $border-color;
+  }
+
+  td {
+    padding: $space-3;
+    border-bottom: 1px solid $bg-body;
+    color: $text-primary;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  &__name { font-weight: 600; }
+
+  &__pct--good { color: #15803d; font-weight: 700; }
+  &__pct--mid  { color: #b45309; font-weight: 700; }
+  &__pct--low  { color: #b91c1c; font-weight: 700; }
+
+  &__outstanding { color: #b45309; font-weight: 600; }
+  &__zero { color: $text-light; }
+}
+
+// ── Status distribution ─────────────────────────────────────────────
+
+.status-dist {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+.status-dist__row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: $space-3;
+  align-items: center;
+}
+
+.status-dist__label {
+  display: flex;
+  justify-content: space-between;
+  gap: $space-2;
+  align-items: baseline;
+
+  &-name { font-size: $font-size-sm; font-weight: 500; color: $text-primary; }
+}
+
+.status-dist__name {
+  font-size: $font-size-sm;
+  font-weight: 500;
+  color: $text-primary;
+}
+
+.status-dist__count {
+  font-size: $font-size-sm;
+  font-weight: 700;
+  color: $text-primary;
+}
+
+.status-dist__bar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+}
+
+.status-dist__bar {
+  height: 12px;
+  border-radius: $radius-full;
+  min-width: 4px;
+  transition: width $transition-base;
+}
+
+.status-dist__pct {
+  font-size: 11px;
+  color: $text-secondary;
+  white-space: nowrap;
+}
+
+// ── Volume trend ────────────────────────────────────────────────────
+
+.trend-legend {
+  display: flex;
+  gap: $space-4;
+  font-size: $font-size-xs;
+  color: $text-secondary;
+
+  &__item { display: inline-flex; align-items: center; gap: 6px; }
+
+  &__swatch {
+    width: 12px; height: 12px; border-radius: 3px;
+
+    &--submitted { background: $primary; }
+    &--settled   { background: #10b981; }
+  }
+}
+
+.trend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(36px, 1fr));
+  gap: $space-2;
+  align-items: end;
+  height: 200px;
+  padding: $space-2 0;
+}
+
+.trend__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.trend__bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  width: 100%;
+}
+
+.trend__bar {
+  width: 10px;
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  transition: height $transition-base;
+
+  &--submitted { background: $primary; }
+  &--settled   { background: #10b981; }
+}
+
+.trend__label {
+  font-size: 10px;
+  color: $text-secondary;
+  white-space: nowrap;
+}
+
+// ── Extras card ─────────────────────────────────────────────────────
+
+.extras {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: $space-4;
+}
+
+.extras__panel {
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+  padding: $space-3;
+  background: $bg-body;
+  border-radius: $radius-md;
+}
+
+.extras__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: $text-secondary;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.extras__stat {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: $text-primary;
+}
+
+.extras__caption {
+  font-size: 11px;
+  color: $text-secondary;
+}
+
+.extras__empty {
+  font-size: $font-size-xs;
+  color: $text-light;
+  font-style: italic;
+}
+
+.extras__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: $space-2;
+    font-size: $font-size-sm;
+    color: $text-primary;
+  }
+
+  &-name { flex: 1; min-width: 0; }
+  &-name--truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: $text-secondary;
+    background: $bg-card;
+    padding: 2px 8px;
+    border-radius: $radius-full;
+  }
+}
+
+// ── Super-admin (platform) dashboard additions ──────────────────────
+// Generic 3:2 split row (collapses to a single column on narrow screens).
+// The media rule is declared after the base `.dashboard__row` media rule so
+// equal-specificity source order keeps the stacked layout on mobile.
+.dashboard__row--split { grid-template-columns: 3fr 2fr; }
+@media (max-width: 1100px) {
+  .dashboard__row--split { grid-template-columns: 1fr; }
+}
+
+// Top-align a split row so a short card (e.g. the fixed-height Weekly Volume
+// chart) keeps its natural height instead of stretching to match a tall
+// neighbour (the activity feed) and leaving dead whitespace below it.
+.dashboard__row--top { align-items: start; }
+
+// Cap the activity feed so a long cross-hospital list scrolls internally
+// rather than driving the row height.
+.activity--scroll {
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+// Long leaderboard / payer tables get a capped, scrollable body.
+.insurer-table-wrap--scroll {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+// Onboarded vs external payer tag, shown next to the payer name.
+.onboard-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: $radius-full;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+
+  &--on  { background: #dcfce7; color: #15803d; }
+  &--off { background: #f1f5f9; color: #64748b; }
+}
+
+// Footer CTA inside a card (e.g. "Manage users →" on the reach panel).
+.dashboard-card__cta {
+  margin-top: $space-3;
+  align-self: flex-start;
 }
