@@ -1669,11 +1669,10 @@ export default function PreAuthForm() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
-  // Invoice raise modal + payment-adding state. The detail page shows the
-  // "Raise Invoice" button on claim-approved cases; once raised, an invoice
-  // card replaces the button and surfaces payment/status controls.
+  // Invoice raise modal. The detail page shows the "Raise Invoice" button on
+  // claim-approved cases; once raised, an invoice card replaces it and
+  // surfaces payment management (status is auto-derived from payments).
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
-  const [updatingInvoiceStatus, setUpdatingInvoiceStatus] = useState(false);
 
   // Timeline reply compose state
   const [showReplyCompose, setShowReplyCompose] = useState(false);
@@ -1863,20 +1862,6 @@ export default function PreAuthForm() {
   const handleInvoiceRaised = async () => {
     setInvoiceModalOpen(false);
     await loadClaimData(false);
-  };
-
-  const handleUpdateInvoiceStatus = async (nextStatus) => {
-    if (!routeClaimCaseId) return;
-    setUpdatingInvoiceStatus(true);
-    try {
-      await invoiceService.updateStatus(routeClaimCaseId, nextStatus);
-      toast.success(`Invoice marked ${nextStatus === 'PAID' ? 'paid' : nextStatus === 'UNPAID' ? 'unpaid' : 'raised'}`);
-      await loadClaimData(false);
-    } catch {
-      // handled
-    } finally {
-      setUpdatingInvoiceStatus(false);
-    }
   };
 
   const handleConfirmCancel = async () => {
@@ -2573,11 +2558,17 @@ export default function PreAuthForm() {
         const blockNewClaim = alreadyRaised && !hasClaim;
         const showClaimBtn = !isInsuranceProvider && submitResult && (hasApprovedAmount || hasClaim) && !blockNewClaim;
         // Raise Invoice CTA — only on the claim detail page (/claims/:id),
-        // when the claim has an approved amount and no invoice exists yet.
+        // when the claim has an approved amount and no invoice exists yet,
+        // AND the user drilled in from the Raise Invoice tab (state.from
+        // starts with /invoices). The Claims tab is intentionally kept free
+        // of any invoice-related UI.
         const claimApprovedAmount = Number(submitResult?.claim_summary?.approved_amount) || 0;
+        const cameFromInvoices = typeof location.state?.from === 'string'
+          && location.state.from.startsWith('/invoices');
         const showRaiseInvoiceBtn =
           !isInsuranceProvider
           && timelineStage === 'CLAIM'
+          && cameFromInvoices
           && hasClaim
           && claimApprovedAmount > 0
           && !submitResult?.invoice;
@@ -2591,7 +2582,10 @@ export default function PreAuthForm() {
           'SUBMITTED', 'ENHANCE_SUBMITTED', 'RECONSIDER', 'RECONSIDER_SUBMITTED', 'ADR_SUBMITTED',
         ]);
         const awaitingProvider = awaitingProviderStatuses.has(latestStageStatus);
-        const showCancelBtn = !isInsuranceProvider && !isDraft && !awaitingProvider;
+        // Once an invoice has been raised the case is in the settlement-
+        // tracking phase and cancellation no longer makes sense — hide it.
+        const hasInvoice = Boolean(submitResult?.invoice);
+        const showCancelBtn = !isInsuranceProvider && !isDraft && !awaitingProvider && !hasInvoice;
         if (!showRaiseBtn && !showClaimBtn && !showCancelBtn && !showRaiseInvoiceBtn) return null;
         return (
           <div className="claim-detail__cta-row">
@@ -2603,7 +2597,14 @@ export default function PreAuthForm() {
             {showClaimBtn && (
               <button
                 className="claim-detail__claim-btn"
-                onClick={() => navigate(`/claim/${routeClaimCaseId}`)}
+                onClick={() => navigate(
+                  `/claim/${routeClaimCaseId}`,
+                  // Carry the current detail-page path forward so the
+                  // ClaimRaisePage back button + post-submit redirect
+                  // return to wherever we came from (and the sidebar
+                  // highlight survives via state.from in turn).
+                  { state: { from: location.pathname, origin: location.state?.from } },
+                )}
               >
                 {hasClaim
                   ? 'View Claim'
@@ -2636,15 +2637,18 @@ export default function PreAuthForm() {
         );
       })()}
 
-      {/* Invoice card — only shown on the claim detail page (/claims/:id)
-          once an invoice has been raised. Replaces the "Raise Invoice" CTA
-          and surfaces the insurer invoice id / amount / payments / status. */}
-      {!isCancelled && timelineStage === 'CLAIM' && submitResult?.invoice && (
+      {/* Invoice card — only shown when the user drilled into the case from
+          the Raise Invoice tab (state.from starts with /invoices). The Claims
+          tracker is intentionally kept clean of invoice UI. */}
+      {!isCancelled
+        && timelineStage === 'CLAIM'
+        && submitResult?.invoice
+        && typeof location.state?.from === 'string'
+        && location.state.from.startsWith('/invoices')
+        && (
         <InvoiceCard
           invoice={submitResult.invoice}
           claimCaseId={routeClaimCaseId}
-          updating={updatingInvoiceStatus}
-          onUpdateStatus={handleUpdateInvoiceStatus}
           onRefresh={() => loadClaimData(false)}
           isInsuranceProvider={isInsuranceProvider}
         />
@@ -2751,6 +2755,22 @@ export default function PreAuthForm() {
               emptyText={timelineStage === 'CLAIM' ? 'No claim activity yet' : 'No timeline events'}
               onViewPreAuth={() => navigate(`/claim-list/${routeClaimCaseId}`, { state: { from: backPath } })}
               onViewClaim={() => navigate(`/claims/${routeClaimCaseId}`, { state: { from: backPath } })}
+              // When an invoice has been raised AND the user isn't already on
+              // the "from invoices" view, surface a one-click entry-point to
+              // the InvoiceCard. Only shown on the claim view (/claims/:id);
+              // the pre-auth view (/claim-list/:id) keeps just "View Claim"
+              // since the invoice belongs to the claim stage.
+              onViewInvoice={
+                timelineStage === 'CLAIM'
+                && submitResult?.invoice
+                && !(typeof location.state?.from === 'string'
+                  && location.state.from.startsWith('/invoices'))
+                  ? () => navigate(
+                      `/claims/${routeClaimCaseId}`,
+                      { state: { from: '/invoices' } },
+                    )
+                  : undefined
+              }
             />
           </Accordion>
         </div>
@@ -3099,7 +3119,7 @@ function formatProviderTat(ms) {
 
 function StatusTimeline({
   events, onViewEmail, onAction, pendingAction, claimOnboarded,
-  emptyText = 'No timeline events', onViewPreAuth, onViewClaim,
+  emptyText = 'No timeline events', onViewPreAuth, onViewClaim, onViewInvoice,
 }) {
   if (!events || events.length === 0) {
     return <div className="claim-status-timeline__empty">{emptyText}</div>;
@@ -3131,6 +3151,25 @@ function StatusTimeline({
     !(claimOnboarded && ev.isReceivedSide && !APPROVAL_OUTCOMES.has(ev.rawStatus));
   return (
     <div className="claim-status-timeline">
+      {onViewInvoice && (
+        <div className="claim-status-timeline__row">
+          <div className="claim-status-timeline__track">
+            <div className="claim-status-timeline__dot" />
+            <div className="claim-status-timeline__line" />
+          </div>
+          <div className="claim-status-timeline__content">
+            <button
+              type="button"
+              className="btn btn--primary btn--sm claim-status-timeline__stage-link"
+              onClick={onViewInvoice}
+              title="Open the invoice raised against this case"
+              style={{ background: '#0e7490', borderColor: '#0e7490' }}
+            >
+              View Invoice →
+            </button>
+          </div>
+        </div>
+      )}
       {hasViewClaim && (
         <div className="claim-status-timeline__row">
           <div className="claim-status-timeline__track">
@@ -3317,57 +3356,50 @@ function ClaimSidebar({ submitResult }) {
 
 // ── Invoice card (post-claim-approval) ──────────────────────────────
 
+// Status is auto-derived on the backend from the sum of payments vs the
+// insurer amount. Frontend just renders the pill.
 const INVOICE_STATUS_META = {
-  INVOICE_RAISED: { label: 'Invoice Raised', color: '#1d4ed8', bg: '#dbeafe' },
-  PAID:           { label: 'Paid',           color: '#15803d', bg: '#dcfce7' },
-  UNPAID:         { label: 'Unpaid',         color: '#b91c1c', bg: '#fee2e2' },
+  PAID:           { label: 'Paid',            color: '#15803d', bg: '#dcfce7' },
+  PARTIALLY_PAID: { label: 'Partially Paid',  color: '#b45309', bg: '#fef3c7' },
+  UNPAID:         { label: 'Unpaid',          color: '#b91c1c', bg: '#fee2e2' },
 };
 
-function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh, isInsuranceProvider }) {
+function InvoiceCard({ invoice, claimCaseId, onRefresh, isInsuranceProvider }) {
   const toast = useToast();
+  // "Add Payment" form state.
   const [addingPayment, setAddingPayment] = useState(false);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
-  // Inline reference-id edit. Editable at any point after the invoice is
-  // raised so the hospital can fill in the settlement UTR / cross-ref later.
-  const [editingRef, setEditingRef] = useState(false);
-  const [refDraft, setRefDraft] = useState(invoice.reference_id || '');
-  const [savingRef, setSavingRef] = useState(false);
 
-  const startEditRef = () => {
-    setRefDraft(invoice.reference_id || '');
-    setEditingRef(true);
-  };
-  const cancelEditRef = () => {
-    setEditingRef(false);
-    setRefDraft(invoice.reference_id || '');
-  };
-  const saveRef = async () => {
-    const next = refDraft.trim();
-    if (next === (invoice.reference_id || '')) {
-      setEditingRef(false);
-      return;
-    }
-    setSavingRef(true);
-    try {
-      await invoiceService.updateReference(claimCaseId, next || null);
-      toast.success(next ? 'Reference updated' : 'Reference cleared');
-      setEditingRef(false);
-      if (onRefresh) await onRefresh();
-    } catch {
-      // handled
-    } finally {
-      setSavingRef(false);
-    }
-  };
+  // Edit-a-row state. Only one row is editable at a time; switching rows
+  // discards the current draft (Save / Cancel are explicit anyway).
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
+  const [editDraft, setEditDraft] = useState({
+    payment_date: '',
+    amount: '',
+    reference_id: '',
+    note: '',
+  });
+  const [savingPaymentId, setSavingPaymentId] = useState(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState(null);
+  // In-app delete-confirm modal. Holds the full payment object so we can show
+  // its date / amount / reference in the dialog instead of a generic prompt.
+  const [pendingDelete, setPendingDelete] = useState(null);
 
-  const meta = INVOICE_STATUS_META[invoice.status] || INVOICE_STATUS_META.INVOICE_RAISED;
+  const meta = INVOICE_STATUS_META[invoice.status] || INVOICE_STATUS_META.UNPAID;
   const insurerAmount = Number(invoice.insurer_amount) || 0;
   const paidTotal = Number(invoice.paid_total) || 0;
   const outstanding = insurerAmount - paidTotal;
   const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+
+  const resetAddForm = () => {
+    setPaymentAmount('');
+    setPaymentReference('');
+    setPaymentNote('');
+  };
 
   const handleSubmitPayment = async (e) => {
     e.preventDefault();
@@ -3381,17 +3413,76 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
       await invoiceService.addPayment(claimCaseId, {
         payment_date: paymentDate,
         amount: amt,
+        reference_id: paymentReference.trim() || null,
         note: paymentNote.trim() || null,
       });
       toast.success('Payment added');
-      setPaymentAmount('');
-      setPaymentNote('');
+      resetAddForm();
       setAddingPayment(false);
+      if (onRefresh) await onRefresh();
+    } catch {
+      // handled by interceptor
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
+  const startEditPayment = (p) => {
+    setEditingPaymentId(p.id);
+    setEditDraft({
+      payment_date: p.payment_date || '',
+      amount: p.amount != null ? String(p.amount) : '',
+      reference_id: p.reference_id || '',
+      note: p.note || '',
+    });
+  };
+  const cancelEditPayment = () => {
+    setEditingPaymentId(null);
+    setEditDraft({ payment_date: '', amount: '', reference_id: '', note: '' });
+  };
+  const saveEditPayment = async (paymentId) => {
+    const amt = Number(editDraft.amount);
+    if (!amt || amt <= 0) {
+      toast.error('Enter a payment amount');
+      return;
+    }
+    setSavingPaymentId(paymentId);
+    try {
+      await invoiceService.updatePayment(claimCaseId, paymentId, {
+        payment_date: editDraft.payment_date,
+        amount: amt,
+        reference_id: editDraft.reference_id.trim() || null,
+        note: editDraft.note.trim() || null,
+      });
+      toast.success('Payment updated');
+      cancelEditPayment();
       if (onRefresh) await onRefresh();
     } catch {
       // handled
     } finally {
-      setSubmittingPayment(false);
+      setSavingPaymentId(null);
+    }
+  };
+
+  const requestDeletePayment = (payment) => setPendingDelete(payment);
+  const cancelDeletePayment = () => {
+    if (deletingPaymentId !== null) return;       // disallow close mid-delete
+    setPendingDelete(null);
+  };
+  const confirmDeletePayment = async () => {
+    if (!pendingDelete) return;
+    const paymentId = pendingDelete.id;
+    setDeletingPaymentId(paymentId);
+    try {
+      await invoiceService.deletePayment(claimCaseId, paymentId);
+      toast.success('Payment deleted');
+      if (editingPaymentId === paymentId) cancelEditPayment();
+      setPendingDelete(null);
+      if (onRefresh) await onRefresh();
+    } catch {
+      // handled
+    } finally {
+      setDeletingPaymentId(null);
     }
   };
 
@@ -3412,92 +3503,6 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
           </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginTop: 4 }}>
             #{invoice.insurer_invoice_id}
-          </div>
-          <div style={{ marginTop: 4 }}>
-            {editingRef ? (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <input
-                  type="text"
-                  value={refDraft}
-                  onChange={(e) => setRefDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); saveRef(); }
-                    if (e.key === 'Escape') { e.preventDefault(); cancelEditRef(); }
-                  }}
-                  placeholder="e.g. UTR123456789"
-                  autoFocus
-                  disabled={savingRef}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 13,
-                    border: '1px solid #d1d5db',
-                    borderRadius: 6,
-                    minWidth: 220,
-                    fontFamily: 'inherit',
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={saveRef}
-                  disabled={savingRef}
-                  className="btn btn--primary btn--sm"
-                  style={{ padding: '4px 10px', fontSize: 12 }}
-                >
-                  {savingRef ? <Spinner size={12} /> : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelEditRef}
-                  disabled={savingRef}
-                  className="btn btn--ghost btn--sm"
-                  style={{ padding: '4px 8px', fontSize: 12 }}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : invoice.reference_id ? (
-              <button
-                type="button"
-                onClick={!isInsuranceProvider ? startEditRef : undefined}
-                disabled={isInsuranceProvider}
-                title={!isInsuranceProvider ? 'Click to edit reference' : undefined}
-                style={{
-                  fontSize: 13,
-                  color: '#6b7280',
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  cursor: !isInsuranceProvider ? 'pointer' : 'default',
-                  fontFamily: 'inherit',
-                }}
-              >
-                Ref: <span style={{ color: '#374151', fontWeight: 500 }}>{invoice.reference_id}</span>
-                {!isInsuranceProvider && (
-                  <span style={{ color: '#4f46e5', marginLeft: 6, fontWeight: 500 }}>Edit</span>
-                )}
-              </button>
-            ) : !isInsuranceProvider ? (
-              <button
-                type="button"
-                onClick={startEditRef}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 12,
-                  color: '#4f46e5',
-                  background: 'none',
-                  border: '1px dashed #c7d2fe',
-                  borderRadius: 6,
-                  padding: '3px 8px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  fontWeight: 500,
-                }}
-              >
-                <IconPlus size={12} /> Add reference
-              </button>
-            ) : null}
           </div>
         </div>
         <span
@@ -3531,70 +3536,174 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
           <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
             Payments ({payments.length})
           </div>
-          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: '#6b7280' }}>
-                <th style={{ padding: '6px 8px', fontWeight: 500 }}>Date</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500 }}>Amount</th>
-                <th style={{ padding: '6px 8px', fontWeight: 500 }}>Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((p) => (
-                <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '6px 8px' }}>{p.payment_date}</td>
-                  <td style={{ padding: '6px 8px', fontWeight: 600 }}>{formatINR(p.amount)}</td>
-                  <td style={{ padding: '6px 8px', color: '#6b7280' }}>{p.note || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '140px 130px 1.2fr 1.2fr 100px',
+              fontSize: 12,
+              color: '#6b7280',
+              textTransform: 'uppercase',
+              letterSpacing: 0.3,
+              fontWeight: 600,
+              padding: '6px 8px',
+              borderBottom: '1px solid #e5e7eb',
+            }}
+          >
+            <span>Date</span>
+            <span>Amount</span>
+            <span>Reference</span>
+            <span>Note</span>
+            <span style={{ textAlign: 'right' }}>{isInsuranceProvider ? '' : 'Actions'}</span>
+          </div>
+          {payments.map((p) => {
+            const isEditing = editingPaymentId === p.id;
+            const isSaving = savingPaymentId === p.id;
+            const isDeleting = deletingPaymentId === p.id;
+            if (isEditing && !isInsuranceProvider) {
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '140px 130px 1.2fr 1.2fr 100px',
+                    gap: 8,
+                    padding: '8px',
+                    borderBottom: '1px solid #f3f4f6',
+                    alignItems: 'center',
+                    background: '#f9fafb',
+                  }}
+                >
+                  <input
+                    type="date"
+                    value={editDraft.payment_date}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, payment_date: e.target.value }))}
+                    style={PAYMENT_INPUT_STYLE}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editDraft.amount}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, amount: e.target.value }))}
+                    style={PAYMENT_INPUT_STYLE}
+                  />
+                  <input
+                    type="text"
+                    value={editDraft.reference_id}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, reference_id: e.target.value }))}
+                    placeholder="UTR / settlement id"
+                    style={PAYMENT_INPUT_STYLE}
+                  />
+                  <input
+                    type="text"
+                    value={editDraft.note}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, note: e.target.value }))}
+                    placeholder="Note"
+                    style={PAYMENT_INPUT_STYLE}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm"
+                      onClick={() => saveEditPayment(p.id)}
+                      disabled={isSaving}
+                      style={{ padding: '4px 8px', fontSize: 12 }}
+                      title="Save"
+                    >
+                      {isSaving ? <Spinner size={12} /> : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={cancelEditPayment}
+                      disabled={isSaving}
+                      style={{ padding: '4px 8px', fontSize: 12 }}
+                      title="Cancel"
+                    >
+                      <IconX size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '140px 130px 1.2fr 1.2fr 100px',
+                  gap: 8,
+                  fontSize: 13,
+                  padding: '8px',
+                  borderBottom: '1px solid #f3f4f6',
+                  alignItems: 'center',
+                  opacity: isDeleting ? 0.5 : 1,
+                }}
+              >
+                <span>{p.payment_date}</span>
+                <span style={{ fontWeight: 600 }}>{formatINR(p.amount)}</span>
+                <span style={{ color: p.reference_id ? '#111827' : '#9ca3af' }}>
+                  {p.reference_id || '—'}
+                </span>
+                <span style={{ color: p.note ? '#374151' : '#9ca3af' }}>
+                  {p.note || '—'}
+                </span>
+                {!isInsuranceProvider ? (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => startEditPayment(p)}
+                      disabled={isDeleting || editingPaymentId !== null}
+                      title="Edit payment"
+                      aria-label="Edit payment"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#4f46e5',
+                        padding: 4,
+                        display: 'inline-flex',
+                      }}
+                    >
+                      <IconEdit size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => requestDeletePayment(p)}
+                      disabled={isDeleting || editingPaymentId !== null}
+                      title="Delete payment"
+                      aria-label="Delete payment"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#b91c1c',
+                        padding: 4,
+                        display: 'inline-flex',
+                      }}
+                    >
+                      {isDeleting ? <Spinner size={12} /> : <IconX size={14} />}
+                    </button>
+                  </div>
+                ) : (
+                  <span />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {!isInsuranceProvider && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-          {!addingPayment && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => setAddingPayment(true)}
-            >
-              <IconPlus size={14} /> Add Payment
-            </button>
-          )}
-          {invoice.status !== 'PAID' && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => onUpdateStatus('PAID')}
-              disabled={updating}
-              style={{ color: '#15803d', borderColor: '#bbf7d0' }}
-            >
-              Mark as Paid
-            </button>
-          )}
-          {invoice.status !== 'UNPAID' && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => onUpdateStatus('UNPAID')}
-              disabled={updating}
-              style={{ color: '#b91c1c', borderColor: '#fecaca' }}
-            >
-              Mark as Unpaid
-            </button>
-          )}
-          {invoice.status !== 'INVOICE_RAISED' && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => onUpdateStatus('INVOICE_RAISED')}
-              disabled={updating}
-            >
-              Reopen
-            </button>
-          )}
+      {!isInsuranceProvider && !addingPayment && (
+        <div style={{ marginTop: 16 }}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => setAddingPayment(true)}
+            disabled={editingPaymentId !== null}
+          >
+            <IconPlus size={14} /> Add Payment
+          </button>
         </div>
       )}
 
@@ -3632,8 +3741,7 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
               type="button"
               onClick={() => {
                 setAddingPayment(false);
-                setPaymentAmount('');
-                setPaymentNote('');
+                resetAddForm();
               }}
               disabled={submittingPayment}
               title="Close"
@@ -3654,7 +3762,7 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '160px 160px 1fr',
+              gridTemplateColumns: '140px 130px 1fr 1fr',
               gap: 10,
               alignItems: 'flex-end',
             }}
@@ -3680,12 +3788,21 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
                 style={PAYMENT_INPUT_STYLE}
               />
             </PaymentField>
+            <PaymentField label="Reference" optional>
+              <input
+                type="text"
+                value={paymentReference}
+                onChange={(e) => setPaymentReference(e.target.value)}
+                placeholder="UTR / settlement id"
+                style={PAYMENT_INPUT_STYLE}
+              />
+            </PaymentField>
             <PaymentField label="Note" optional>
               <input
                 type="text"
                 value={paymentNote}
                 onChange={(e) => setPaymentNote(e.target.value)}
-                placeholder="UTR / mode / remarks"
+                placeholder="Remarks"
                 style={PAYMENT_INPUT_STYLE}
               />
             </PaymentField>
@@ -3706,8 +3823,7 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
               className="btn btn--ghost btn--sm"
               onClick={() => {
                 setAddingPayment(false);
-                setPaymentAmount('');
-                setPaymentNote('');
+                resetAddForm();
               }}
               disabled={submittingPayment}
             >
@@ -3723,12 +3839,85 @@ function InvoiceCard({ invoice, claimCaseId, updating, onUpdateStatus, onRefresh
           </div>
         </form>
       )}
+
+      {pendingDelete && (
+        <Modal title="Delete this payment?" onClose={cancelDeletePayment}>
+          <p style={{ marginTop: 0, color: '#374151', lineHeight: 1.55 }}>
+            This payment will be permanently removed and the invoice status
+            will be recalculated.
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '110px 1fr',
+              gap: '6px 16px',
+              padding: '12px 14px',
+              background: '#f9fafb',
+              border: '1px solid #e5e7eb',
+              borderRadius: 8,
+              fontSize: 14,
+              marginTop: 12,
+            }}
+          >
+            <span style={{ color: '#6b7280' }}>Date</span>
+            <span style={{ color: '#111827', fontWeight: 500 }}>
+              {pendingDelete.payment_date || '—'}
+            </span>
+            <span style={{ color: '#6b7280' }}>Amount</span>
+            <span style={{ color: '#111827', fontWeight: 600 }}>
+              {formatINR(pendingDelete.amount)}
+            </span>
+            {pendingDelete.reference_id && (
+              <>
+                <span style={{ color: '#6b7280' }}>Reference</span>
+                <span style={{ color: '#111827' }}>
+                  {pendingDelete.reference_id}
+                </span>
+              </>
+            )}
+            {pendingDelete.note && (
+              <>
+                <span style={{ color: '#6b7280' }}>Note</span>
+                <span style={{ color: '#374151' }}>{pendingDelete.note}</span>
+              </>
+            )}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              justifyContent: 'flex-end',
+              marginTop: 16,
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={cancelDeletePayment}
+              disabled={deletingPaymentId !== null}
+            >
+              Keep Payment
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={confirmDeletePayment}
+              disabled={deletingPaymentId !== null}
+              style={{ background: '#b91c1c', borderColor: '#b91c1c' }}
+            >
+              {deletingPaymentId === pendingDelete.id
+                ? <Spinner size={16} />
+                : 'Delete Payment'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-// Shared input styling for the inline "New payment" form. Kept inline so we
-// don't need a separate SCSS file for this single card.
+// Shared input styling for inline payment forms. Kept inline so we don't
+// need a separate SCSS file for this single card.
 const PAYMENT_INPUT_STYLE = {
   width: '100%',
   padding: '8px 10px',

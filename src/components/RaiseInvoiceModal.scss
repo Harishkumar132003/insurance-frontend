@@ -187,6 +187,12 @@
     align-items: center;
   }
 
+  // 4-column layout: Date | Amount | Reference | Note | remove
+  &__payment-row--4col,
+  &__payments-head.raise-invoice__payment-row--4col {
+    grid-template-columns: 140px 110px 1fr 1fr 32px;
+  }
+
   &__payments-head {
     padding: 0 4px 4px;
     font-size: 11px;

@@ -31,9 +31,17 @@ const menuItems = [
   { path: '/prompts', label: 'Prompts', icon: IconPrompt, feature: 'prompts', roles: [SUPER_ADMIN] },
   { path: '/summary-prompts', label: 'Summary Prompts', icon: IconPrompt, feature: 'summary_prompts', roles: [SUPER_ADMIN] },
   { path: '/policy-providers', label: 'Policy Providers', icon: IconShield, feature: 'policy_providers', roles: [SUPER_ADMIN] },
-  { path: '/claim-list', label: 'PreAuth List', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN] },
-  { path: '/claims', label: 'Claims', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN] },
-  { path: '/invoices', label: 'Raise Invoice', icon: IconClaimList, roles: [HOSPITAL_ADMIN] },
+  // activePaths so isItemActive() can decide highlighting on /claim/:id
+  // (the Raise Claim page), which doesn't start with /claim-list.
+  { path: '/claim-list', label: 'PreAuth List', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN], activePaths: ['/claim-list'] },
+  // /claims/:id is also used as the detail view when drilling in from the
+  // Raise Invoice tab — the active-state logic below uses location.state.from
+  // to decide which of these two items should light up.
+  { path: '/claims', label: 'Claims', icon: IconClaimList, feature: 'preauth_list', roles: [HOSPITAL_ADMIN], activePaths: ['/claims'] },
+  // activePaths is intentionally only ['/invoices'] — the /claims/:id branch
+  // in isItemActive() below handles the case where the user drilled into a
+  // case from this tab via location.state.from.
+  { path: '/invoices', label: 'Raise Invoice', icon: IconClaimList, roles: [HOSPITAL_ADMIN], activePaths: ['/invoices'] },
   { path: '/query-management', label: 'Email Inbox', icon: IconQuery, feature: 'query_management', roles: [HOSPITAL_ADMIN], hasUnreadIndicator: true },
   { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, feature: 'preauth_form', roles: [HOSPITAL_ADMIN] },
   { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
@@ -71,6 +79,36 @@ export default function Sidebar({ collapsed, onToggle }) {
       const cameFromClaims = location.state?.from === '/claims';
       if (item.path === '/claims') return cameFromClaims;
       if (item.path === '/claim-list') return !cameFromClaims;
+    }
+
+    // /claims/:id is shared between the Claims tracker and the Raise Invoice
+    // drill-down. `state.from` (set on card click + carried through any
+    // /claim/:id round-trip) tells us which sidebar item to light up — any
+    // path that starts with `/invoices` counts as the Raise Invoice trail.
+    if (location.pathname.startsWith('/claims/')) {
+      const cameFromInvoices = typeof location.state?.from === 'string'
+        && location.state.from.startsWith('/invoices');
+      if (item.path === '/invoices') return cameFromInvoices;
+      if (item.path === '/claims') return !cameFromInvoices;
+      if (item.path === '/claim-list') return false;
+    }
+
+    // /claim/:id (Raise Claim / View Claim page) — reached from a case detail
+    // page, which itself may have been reached from /invoices. We get:
+    //   state.from   = '/claims/:id' or '/claim-list/:id'  (the detail page)
+    //   state.origin = '/invoices'   (when the detail page came from Invoices)
+    // Light up whichever tab is the *root* of the trail. Fall back to
+    // PreAuth List on hard reload / deep link (no state).
+    if (location.pathname.startsWith('/claim/')) {
+      const from = location.state?.from;
+      const origin = location.state?.origin;
+      const cameFromInvoices = typeof origin === 'string' && origin.startsWith('/invoices');
+      const cameFromClaimsTracker = !cameFromInvoices
+        && typeof from === 'string' && from.startsWith('/claims/');
+      const cameFromPreAuthList = !cameFromInvoices && !cameFromClaimsTracker;
+      if (item.path === '/invoices') return cameFromInvoices;
+      if (item.path === '/claims') return cameFromClaimsTracker;
+      if (item.path === '/claim-list') return cameFromPreAuthList;
     }
 
     return paths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`));
