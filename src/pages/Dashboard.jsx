@@ -16,7 +16,6 @@ import {
   RangePicker,
   FunnelCard,
   ActivityCard,
-  StatusDistributionCard,
   VolumeTrendCard,
 } from './dashboardShared';
 import './Dashboard.scss';
@@ -127,10 +126,6 @@ function HospitalAdminDashboard({ user, navigate, isHospitalAdmin }) {
             <FunnelCard steps={data.funnel} />
             <ActivityCard items={data.recent_activity} onNavigate={navigate} />
           </div>
-          <div className="dashboard__row dashboard__row--insurers-status">
-            <InsurersCard insurers={data.insurers} />
-            <StatusDistributionCard buckets={data.status_distribution} />
-          </div>
           <div className="dashboard__row dashboard__row--trend-extras">
             <VolumeTrendCard points={data.volume_trend} />
             <ExtrasCard
@@ -205,56 +200,6 @@ function KPIStrip({ kpis, onNavigate }) {
         </button>
       ))}
     </div>
-  );
-}
-
-// ── Insurer performance ─────────────────────────────────────────────
-
-function InsurersCard({ insurers }) {
-  return (
-    <section className="dashboard-card">
-      <header className="dashboard-card__head">
-        <h3>Insurer Performance</h3>
-        <span className="dashboard-card__hint">By volume in the selected period</span>
-      </header>
-      {insurers.length === 0 ? (
-        <div className="dashboard-card__empty">No insurer activity in this period.</div>
-      ) : (
-        <div className="insurer-table-wrap">
-          <table className="insurer-table">
-            <thead>
-              <tr>
-                <th>Insurer</th>
-                <th>Cases</th>
-                <th>Approval</th>
-                <th>Avg TAT</th>
-                <th>Outstanding</th>
-              </tr>
-            </thead>
-            <tbody>
-              {insurers.map((p) => (
-                <tr key={p.provider_id}>
-                  <td className="insurer-table__name">{p.name}</td>
-                  <td>{p.cases}</td>
-                  <td>
-                    {p.approval_rate != null ? (
-                      <span className={p.approval_rate >= 0.75 ? 'insurer-table__pct--good' : p.approval_rate >= 0.4 ? 'insurer-table__pct--mid' : 'insurer-table__pct--low'}>
-                        {Math.round(p.approval_rate * 100)}%
-                      </span>
-                    ) : '—'}
-                  </td>
-                  <td>{formatDuration(p.avg_tat_seconds)}</td>
-                  <td>{p.outstanding_amount > 0
-                    ? <span className="insurer-table__outstanding">{formatCompactINR(p.outstanding_amount)}</span>
-                    : <span className="insurer-table__zero">₹0</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
   );
 }
 

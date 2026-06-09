@@ -283,6 +283,12 @@ export const dashboardService = {
   },
 };
 
+// Natural-language data assistant for hospital admins. Sends a question to the
+// read-only, tenant-scoped AI query agent and returns { answer, sql, columns, rows }.
+export const aiAssistantService = {
+  query: (question) => api.post('/ai/query', { question }).then((r) => r.data),
+};
+
 // Invoice (post-claim-approval settlement record). One per case.
 // Status (INVOICE_RAISED / PAID / UNPAID) is fully manual — the modal captures
 // the insurer's invoice number + amount + payments[], and the user toggles

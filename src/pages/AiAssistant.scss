@@ -1,0 +1,209 @@
+@use '../styles/variables' as *;
+@use '../styles/mixins' as *;
+
+.ai-assistant {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: $space-4;
+
+  &__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: $space-4;
+
+    h1 {
+      font-size: $font-size-2xl;
+      color: $text-primary;
+    }
+    p {
+      color: $text-secondary;
+      margin-top: $space-1;
+      font-size: $font-size-sm;
+    }
+  }
+
+  &__clear {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-1;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    padding: $space-2 $space-3;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    cursor: pointer;
+    transition: $transition-fast;
+    &:hover { color: $primary; border-color: $primary; }
+  }
+
+  &__chat {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    padding: $space-4;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+  }
+
+  &__empty {
+    margin: auto;
+    text-align: center;
+    color: $text-secondary;
+    p { margin-bottom: $space-3; }
+  }
+
+  &__suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+    justify-content: center;
+    max-width: 640px;
+  }
+
+  &__chip {
+    background: $bg-body;
+    border: 1px solid $border-color;
+    border-radius: $radius-full;
+    padding: $space-2 $space-4;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    cursor: pointer;
+    transition: $transition-fast;
+    &:hover { border-color: $primary; color: $primary; }
+  }
+
+  &__msg {
+    max-width: 80%;
+    padding: $space-3 $space-4;
+    border-radius: $radius-lg;
+    font-size: $font-size-base;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+
+    &--user {
+      align-self: flex-end;
+      background: $primary;
+      color: $text-white;
+      border-bottom-right-radius: $radius-sm;
+    }
+    &--bot {
+      align-self: flex-start;
+      background: $bg-body;
+      border: 1px solid $border-color;
+      color: $text-primary;
+      border-bottom-left-radius: $radius-sm;
+      max-width: 92%;
+    }
+  }
+
+  &__error { color: $danger; }
+
+  &__answer { white-space: pre-wrap; }
+
+  &__table-wrap {
+    margin-top: $space-3;
+    overflow-x: auto;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+  }
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: $font-size-sm;
+
+    th, td {
+      text-align: left;
+      padding: $space-2 $space-3;
+      border-bottom: 1px solid $border-color;
+      white-space: nowrap;
+    }
+    th { background: $bg-card; color: $text-secondary; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+  }
+  &__table-note {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+    padding: $space-2 $space-3;
+  }
+
+  &__sql { margin-top: $space-3; }
+  &__sql-toggle {
+    background: none;
+    border: none;
+    color: $primary;
+    font-size: $font-size-xs;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+  }
+  &__sql-code {
+    margin-top: $space-2;
+    background: $bg-sidebar;
+    color: $text-white;
+    padding: $space-3;
+    border-radius: $radius-md;
+    font-size: $font-size-xs;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  &__thinking {
+    display: inline-flex;
+    gap: 4px;
+    span {
+      width: 7px; height: 7px;
+      border-radius: $radius-full;
+      background: $text-secondary;
+      animation: ai-blink 1.2s infinite both;
+    }
+    span:nth-child(2) { animation-delay: 0.2s; }
+    span:nth-child(3) { animation-delay: 0.4s; }
+  }
+
+  &__input-bar {
+    display: flex;
+    gap: $space-2;
+    align-items: flex-end;
+  }
+  &__input {
+    flex: 1;
+    resize: none;
+    max-height: 140px;
+    padding: $space-3 $space-4;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    font-family: $font-family;
+    font-size: $font-size-base;
+    background: $bg-card;
+    color: $text-primary;
+    &:focus { outline: none; border-color: $primary; }
+  }
+  &__send {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px; height: 46px;
+    border: none;
+    border-radius: $radius-lg;
+    background: $primary;
+    color: $text-white;
+    cursor: pointer;
+    transition: $transition-fast;
+    &:hover:not(:disabled) { background: $primary-dark; }
+    &:disabled { opacity: 0.5; cursor: not-allowed; }
+  }
+}
+
+@keyframes ai-blink {
+  0%, 80%, 100% { opacity: 0.2; }
+  40% { opacity: 1; }
+}

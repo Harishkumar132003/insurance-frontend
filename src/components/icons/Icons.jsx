@@ -133,6 +133,13 @@ export const IconPrompt = (props) => (
   </Icon>
 );
 
+export const IconSparkles = (props) => (
+  <Icon {...props}>
+    <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z" />
+    <path d="M19 14l.7 1.8L21.5 16l-1.8.7L19 18.5l-.7-1.8L16.5 16l1.8-.5z" />
+  </Icon>
+);
+
 export const IconEdit = (props) => (
   <Icon {...props}>
     <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />

@@ -17,6 +17,7 @@ import {
   IconLogout,
   IconChevronLeft,
   IconChevronRight,
+  IconSparkles,
 } from './icons/Icons';
 import oasysLogo from '../assets/oasys.png';
 import './Sidebar.scss';
@@ -43,6 +44,7 @@ const menuItems = [
   // case from this tab via location.state.from.
   { path: '/invoices', label: 'Raise Invoice', icon: IconClaimList, roles: [HOSPITAL_ADMIN], activePaths: ['/invoices'] },
   { path: '/query-management', label: 'Email Inbox', icon: IconQuery, feature: 'query_management', roles: [HOSPITAL_ADMIN], hasUnreadIndicator: true },
+  { path: '/ai-assistant', label: 'AI Assistant', icon: IconSparkles, roles: [HOSPITAL_ADMIN] },
   { path: '/pre-auth', label: 'Pre Auth Form', icon: IconFormEdit, feature: 'preauth_form', roles: [HOSPITAL_ADMIN] },
   { path: '/manage-users', label: 'Manage Users', icon: IconUsers, feature: 'manage_users', roles: [HOSPITAL_ADMIN] },
   { path: '/provider-onboarding', label: 'Provider Onboarding', icon: IconShield, roles: [HOSPITAL_ADMIN] },
