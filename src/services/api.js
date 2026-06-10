@@ -289,6 +289,33 @@ export const aiAssistantService = {
   query: (question) => api.post('/ai/query', { question }).then((r) => r.data),
 };
 
+// Batch settlement (remittance advice): upload a PDF/Excel/CSV, AI-extract the
+// header + per-claim items, review/edit, then save (file is stored, each line
+// mapped to a claim case via claim_number).
+export const settlementService = {
+  extract: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/settlements/extract', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data);
+  },
+  // The file was already stored at extract time; we pass its `source` ref so
+  // the server links it without a second upload.
+  save: ({ header, items, source }) =>
+    api.post('/settlements', { header, items, source }).then((r) => r.data),
+  update: (id, { header, items }) =>
+    api.put(`/settlements/${id}`, { header, items }).then((r) => r.data),
+  // Live re-check: which of these claim numbers map to existing cases.
+  matchClaims: (claimNumbers) =>
+    api.post('/settlements/match', { claim_numbers: claimNumbers }).then((r) => r.data),
+  list: () => api.get('/settlements').then((r) => r.data),
+  get: (id) => api.get(`/settlements/${id}`).then((r) => r.data),
+  // Authenticated fetch of the stored file as a blob (so it can be shown
+  // in-app); the axios instance attaches the JWT a plain <a> would lack.
+  viewFile: (id) => api.get(`/settlements/${id}/file`, { responseType: 'blob' }),
+};
+
 // Invoice (post-claim-approval settlement record). One per case.
 // Status (INVOICE_RAISED / PAID / UNPAID) is fully manual — the modal captures
 // the insurer's invoice number + amount + payments[], and the user toggles

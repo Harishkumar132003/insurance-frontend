@@ -33,6 +33,7 @@ import ProviderQueue from './pages/ProviderQueue';
 import ProviderClaimDetail from './pages/ProviderClaimDetail';
 import ProviderOnboarding from './pages/ProviderOnboarding';
 import AiAssistant from './pages/AiAssistant';
+import Settlements from './pages/Settlements';
 import './styles/global.scss';
 
 const { SUPER_ADMIN, HOSPITAL_ADMIN, INSURANCE_PROVIDER } = ROLES;
@@ -278,6 +279,14 @@ export default function App() {
                 element={
                   <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
                     <AiAssistant />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/settlements"
+                element={
+                  <PrivateRoute allowedRoles={[HOSPITAL_ADMIN]}>
+                    <Settlements />
                   </PrivateRoute>
                 }
               />
