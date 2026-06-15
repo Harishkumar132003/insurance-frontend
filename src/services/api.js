@@ -283,10 +283,18 @@ export const dashboardService = {
   },
 };
 
-// Natural-language data assistant for hospital admins. Sends a question to the
-// read-only, tenant-scoped AI query agent and returns { answer, sql, columns, rows }.
+// Natural-language data assistant for hospital admins. Persistent per-user
+// chats backed by the read-only, tenant-scoped AI query agent.
 export const aiAssistantService = {
+  // One-shot (kept for compatibility; UI uses the chat methods below).
   query: (question) => api.post('/ai/query', { question }).then((r) => r.data),
+  listChats: () => api.get('/ai/chats').then((r) => r.data),
+  createChat: () => api.post('/ai/chats').then((r) => r.data),
+  getChat: (id) => api.get(`/ai/chats/${id}`).then((r) => r.data),
+  sendMessage: (id, question) =>
+    api.post(`/ai/chats/${id}/messages`, { question }).then((r) => r.data),
+  renameChat: (id, title) => api.patch(`/ai/chats/${id}`, { title }).then((r) => r.data),
+  deleteChat: (id) => api.delete(`/ai/chats/${id}`),
 };
 
 // Batch settlement (remittance advice): upload a PDF/Excel/CSV, AI-extract the

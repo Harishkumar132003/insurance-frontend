@@ -3,41 +3,112 @@
 
 .ai-assistant {
   display: flex;
-  flex-direction: column;
-  height: 100%;
+  flex-direction: row;
+  // Fill the viewport minus the Layout main padding ($space-7 top + bottom),
+  // so the chat scrolls internally and the input bar stays pinned at the bottom.
+  height: calc(100vh - #{$space-7} * 2);
   min-height: 0;
   gap: $space-4;
 
-  &__header {
+  // ---- Left rail: chat list ----
+  &__rail {
+    width: 250px;
+    flex-shrink: 0;
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: $space-4;
-
-    h1 {
-      font-size: $font-size-2xl;
-      color: $text-primary;
-    }
-    p {
-      color: $text-secondary;
-      margin-top: $space-1;
-      font-size: $font-size-sm;
-    }
-  }
-
-  &__clear {
-    display: inline-flex;
-    align-items: center;
-    gap: $space-1;
+    flex-direction: column;
+    gap: $space-3;
     background: $bg-card;
     border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    padding: $space-3;
+    min-height: 0;
+  }
+
+  &__new {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: $space-1;
+    background: $primary;
+    color: $text-white;
+    border: none;
     border-radius: $radius-md;
     padding: $space-2 $space-3;
-    color: $text-secondary;
     font-size: $font-size-sm;
+    font-weight: 600;
     cursor: pointer;
     transition: $transition-fast;
-    &:hover { color: $primary; border-color: $primary; }
+    &:hover { background: $primary-dark; }
+  }
+
+  &__chat-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__rail-empty {
+    color: $text-light;
+    font-size: $font-size-sm;
+    text-align: center;
+    margin-top: $space-4;
+  }
+
+  &__chat-item {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: $radius-md;
+    padding: $space-2 $space-3;
+    cursor: pointer;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    transition: $transition-fast;
+    &:hover { background: $bg-body; }
+    &.is-active {
+      background: rgba(99, 102, 241, 0.12);
+      color: $primary;
+      font-weight: 600;
+    }
+
+    &:hover .ai-assistant__chat-del { opacity: 1; }
+  }
+
+  &__chat-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__chat-del {
+    opacity: 0;
+    display: inline-flex;
+    color: $text-secondary;
+    transition: $transition-fast;
+    &:hover { color: $danger; }
+  }
+
+  // ---- Right: conversation column ----
+  &__main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: $space-4;
+  }
+
+  &__head {
+    h1 { font-size: $font-size-2xl; color: $text-primary; }
+    p { color: $text-secondary; margin-top: $space-1; font-size: $font-size-sm; }
   }
 
   &__chat {
