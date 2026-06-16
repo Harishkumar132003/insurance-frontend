@@ -69,8 +69,10 @@ export default function AiAssistant() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);     // sending a message
+  const [status, setStatus] = useState('');          // live progress line while loading
   const [loadingChat, setLoadingChat] = useState(false);
   const scrollRef = useRef(null);
+  const abortRef = useRef(null);
 
   const refreshChats = useCallback(async () => {
     try { setChats(await aiAssistantService.listChats()); } catch { /* toast handles */ }
@@ -120,9 +122,23 @@ export default function AiAssistant() {
     if (!q || loading) return;
     setInput('');
     setLoading(true);
+    setStatus('Understanding your question…');
 
     // Optimistically show the user's message.
     setMessages((m) => [...m, { role: 'user', content: q }]);
+
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    // Progress is driven off the planner's step purposes (e.g. "Find the
+    // patient" → "Retrieve recent claims"); fall back to a tool label.
+    const progress = { purposes: [], idx: 0 };
+    const toolLabel = (action) =>
+      action === 'get_schema' ? 'Looking up the data structure…'
+        : action === 'run_query' ? 'Querying the database…'
+          : 'Working on it…';
+
+    let settled = false;
     try {
       let chatId = activeId;
       if (!chatId) {
@@ -130,18 +146,64 @@ export default function AiAssistant() {
         chatId = created.id;
         setActiveId(chatId);
       }
-      const assistant = await aiAssistantService.sendMessage(chatId, q);
-      setMessages((m) => [...m, assistant]);
-      refreshChats();   // title / ordering may have changed
+
+      await aiAssistantService.sendMessageStream(chatId, q, {
+        signal: ac.signal,
+        onStatus: (event, data) => {
+          if (event === 'status') {
+            setStatus(data.stage === 'planning' ? 'Understanding your question…' : 'Working on it…');
+          } else if (event === 'plan') {
+            progress.purposes = (data.steps || []).map((s) => s.purpose).filter(Boolean);
+            progress.idx = 0;
+            if (progress.purposes.length) setStatus(progress.purposes[0]);
+          } else if (event === 'step' && data.status === 'running') {
+            const next = progress.purposes[progress.idx + 1];
+            if (next) { progress.idx += 1; setStatus(next); }
+            else setStatus(toolLabel(data.action));
+          }
+          // `clarification` arrives here too; the matching `done` renders it.
+        },
+        onDone: (data) => {
+          settled = true;
+          setMessages((m) => [...m, {
+            role: 'assistant',
+            content: data.answer ?? '',
+            sql: data.sql || [],
+            columns: data.columns || [],
+            rows: data.rows || [],
+            id: data.id,
+            created_at: data.created_at,
+          }]);
+          refreshChats();   // title / ordering may have changed
+        },
+        onError: (data) => {
+          settled = true;
+          setMessages((m) => [...m, {
+            role: 'assistant',
+            error: true,
+            content: typeof data?.detail === 'string' ? data.detail : 'Something went wrong answering that.',
+          }]);
+        },
+      });
+
+      if (!settled) {
+        setMessages((m) => [...m, {
+          role: 'assistant', error: true,
+          content: 'The assistant did not return an answer. Please try again.',
+        }]);
+      }
     } catch (err) {
-      const detail = err?.response?.data?.detail;
-      setMessages((m) => [...m, {
-        role: 'assistant',
-        error: true,
-        content: typeof detail === 'string' ? detail : 'Something went wrong answering that.',
-      }]);
+      if (err?.name !== 'AbortError') {
+        setMessages((m) => [...m, {
+          role: 'assistant',
+          error: true,
+          content: 'Something went wrong answering that.',
+        }]);
+      }
     } finally {
       setLoading(false);
+      setStatus('');
+      abortRef.current = null;
     }
   };
 
@@ -196,7 +258,14 @@ export default function AiAssistant() {
           {messages.map((msg, i) => <Message key={msg.id ?? `tmp-${i}`} msg={msg} />)}
           {loading && (
             <div className="ai-assistant__msg ai-assistant__msg--bot ai-assistant__thinking">
-              <span /> <span /> <span />
+              {status ? (
+                <span className="ai-assistant__status">
+                  <span className="ai-assistant__status-dot" />
+                  <span className="ai-assistant__status-text">{status}</span>
+                </span>
+              ) : (
+                <><span /> <span /> <span /></>
+              )}
             </div>
           )}
         </div>
