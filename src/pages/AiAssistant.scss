@@ -227,17 +227,53 @@
     white-space: pre;
   }
 
+  // The "thinking" / progress indicator is a transient status — no chat bubble.
   &__thinking {
     display: inline-flex;
-    gap: 4px;
-    span {
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    padding: $space-2 $space-1;
+    // Only the bare fallback dots — NOT the status wrapper/children.
+    > span:not(.ai-assistant__status) {
       width: 7px; height: 7px;
       border-radius: $radius-full;
       background: $text-secondary;
       animation: ai-blink 1.2s infinite both;
     }
-    span:nth-child(2) { animation-delay: 0.2s; }
-    span:nth-child(3) { animation-delay: 0.4s; }
+    > span:not(.ai-assistant__status):nth-child(2) { animation-delay: 0.2s; }
+    > span:not(.ai-assistant__status):nth-child(3) { animation-delay: 0.4s; }
+  }
+
+  &__status {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    line-height: 1;
+    // Keep the label on one line — the bubble's `word-break: break-word`
+    // otherwise collapses flex text to one character per line.
+    white-space: nowrap;
+    word-break: normal;
+  }
+
+  // Small pulsing dot (its own element, so it's never clipped by the shimmer).
+  &__status-dot {
+    flex: none;
+    width: 7px; height: 7px;
+    border-radius: $radius-full;
+    background: $primary;
+    animation: ai-glow 1.4s ease-in-out infinite;
+  }
+
+  // TEMP (testing): plain solid visible text, no shimmer/background-clip.
+  &__status-text {
+    line-height: 1;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: $text-secondary;
+    animation: ai-pulse 1.4s ease-in-out infinite;
   }
 
   &__input-bar {
@@ -277,4 +313,21 @@
 @keyframes ai-blink {
   0%, 80%, 100% { opacity: 0.2; }
   40% { opacity: 1; }
+}
+
+@keyframes ai-pulse {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+
+// Claude-style text shimmer: slide the highlight band across the text.
+@keyframes ai-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+// Soft glow/pulse for the leading dot.
+@keyframes ai-glow {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1); }
 }
