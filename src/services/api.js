@@ -293,6 +293,50 @@ export const aiAssistantService = {
   getChat: (id) => api.get(`/ai/chats/${id}`).then((r) => r.data),
   sendMessage: (id, question) =>
     api.post(`/ai/chats/${id}/messages`, { question }).then((r) => r.data),
+  // Streaming variant: drives a live progress line via Server-Sent Events.
+  // Uses fetch (not EventSource) because the endpoint is POST + Bearer auth.
+  // Callbacks: onStatus(event, data) for status|plan|step, onDone(data) for the
+  // final answer (or a clarification), onError(data). Pass an AbortSignal to cancel.
+  sendMessageStream: async (id, question, { onStatus, onDone, onError, signal } = {}) => {
+    const base = import.meta.env.VITE_API_URL || '/api/v1';
+    const token = localStorage.getItem('access_token');
+    const res = await fetch(`${base}/ai/chats/${id}/messages/stream`, {
+      method: 'POST',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok || !res.body) {
+      let detail = 'The assistant could not answer that.';
+      try { detail = (await res.json())?.detail || detail; } catch { /* non-JSON */ }
+      onError?.({ detail });
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const frames = buf.split('\n\n');
+      buf = frames.pop() ?? '';                 // keep the trailing partial frame
+      for (const frame of frames) {
+        if (!frame.trim()) continue;
+        const event = frame.match(/event: (.*)/)?.[1]?.trim();
+        let data = {};
+        try { data = JSON.parse(frame.match(/data: ([\s\S]*)/)?.[1] || '{}'); } catch { /* skip */ }
+        // Note: a clarification also emits a `done` frame carrying the same
+        // text, so only `done` appends the message (clarification just informs).
+        if (event === 'status' || event === 'plan' || event === 'step' || event === 'clarification') onStatus?.(event, data);
+        else if (event === 'done') onDone?.(data);
+        else if (event === 'error') onError?.(data);
+      }
+    }
+  },
   renameChat: (id, title) => api.patch(`/ai/chats/${id}`, { title }).then((r) => r.data),
   deleteChat: (id) => api.delete(`/ai/chats/${id}`),
 };
