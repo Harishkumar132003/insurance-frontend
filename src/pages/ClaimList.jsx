@@ -155,7 +155,7 @@ export default function ClaimList({ approvedOnly }) {
         <input
           type="search"
           className="preauth-tracker__search-input"
-          placeholder="Search by PA number, patient, UHID, insurer, diagnosis…"
+          placeholder="Search by claim number, UHID, patient…"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
@@ -313,22 +313,10 @@ export default function ClaimList({ approvedOnly }) {
                               {claim.claim_raised_amount != null ? 'Pending' : '—'}
                             </span>}
                       </div>
-                      {claim.invoice_status && (
+                      {claim.settled_amount != null && (
                         <div style={{ fontSize: 12, color: '#374151', marginTop: 4 }}>
-                          Invoice:{' '}
-                          <strong style={{
-                            color: claim.invoice_status === 'PAID'
-                              ? '#15803d'
-                              : claim.invoice_status === 'PARTIALLY_PAID'
-                                ? '#b45309'
-                                : '#b91c1c',
-                          }}>
-                            {claim.invoice_status === 'PAID'
-                              ? 'Paid'
-                              : claim.invoice_status === 'PARTIALLY_PAID'
-                                ? 'Partially Paid'
-                                : 'Unpaid'}
-                          </strong>
+                          Settled:{' '}
+                          <strong style={{ color: '#15803d' }}>{formatINR(claim.settled_amount)}</strong>
                         </div>
                       )}
                     </>
