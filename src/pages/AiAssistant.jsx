@@ -4,11 +4,13 @@ import { toast } from '../components/Toast';
 import { IconSend, IconPlus, IconTrash } from '../components/icons/Icons';
 import './AiAssistant.scss';
 
+// Easy, verified-working examples (validated end-to-end against the agent).
 const SUGGESTIONS = [
-  'How many pre-auth cases do we have, broken down by status?',
-  'Which insurance providers have the most claim cases?',
-  'List the cases still awaiting the insurer.',
-  'What is the total settled amount this month?',
+  'How many pre-auth cases are there in total?',
+  'What is the total approved amount this year?',
+  'How many pre-auths were raised this month?',
+  'How many cases are awaiting the insurer?',
+  'Break down cases by pre-auth outcome.',
 ];
 
 function ResultTable({ columns, rows }) {
