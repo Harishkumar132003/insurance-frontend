@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { aiAssistantService } from '../services/api';
 import { toast } from '../components/Toast';
 import { IconSend, IconPlus, IconTrash } from '../components/icons/Icons';
@@ -49,7 +51,9 @@ function Message({ msg }) {
         <span className="ai-assistant__error">{msg.content}</span>
       ) : (
         <>
-          <div className="ai-assistant__answer">{msg.content}</div>
+          <div className="ai-assistant__answer">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+          </div>
           <ResultTable columns={msg.columns} rows={msg.rows} />
           {msg.sql?.length > 0 && (
             <div className="ai-assistant__sql">
