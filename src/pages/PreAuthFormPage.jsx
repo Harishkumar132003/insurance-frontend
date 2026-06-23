@@ -1170,16 +1170,17 @@ export default function PreAuthFormPage() {
       return (
         <div key={field.key} className={`form-group ${(field.type === 'textarea' || field.fullWidth) ? 'form-group--wide' : ''} ${field.narrow ? 'form-group--narrow' : ''}`}>
           <label>{field.label}</label>
-          {perDayHint ? (
-            // Per-day rate field: show "rate × days = total" inline, aligned
-            // beside the textbox on the same row.
+          {field.narrow ? (
+            // Per-day rate field: keep the input inside field-inline ALWAYS so
+            // toggling the "rate × days = total" hint never remounts it (which
+            // would drop focus mid-typing). Only the hint appears/disappears.
             <div className="field-inline">
               <FieldInput
                 field={field}
                 value={fieldValue}
                 onChange={(key, val) => setValue(sectionName, key, val, subgroupKey)}
               />
-              <small className="policy-suggestion field-inline__hint">{perDayHint}</small>
+              {perDayHint && <small className="policy-suggestion field-inline__hint">{perDayHint}</small>}
             </div>
           ) : (
             <FieldInput
