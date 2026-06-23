@@ -17,14 +17,39 @@ function formatINR(amount) {
   return num.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 }
 
+// Per-day lines (room charges) bill as rate × days; the rest are flat amounts.
+const lineAmount = (it) => (it?.perDay
+  ? (Number(it.rate) || 0) * (Number(it.days) || 0)
+  : (Number(it.amount) || 0));
+
+// Map a server bill_breakdown item → local row shape (per-day when rate set).
+const mapBillItem = (i) => (i.rate != null
+  ? {
+    label: i.label,
+    perDay: true,
+    rate: String(i.rate ?? ''),
+    days: String(i.days ?? ''),
+    amount: String(i.amount ?? ''),
+  }
+  : { label: i.label, amount: String(i.amount ?? '') });
+
+// Map a local row → server bill_breakdown payload (per-day carries rate/days).
+const toBillPayload = (i) => (i.perDay
+  ? { label: i.label.trim(), amount: Number(lineAmount(i)), rate: Number(i.rate) || 0, days: Number(i.days) || 0 }
+  : { label: i.label.trim(), amount: Number(i.amount) });
+
+// Mirrors the pre-auth cost estimate: the two per-day room lines + the flat
+// cost categories (investigation, OT, professional fees, medicines, package,
+// other expenses).
 const DEFAULT_LINE_ITEMS = [
-  { label: 'Room rent', amount: '' },
-  { label: 'Surgery charges', amount: '' },
-  { label: 'Pharmacy', amount: '' },
-  { label: 'Investigations', amount: '' },
-  { label: 'Consultation', amount: '' },
-  { label: 'Implants / Consumables', amount: '' },
-  { label: 'Other', amount: '' },
+  { label: 'Non ICU Room (per day)', perDay: true, rate: '', days: '', amount: '' },
+  { label: 'ICU Charges (per day)', perDay: true, rate: '', days: '', amount: '' },
+  { label: 'Investigation Cost', amount: '' },
+  { label: 'OT Charges', amount: '' },
+  { label: 'Professional Fees', amount: '' },
+  { label: 'Medicines Cost', amount: '' },
+  { label: 'Package Charges', amount: '' },
+  { label: 'Other Expenses', amount: '' },
 ];
 
 const hasApprovedAmount = (cc) => {
@@ -335,7 +360,7 @@ export default function ClaimRaisePage() {
           if (cancelled) return;
           setExistingClaim(claim);
           if (Array.isArray(claim.bill_breakdown) && claim.bill_breakdown.length) {
-            setItems(claim.bill_breakdown.map((i) => ({ label: i.label, amount: String(i.amount ?? '') })));
+            setItems(claim.bill_breakdown.map(mapBillItem));
           }
           setRemarks(claim.remarks || '');
           const grouped = emptyPending();
@@ -357,7 +382,7 @@ export default function ClaimRaisePage() {
             setDraftLoaded(true);
             setDraftUpdatedAt(draft.updated_at || null);
             if (Array.isArray(draft.bill_breakdown) && draft.bill_breakdown.length) {
-              setItems(draft.bill_breakdown.map((i) => ({ label: i.label, amount: String(i.amount ?? '') })));
+              setItems(draft.bill_breakdown.map(mapBillItem));
             }
             setRemarks(draft.remarks || '');
           }
@@ -397,7 +422,7 @@ export default function ClaimRaisePage() {
   }, [readOnly, savedDocsByType, pendingFiles]);
 
   const claimedAmount = useMemo(
-    () => items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0),
+    () => items.reduce((sum, it) => sum + lineAmount(it), 0),
     [items],
   );
 
@@ -420,8 +445,8 @@ export default function ClaimRaisePage() {
       ``,
       `Bill breakdown:`,
       ...items
-        .filter((i) => Number(i.amount) > 0)
-        .map((i) => `  • ${i.label}: ${formatINR(i.amount)}`),
+        .filter((i) => lineAmount(i) > 0)
+        .map((i) => `  • ${i.label}: ${formatINR(lineAmount(i))}`),
       `Total claimed: ${formatINR(claimedAmount)}`,
       ``,
       `Supporting documents attached:`,
@@ -443,7 +468,13 @@ export default function ClaimRaisePage() {
   const body = isBodyEdited ? editedBody : autoBody;
 
   const updateItem = (idx, key, value) => {
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [key]: value } : it)));
+    setItems((prev) => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const next = { ...it, [key]: value };
+      // Keep a per-day row's amount in sync with rate × days.
+      if (next.perDay) next.amount = String(lineAmount(next));
+      return next;
+    }));
   };
   const addLine = () => setItems((prev) => [...prev, { label: '', amount: '' }]);
   const removeLine = (idx) => setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -577,8 +608,8 @@ export default function ClaimRaisePage() {
       const validItems = items.filter((i) => i.label.trim());
       const saved = await claimService.saveDraft(claimCaseId, {
         bill_breakdown: validItems
-          .filter((i) => Number(i.amount) > 0)
-          .map((i) => ({ label: i.label.trim(), amount: Number(i.amount) })),
+          .filter((i) => lineAmount(i) > 0)
+          .map(toBillPayload),
         claimed_amount: claimedAmount > 0 ? Number(claimedAmount.toFixed(2)) : null,
         remarks: remarks.trim() || null,
       });
@@ -620,7 +651,7 @@ export default function ClaimRaisePage() {
   };
 
   const handleSubmit = async () => {
-    const validItems = items.filter((i) => i.label.trim() && Number(i.amount) > 0);
+    const validItems = items.filter((i) => i.label.trim() && lineAmount(i) > 0);
     if (validItems.length === 0) {
       toast.error('Add at least one bill line item');
       return;
@@ -650,7 +681,7 @@ export default function ClaimRaisePage() {
 
   const proceedSubmit = async () => {
     setMissingDocsModal(null);
-    const validItems = items.filter((i) => i.label.trim() && Number(i.amount) > 0);
+    const validItems = items.filter((i) => i.label.trim() && lineAmount(i) > 0);
     setSubmitting(true);
     try {
       // Upload pending files one category at a time (each call carries the
@@ -674,7 +705,7 @@ export default function ClaimRaisePage() {
       }
 
       const result = await claimService.raise(claimCaseId, {
-        bill_breakdown: validItems.map((i) => ({ label: i.label.trim(), amount: Number(i.amount) })),
+        bill_breakdown: validItems.map(toBillPayload),
         claimed_amount: Number(claimedAmount.toFixed(2)),
         remarks: remarks.trim() || null,
         email_subject: subject,
@@ -810,28 +841,68 @@ export default function ClaimRaisePage() {
                   type="text"
                   value={it.label}
                   disabled={readOnly}
+                  readOnly={it.perDay}
                   onChange={(e) => updateItem(idx, 'label', e.target.value)}
                   placeholder="e.g. Surgery charges"
+                  style={it.perDay ? { background: '#f3f4f6', cursor: 'default' } : undefined}
                 />
               </Field>
-              <Field label={idx === 0 ? 'Amount (₹)' : undefined}>
-                <input
-                  type="number"
-                  value={it.amount}
-                  disabled={readOnly}
-                  onChange={(e) => updateItem(idx, 'amount', e.target.value)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  placeholder="0"
-                  min="0"
-                />
-              </Field>
+              {it.perDay ? (
+                <Field label={idx === 0 ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ width: 90 }}>Rate</span>
+                    <span>×</span>
+                    <span style={{ width: 90 }}>Days</span>
+                    <span>=</span>
+                    <span>Amount (₹)</span>
+                  </span>
+                ) : undefined}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <input
+                      type="number"
+                      value={it.rate}
+                      disabled={readOnly}
+                      onChange={(e) => updateItem(idx, 'rate', e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      placeholder="rate"
+                      min="0"
+                      style={{ width: 90 }}
+                    />
+                    <span style={{ color: '#6b7280' }}>×</span>
+                    <input
+                      type="number"
+                      value={it.days}
+                      disabled={readOnly}
+                      onChange={(e) => updateItem(idx, 'days', e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      placeholder="days"
+                      min="0"
+                      style={{ width: 90 }}
+                    />
+                    <span style={{ color: '#6b7280' }}>=</span>
+                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{formatINR(lineAmount(it))}</span>
+                  </div>
+                </Field>
+              ) : (
+                <Field label={idx === 0 ? 'Amount (₹)' : undefined}>
+                  <input
+                    type="number"
+                    value={it.amount}
+                    disabled={readOnly}
+                    onChange={(e) => updateItem(idx, 'amount', e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    placeholder="0"
+                    min="0"
+                  />
+                </Field>
+              )}
               {!readOnly && (
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
                   onClick={() => removeLine(idx)}
-                  disabled={items.length <= 1}
-                  title="Remove line"
+                  disabled={items.length <= 1 || it.perDay}
+                  title={it.perDay ? 'Fixed line — cannot be removed' : 'Remove line'}
                   style={{ marginBottom: 2 }}
                 >
                   <IconX size={14} />
