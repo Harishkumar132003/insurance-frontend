@@ -251,9 +251,9 @@ export const FORM_SECTIONS = [
         key: 'costs',
         label: 'Cost Estimates',
         fields: [
-          { key: 'room_rent', label: 'Room Rent', type: 'number' },
+          { key: 'room_rent', label: 'Non ICU Room (per day)', type: 'number', narrow: true },
+          { key: 'icu_charges', label: 'ICU Charges (per day)', type: 'number', narrow: true },
           { key: 'investigation_cost', label: 'Investigation Cost', type: 'number' },
-          { key: 'icu_charges', label: 'ICU Charges', type: 'number' },
           { key: 'ot_charges', label: 'OT Charges', type: 'number' },
           { key: 'professional_fees', label: 'Professional Fees', type: 'number' },
           { key: 'medicines_cost', label: 'Medicines Cost', type: 'number' },
@@ -724,12 +724,13 @@ export default function PreAuthFormPage() {
     return section[key] ?? '';
   };
 
-  // Cost-estimate fields whose sum drives total_cost. Editing any of these
-  // recomputes total_cost so the user can't fall out of sync with the line items.
-  const COST_LINE_KEYS = [
-    'room_rent',
+  // room_rent and icu_charges are PER-DAY rates: room_rent applies to non-ICU
+  // days (expected_days - icu_days), icu_charges to icu_days. The remaining
+  // cost fields are flat amounts. Total Cost = room rate*non-ICU days +
+  // ICU rate*ICU days + sum(flat costs).
+  const COST_PER_DAY_KEYS = ['room_rent', 'icu_charges'];
+  const COST_FLAT_KEYS = [
     'investigation_cost',
-    'icu_charges',
     'ot_charges',
     'professional_fees',
     'medicines_cost',
@@ -737,19 +738,37 @@ export default function PreAuthFormPage() {
     'package_charges',
   ];
 
+  // Compute Total Cost from a `hospitalization` section (reads expected_days /
+  // icu_days at section level and the line items in its `costs` subgroup).
+  const computeTotalCost = (section) => {
+    const costs = section.costs || {};
+    const icuDays = Number(section.icu_days) || 0;
+    const nonIcuDays = Math.max(0, (Number(section.expected_days) || 0) - icuDays);
+    const roomTotal = (Number(costs.room_rent) || 0) * nonIcuDays;
+    const icuTotal = (Number(costs.icu_charges) || 0) * icuDays;
+    const flatTotal = COST_FLAT_KEYS.reduce((acc, k) => acc + (Number(costs[k]) || 0), 0);
+    return roomTotal + icuTotal + flatTotal;
+  };
+
   const setValue = (sectionName, key, value, subgroupKey) => {
     setFormData((prev) => {
       const section = { ...(prev[sectionName] || {}) };
       if (subgroupKey) {
         const subgroup = { ...(section[subgroupKey] || {}), [key]: value };
-        // Recompute total_cost whenever a line-item cost changes.
-        if (subgroupKey === 'costs' && COST_LINE_KEYS.includes(key)) {
-          const sum = COST_LINE_KEYS.reduce((acc, k) => acc + (Number(subgroup[k]) || 0), 0);
-          subgroup.total_cost = sum;
-        }
         section[subgroupKey] = subgroup;
+        // Recompute total_cost whenever a line-item cost changes.
+        if (subgroupKey === 'costs'
+          && (COST_PER_DAY_KEYS.includes(key) || COST_FLAT_KEYS.includes(key))) {
+          subgroup.total_cost = computeTotalCost(section);
+        }
       } else {
         section[key] = value;
+        // Expected Stay / ICU Days multiply the per-day room rates, so changing
+        // them must recompute Total Cost too.
+        if (sectionName === 'hospitalization' && (key === 'expected_days' || key === 'icu_days')) {
+          section.costs = { ...(section.costs || {}) };
+          section.costs.total_cost = computeTotalCost(section);
+        }
         // Two-way link: surgery_name ↔ surgery_icd_code in treating_doctor.
         if (sectionName === 'treating_doctor') {
           if (key === 'surgery_name' && value) {
@@ -1135,14 +1154,40 @@ export default function PreAuthFormPage() {
       } else {
         showSuggestion = typeof suggestion === 'string' && suggestion.trim().length > 0;
       }
+      // Per-day math hint for the room-rate fields: rate × days = line total.
+      let perDayHint = '';
+      if (subgroupKey === 'costs' && COST_PER_DAY_KEYS.includes(field.key)) {
+        const rate = Number(fieldValue) || 0;
+        const icuDays = Number(getValue(sectionName, 'icu_days')) || 0;
+        const days = field.key === 'icu_charges'
+          ? icuDays
+          : Math.max(0, (Number(getValue(sectionName, 'expected_days')) || 0) - icuDays);
+        const costLabel = field.key === 'icu_charges' ? 'ICU room cost' : 'Non ICU room cost';
+        if (rate > 0 && days > 0) {
+          perDayHint = `× ${costLabel} (${days} day${days > 1 ? 's' : ''}) = ₹${(rate * days).toLocaleString('en-IN')}`;
+        }
+      }
       return (
-        <div key={field.key} className={`form-group ${(field.type === 'textarea' || field.fullWidth) ? 'form-group--wide' : ''}`}>
+        <div key={field.key} className={`form-group ${(field.type === 'textarea' || field.fullWidth) ? 'form-group--wide' : ''} ${field.narrow ? 'form-group--narrow' : ''}`}>
           <label>{field.label}</label>
-          <FieldInput
-            field={field}
-            value={fieldValue}
-            onChange={(key, val) => setValue(sectionName, key, val, subgroupKey)}
-          />
+          {perDayHint ? (
+            // Per-day rate field: show "rate × days = total" inline, aligned
+            // beside the textbox on the same row.
+            <div className="field-inline">
+              <FieldInput
+                field={field}
+                value={fieldValue}
+                onChange={(key, val) => setValue(sectionName, key, val, subgroupKey)}
+              />
+              <small className="policy-suggestion field-inline__hint">{perDayHint}</small>
+            </div>
+          ) : (
+            <FieldInput
+              field={field}
+              value={fieldValue}
+              onChange={(key, val) => setValue(sectionName, key, val, subgroupKey)}
+            />
+          )}
           {showSuggestion && (
             <small className="policy-suggestion">{suggestionText}</small>
           )}

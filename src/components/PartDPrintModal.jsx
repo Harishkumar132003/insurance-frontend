@@ -45,24 +45,35 @@ function printPartDHtml(html) {
 // backend defaults to the latest approval), onClose, onSaved (called after a
 // successful PUT so the parent can refresh).
 
-// [stateKey, apiKey, label] — all free-text strings ("Rs.5,000/day", "N/A", "").
-const PARTD_TEXT_FIELDS = [
-  ['roomRentPerDay', 'room_rent_per_day', 'Room Rent / Day'],
-  ['icuRentPerDay', 'icu_rent_per_day', 'ICU Rent / Day'],
-  ['nursingChargesPerDay', 'nursing_charges_per_day', 'Nursing Charges / Day'],
-  ['consultantVisitChargesPerDay', 'consultant_visit_charges_per_day', 'Consultant Visit Charges / Day'],
-  ['surgeonAnesthetistFee', 'surgeon_anesthetist_fee', 'Surgeon Fee / OT / Anesthetist'],
-  ['others', 'others', 'Others'],
-  ['totalBillAmount', 'total_bill_amount', 'Total Bill Amount'],
-  ['deductionsDetail', 'deductions_detail', 'Deductions Detail'],
-  ['discount', 'discount', 'Discount'],
-  ['coPay', 'co_pay', 'Co-Pay'],
-  ['deductibles', 'deductibles', 'Deductibles'],
-  ['totalAuthorisedAmount', 'total_authorised_amount', 'Total Authorised Amount'],
-  ['amountToBePaidByInsured', 'amount_to_be_paid_by_insured', 'Amount to be paid by Insured'],
+// Numeric Bill Breakdown lines, mirroring the pre-auth cost estimates.
+// [stateKey, apiKey, label, preAuthCostKey, perDay?]
+const BILL_FIELDS = [
+  ['roomRent', 'bd_room_rent', 'Non ICU Room (per day)', 'room_rent', true],
+  ['icuCharges', 'bd_icu_charges', 'ICU Charges (per day)', 'icu_charges', true],
+  ['investigationCost', 'bd_investigation_cost', 'Investigation Cost', 'investigation_cost', false],
+  ['otCharges', 'bd_ot_charges', 'OT Charges', 'ot_charges', false],
+  ['professionalFees', 'bd_professional_fees', 'Professional Fees', 'professional_fees', false],
+  ['medicinesCost', 'bd_medicines_cost', 'Medicines Cost', 'medicines_cost', false],
+  ['packageCharges', 'bd_package_charges', 'Package Charges', 'package_charges', false],
+  ['otherExpenses', 'bd_other_expenses', 'Other Expenses', 'other_expenses', false],
 ];
 
-const EMPTY_TEXT_STATE = PARTD_TEXT_FIELDS.reduce((acc, [k]) => { acc[k] = ''; return acc; }, {});
+// Editable deduction inputs in the Authorisation Summary. [stateKey, apiKey, label]
+const DEDUCTION_FIELDS = [
+  ['discount', 'as_discount', 'Discount'],
+  ['coPay', 'as_co_pay', 'Co-Pay'],
+  ['deductibles', 'as_deductibles', 'Deductibles'],
+  ['deductions', 'as_deductions', 'Other Deductions'],
+];
+
+const EMPTY_BILL = {
+  roomRent: '', icuCharges: '', expectedDays: '', icuDays: '',
+  investigationCost: '', otCharges: '', professionalFees: '',
+  medicinesCost: '', packageCharges: '', otherExpenses: '',
+  discount: '', coPay: '', deductibles: '', deductions: '',
+};
+
+const _n = (v) => Number(v) || 0;
 
 export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRequest, onClose, onSaved, onApproved }) {
   const toast = useToast();
@@ -78,25 +89,69 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   const [resolvedEmailId, setResolvedEmailId] = useState(emailId ?? null);
 
   // Editable form state.
-  const [approveAmount, setApproveAmount] = useState('');
   const [claimNumber, setClaimNumber] = useState('');
   const [remarks, setRemarks] = useState('');
-  const [textFields, setTextFields] = useState(EMPTY_TEXT_STATE);
+  const [bill, setBill] = useState(EMPTY_BILL);
   // Saved stage → "Proceed" reveals the finalize panel (file upload + amount +
   // claim number + Approve). Optional signed-letter upload lives there.
   const [showApprovePanel, setShowApprovePanel] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
 
-  const setTextField = (key, value) => setTextFields((prev) => ({ ...prev, [key]: value }));
+  const setBillField = (key, value) => setBill((prev) => ({ ...prev, [key]: value }));
 
-  // The Approved Amount field represents this round's approval increment
-  // (the backend ADDS it to claim_case.approved_amount). So the cap is what
-  // the hospital just asked for in this round:
-  //   • Enhancement / reconsider → `additional_amount` (e.g. ₹10K)
-  //   • Original pre-auth → `claim.requested_amount` (the full ask)
-  const requestedCap = Number(pendingRequest?.additional_amount) || Number(claim?.requested_amount) || 0;
-  const exceedsRequested = requestedCap > 0 && Number(approveAmount) > requestedCap;
   const fmtCap = (n) => Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
+  // Enhancement / reconsider rounds (incremental ask) — the pre-auth estimate
+  // describes the original stay, not this top-up, so we DON'T prefill from it,
+  // and every bill line (incl. room / ICU) is a FLAT amount so whatever the
+  // insurer enters sums straight into the total (no per-day day-count needed).
+  const isEnhancement = !!(pendingRequest && (
+    pendingRequest.additional_amount != null
+    || pendingRequest.revised_total != null
+    || pendingRequest.approved_so_far != null
+  ));
+
+  // ── Derived totals ──
+  // Original pre-auth: room_rent / icu_charges are per-day rates × day counts.
+  // Enhancement: room / ICU are flat amounts (no day multiplication).
+  const nonIcuDays = Math.max(0, _n(bill.expectedDays) - _n(bill.icuDays));
+  const roomRentTotal = isEnhancement ? _n(bill.roomRent) : _n(bill.roomRent) * nonIcuDays;
+  const icuChargesTotal = isEnhancement ? _n(bill.icuCharges) : _n(bill.icuCharges) * _n(bill.icuDays);
+  const flatTotal = _n(bill.investigationCost) + _n(bill.otCharges) + _n(bill.professionalFees)
+    + _n(bill.medicinesCost) + _n(bill.packageCharges) + _n(bill.otherExpenses);
+  const totalBill = roomRentTotal + icuChargesTotal + flatTotal;
+  const totalDeductions = _n(bill.discount) + _n(bill.coPay) + _n(bill.deductibles) + _n(bill.deductions);
+  const totalAuthorised = Math.max(0, totalBill - totalDeductions);
+
+  // The cap is what the hospital asked for this round (enhancement increment or
+  // the original requested amount). Approved Amount == Total Authorised.
+  const requestedCap = Number(pendingRequest?.additional_amount) || Number(claim?.requested_amount) || 0;
+  const exceedsRequested = requestedCap > 0 && totalAuthorised > requestedCap;
+
+  // Amount the Insured must pay = the shortfall when less is authorised than
+  // requested (Requested − Total Authorised), never negative.
+  const amountByInsured = Math.max(0, requestedCap - totalAuthorised);
+
+  // Bill Breakdown defaults pulled from the pre-auth cost estimates (already in
+  // the claim payload — no extra fetch needed). Enhancement rounds start blank.
+  const preauthBill = () => {
+    if (isEnhancement) return { ...EMPTY_BILL };
+    const h = claim?.form_data_json?.hospitalization || {};
+    const c = h.costs || {};
+    return {
+      ...EMPTY_BILL,
+      roomRent: c.room_rent ?? '',
+      icuCharges: c.icu_charges ?? '',
+      expectedDays: h.expected_days ?? '',
+      icuDays: h.icu_days ?? '',
+      investigationCost: c.investigation_cost ?? '',
+      otCharges: c.ot_charges ?? '',
+      professionalFees: c.professional_fees ?? '',
+      medicinesCost: c.medicines_cost ?? '',
+      packageCharges: c.package_charges ?? '',
+      otherExpenses: c.other_expenses ?? '',
+    };
+  };
 
   // Re-hydrate all state from a PartDLetterResponse.
   const hydrate = (data) => {
@@ -108,23 +163,34 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       claim_case_email_id: data.claim_case_email_id ?? null,
     });
     if (data.claim_case_email_id != null) setResolvedEmailId(data.claim_case_email_id);
-    // Only hydrate the Approved Amount from a *persisted* Part-D row. The
-    // backend's stub response (is_persisted=false) returns the cumulative
-    // claim_case.approved_amount, which would mislead the provider into
-    // approving the wrong increment.
-    if (data.is_persisted) {
-      setApproveAmount(data.approved_amount != null ? String(data.approved_amount) : '');
-    } else {
-      setApproveAmount('');
-    }
     setClaimNumber(data.claim_number ?? '');
     setRemarks(data.remarks ?? '');
-    setTextFields(
-      PARTD_TEXT_FIELDS.reduce((acc, [stateKey, apiKey]) => {
-        acc[stateKey] = data[apiKey] ?? '';
-        return acc;
-      }, {}),
-    );
+    // A persisted row with numeric breakdown → load it. Otherwise (stub, or an
+    // older row saved before the numeric fields existed) → prefill from the
+    // pre-auth cost estimates.
+    const hasNumeric = data.bd_room_rent != null
+      || data.bd_investigation_cost != null
+      || data.as_total_bill_amount != null;
+    if (data.is_persisted && hasNumeric) {
+      setBill({
+        roomRent: data.bd_room_rent ?? '',
+        icuCharges: data.bd_icu_charges ?? '',
+        expectedDays: data.bd_expected_days ?? '',
+        icuDays: data.bd_icu_days ?? '',
+        investigationCost: data.bd_investigation_cost ?? '',
+        otCharges: data.bd_ot_charges ?? '',
+        professionalFees: data.bd_professional_fees ?? '',
+        medicinesCost: data.bd_medicines_cost ?? '',
+        packageCharges: data.bd_package_charges ?? '',
+        otherExpenses: data.bd_other_expenses ?? '',
+        discount: data.as_discount ?? '',
+        coPay: data.as_co_pay ?? '',
+        deductibles: data.as_deductibles ?? '',
+        deductions: data.as_deductions ?? '',
+      });
+    } else {
+      setBill(preauthBill());
+    }
   };
 
   // Fetch template + Part-D data on open.
@@ -162,18 +228,17 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
         // to Save/Print which calls providerAction first.
         if (sc === 400 && /no approval email/i.test(detail)) {
           if (!cancelled) {
-            // Leave Approved Amount blank — the provider must explicitly type
-            // the amount they're approving this round. The "Hospital's request"
-            // banner above the field shows them the relevant numbers.
-            setApproveAmount('');
+            // No approval email yet — open the editor with the Bill Breakdown
+            // prefilled from the pre-auth cost estimates.
             setClaimNumber(claim?.claim_number || '');
+            setBill(preauthBill());
           }
         } else if (sc === 404 && emailId == null) {
           // GET returned 404 (no part-d row and no approval). Same as above:
           // open the editor and let Save/Print create the approval inline.
           if (!cancelled) {
-            setApproveAmount('');
             setClaimNumber(claim?.claim_number || '');
+            setBill(preauthBill());
           }
         } else if (sc === 404) {
           if (!cancelled) setUnavailable(true);
@@ -196,40 +261,58 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claimCaseId, emailId]);
 
+  // Args for the printed/PDF letter. The DB-stored PART_D template still uses
+  // the legacy placeholders, so map the numeric breakdown onto them (formatted)
+  // until the template is updated to show the per-line pre-auth fields.
+  const rs = (n) => `Rs.${_n(n).toLocaleString('en-IN')}`;
   const buildFlatArgs = () => ({
     claim,
-    approveAmount,
+    approveAmount: totalAuthorised,
     claimNumber,
     remarks,
-    roomRentPerDay: textFields.roomRentPerDay,
-    icuRentPerDay: textFields.icuRentPerDay,
-    nursingChargesPerDay: textFields.nursingChargesPerDay,
-    consultantVisitChargesPerDay: textFields.consultantVisitChargesPerDay,
-    surgeonAnesthetistFee: textFields.surgeonAnesthetistFee,
-    others: textFields.others,
-    totalBillAmount: textFields.totalBillAmount,
-    deductionsDetail: textFields.deductionsDetail,
-    discount: textFields.discount,
-    coPay: textFields.coPay,
-    deductibles: textFields.deductibles,
-    totalAuthorisedAmount: textFields.totalAuthorisedAmount,
-    amountToBePaidByInsured: textFields.amountToBePaidByInsured,
+    roomRentPerDay: bill.roomRent !== '' ? `${rs(bill.roomRent)}/day` : '',
+    icuRentPerDay: bill.icuCharges !== '' ? `${rs(bill.icuCharges)}/day` : '',
+    nursingChargesPerDay: '',
+    consultantVisitChargesPerDay: '',
+    surgeonAnesthetistFee: bill.otCharges !== '' ? rs(bill.otCharges) : '',
+    others: [
+      bill.investigationCost !== '' ? `Investigation ${rs(bill.investigationCost)}` : '',
+      bill.professionalFees !== '' ? `Professional ${rs(bill.professionalFees)}` : '',
+      bill.medicinesCost !== '' ? `Medicines ${rs(bill.medicinesCost)}` : '',
+      bill.packageCharges !== '' ? `Package ${rs(bill.packageCharges)}` : '',
+      bill.otherExpenses !== '' ? `Other ${rs(bill.otherExpenses)}` : '',
+    ].filter(Boolean).join(', '),
+    totalBillAmount: rs(totalBill),
+    deductionsDetail: '',
+    discount: bill.discount !== '' ? rs(bill.discount) : '',
+    coPay: bill.coPay !== '' ? rs(bill.coPay) : '',
+    deductibles: bill.deductibles !== '' ? rs(bill.deductibles) : '',
+    totalAuthorisedAmount: rs(totalAuthorised),
+    amountToBePaidByInsured: rs(amountByInsured),
   });
 
-  // Build the field-value payload (snake_case) used by both Save and Generate.
-  const fieldPayload = () => {
-    const out = {};
-    // approved_amount is the only numeric field; '' clears it.
-    out.approved_amount = approveAmount === '' || approveAmount == null
-      ? ''
-      : Number(approveAmount);
-    out.claim_number = claimNumber ?? '';
-    out.remarks = remarks ?? '';
-    PARTD_TEXT_FIELDS.forEach(([stateKey, apiKey]) => {
-      out[apiKey] = textFields[stateKey] ?? '';
-    });
-    return out;
-  };
+  // Build the field-value payload (snake_case) sent on Save / Approve.
+  const fieldPayload = () => ({
+    approved_amount: totalAuthorised,
+    claim_number: claimNumber ?? '',
+    remarks: remarks ?? '',
+    bd_room_rent: _n(bill.roomRent),
+    bd_icu_charges: _n(bill.icuCharges),
+    bd_expected_days: _n(bill.expectedDays),
+    bd_icu_days: _n(bill.icuDays),
+    bd_investigation_cost: _n(bill.investigationCost),
+    bd_ot_charges: _n(bill.otCharges),
+    bd_professional_fees: _n(bill.professionalFees),
+    bd_medicines_cost: _n(bill.medicinesCost),
+    bd_package_charges: _n(bill.packageCharges),
+    bd_other_expenses: _n(bill.otherExpenses),
+    as_total_bill_amount: totalBill,
+    as_discount: _n(bill.discount),
+    as_co_pay: _n(bill.coPay),
+    as_deductibles: _n(bill.deductibles),
+    as_deductions: _n(bill.deductions),
+    as_amount_to_be_paid_by_insured: amountByInsured,
+  });
 
   const afterSave = (data) => {
     hydrate(data);
@@ -241,6 +324,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   // with claim_case_email_id IS NULL, and links it to the approval email later
   // when the provider hits "Submit approval".
   const handleSave = async () => {
+    if (!claimNumber.trim()) {
+      toast.error('Claim Number is required');
+      return;
+    }
     if (exceedsRequested) {
       toast.error(`Approved amount cannot exceed the requested amount (${fmtCap(requestedCap)})`);
       return;
@@ -312,8 +399,16 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       toast.error('PART_D template not loaded');
       return;
     }
-    if (approveAmount === '' || Number.isNaN(Number(approveAmount))) {
-      toast.error('Approved amount is required');
+    if (!claimNumber.trim()) {
+      toast.error('Claim Number is required');
+      return;
+    }
+    if (!(totalAuthorised > 0)) {
+      toast.error('Total Authorised Amount must be greater than 0');
+      return;
+    }
+    if (!uploadedFile) {
+      toast.error('Please attach the signed authorization letter');
       return;
     }
     if (exceedsRequested) {
@@ -329,23 +424,15 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       if (resolvedEmailId != null) savePayload.email_id = resolvedEmailId;
       await claimCaseService.putPartD(claimCaseId, savePayload);
 
-      // 2. Use the uploaded signed letter if provided, else render the PDF
-      //    from the filled template. Send the approval decision with it.
-      let fileToSend;
-      if (uploadedFile) {
-        fileToSend = uploadedFile;
-      } else {
-        const blob = await renderPartDPdfBlob({ htmlTemplate: htmlRef.current, ...buildFlatArgs() });
-        const filename = `PartD_${claimNumber || claim?.claim_number || claimCaseId}.pdf`;
-        fileToSend = new File([blob], filename, { type: 'application/pdf' });
-      }
+      // 2. Send the approval decision with the user-uploaded signed letter.
+      //    A file is mandatory — we no longer auto-generate one here.
       // Compare against THIS round's ask (additional_amount for enhancements,
       // claim.requested_amount for the original PA). The backend coerces the
       // bare status to ENHANCEMENT_APPROVED / PARTIALLY_APPROVED based on prior
       // approvals — we just need to send the right "fully vs partially" hint
       // for this round.
       const requested = Number(pendingRequest?.additional_amount) || Number(claim?.requested_amount) || 0;
-      const approved = Number(approveAmount);
+      const approved = totalAuthorised;
       const status = (requested > 0 && approved < requested) ? 'PARTIALLY_APPROVED' : 'APPROVED';
 
       const fd = new FormData();
@@ -353,7 +440,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       fd.append('approved_amount', String(approved));
       if (claimNumber.trim()) fd.append('claim_number', claimNumber.trim());
       if (remarks.trim()) fd.append('remarks', remarks.trim());
-      fd.append('file', fileToSend);
+      fd.append('file', uploadedFile);
 
       await claimCaseService.providerAction(claimCaseId, fd);
       toast.success('Approval submitted');
@@ -374,6 +461,31 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   // currentStep: 0 = Draft (not saved), 1 = Saved (finalizing / awaiting
   // approval). The Approved node lights up only after Approve completes.
   const currentStep = !meta?.is_persisted ? 0 : 1;
+
+  // Editable numeric input (one Bill-Breakdown / deduction line).
+  const renderNumField = (stateKey, label, hint) => (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className={hint ? 'field-inline' : ''}>
+        <input
+          type="number"
+          min="0"
+          value={bill[stateKey]}
+          onWheel={(e) => e.currentTarget.blur()}
+          onChange={(e) => setBillField(stateKey, e.target.value)}
+        />
+        {hint && <small className="policy-suggestion field-inline__hint">{hint}</small>}
+      </div>
+    </div>
+  );
+
+  // Read-only computed amount (Total Bill / Total Authorised / Insured).
+  const renderCalcField = (label, value) => (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className="part-d-fill__readonly">{fmtCap(value)}</div>
+    </div>
+  );
 
   return (
     <Modal title="Review & Approve" onClose={onClose} size="lg">
@@ -487,23 +599,15 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
               <div className="form-row">
                 <div className="form-group">
                   <label>Approved Amount</label>
-                  <input
-                    type="number"
-                    value={approveAmount}
-                    onChange={(e) => setApproveAmount(e.target.value)}
-                    onWheel={(e) => e.currentTarget.blur()}
-                    min="0"
-                    max={requestedCap || undefined}
-                    placeholder={requestedCap > 0 ? `Up to ${fmtCap(requestedCap)}` : ''}
-                  />
+                  <div className="part-d-fill__readonly">{fmtCap(totalAuthorised)}</div>
                   {exceedsRequested && (
                     <small style={{ color: '#b91c1c' }}>
-                      Cannot exceed requested {fmtCap(requestedCap)}
+                      Exceeds requested {fmtCap(requestedCap)}
                     </small>
                   )}
                 </div>
                 <div className="form-group">
-                  <label>Claim Number</label>
+                  <label>Claim Number <span style={{ color: '#b91c1c' }}>*</span></label>
                   <input
                     type="text"
                     value={claimNumber}
@@ -513,85 +617,52 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
               </div>
 
               <h4 className="part-d-fill__group-title">Bill Breakdown</h4>
+              <p style={{ color: '#6b7280', fontSize: 13, marginTop: -4 }}>
+                {isEnhancement
+                  ? 'Enter the bill amounts for this enhancement — they add up directly.'
+                  : 'Prefilled from the hospital’s pre-auth estimate — edit if needed.'}
+              </p>
+              {!isEnhancement && (
+                <div className="form-row">
+                  {renderNumField('expectedDays', 'Expected Stay (Days)')}
+                  {renderNumField('icuDays', 'ICU Days')}
+                </div>
+              )}
               <div className="form-row">
-                <div className="form-group">
-                  <label>Room Rent / Day</label>
-                  <input type="text" placeholder="e.g. Rs.5,000/day" value={textFields.roomRentPerDay}
-                    onChange={(e) => setTextField('roomRentPerDay', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>ICU Rent / Day</label>
-                  <input type="text" placeholder="e.g. Rs.12,000/day" value={textFields.icuRentPerDay}
-                    onChange={(e) => setTextField('icuRentPerDay', e.target.value)} />
-                </div>
+                {renderNumField('roomRent', isEnhancement ? 'Non ICU Room' : 'Non ICU Room (per day)',
+                  (!isEnhancement && bill.roomRent !== '' && nonIcuDays > 0)
+                    ? `× ${nonIcuDays} day${nonIcuDays > 1 ? 's' : ''} = ${fmtCap(roomRentTotal)}` : '')}
+                {renderNumField('icuCharges', isEnhancement ? 'ICU Charges' : 'ICU Charges (per day)',
+                  (!isEnhancement && bill.icuCharges !== '' && _n(bill.icuDays) > 0)
+                    ? `× ${_n(bill.icuDays)} day${_n(bill.icuDays) > 1 ? 's' : ''} = ${fmtCap(icuChargesTotal)}` : '')}
               </div>
               <div className="form-row">
-                <div className="form-group">
-                  <label>Nursing Charges / Day</label>
-                  <input type="text" value={textFields.nursingChargesPerDay}
-                    onChange={(e) => setTextField('nursingChargesPerDay', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Consultant Visit Charges / Day</label>
-                  <input type="text" value={textFields.consultantVisitChargesPerDay}
-                    onChange={(e) => setTextField('consultantVisitChargesPerDay', e.target.value)} />
-                </div>
+                {renderNumField('investigationCost', 'Investigation Cost')}
+                {renderNumField('otCharges', 'OT Charges')}
               </div>
               <div className="form-row">
-                <div className="form-group">
-                  <label>Surgeon Fee / OT / Anesthetist</label>
-                  <input type="text" value={textFields.surgeonAnesthetistFee}
-                    onChange={(e) => setTextField('surgeonAnesthetistFee', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Others</label>
-                  <input type="text" placeholder="e.g. Package / N/A" value={textFields.others}
-                    onChange={(e) => setTextField('others', e.target.value)} />
-                </div>
+                {renderNumField('professionalFees', 'Professional Fees')}
+                {renderNumField('medicinesCost', 'Medicines Cost')}
+              </div>
+              <div className="form-row">
+                {renderNumField('packageCharges', 'Package Charges')}
+                {renderNumField('otherExpenses', 'Other Expenses')}
               </div>
 
               <h4 className="part-d-fill__group-title">Authorisation Summary</h4>
               <div className="form-row">
-                <div className="form-group">
-                  <label>Total Bill Amount</label>
-                  <input type="text" value={textFields.totalBillAmount}
-                    onChange={(e) => setTextField('totalBillAmount', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Deductions Detail</label>
-                  <input type="text" value={textFields.deductionsDetail}
-                    onChange={(e) => setTextField('deductionsDetail', e.target.value)} />
-                </div>
+                {renderCalcField('Total Bill Amount', totalBill)}
+                {renderNumField('discount', 'Discount')}
               </div>
               <div className="form-row">
-                <div className="form-group">
-                  <label>Discount</label>
-                  <input type="text" value={textFields.discount}
-                    onChange={(e) => setTextField('discount', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Co-Pay</label>
-                  <input type="text" value={textFields.coPay}
-                    onChange={(e) => setTextField('coPay', e.target.value)} />
-                </div>
+                {renderNumField('coPay', 'Co-Pay')}
+                {renderNumField('deductibles', 'Deductibles')}
               </div>
               <div className="form-row">
-                <div className="form-group">
-                  <label>Deductibles</label>
-                  <input type="text" value={textFields.deductibles}
-                    onChange={(e) => setTextField('deductibles', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Total Authorised Amount</label>
-                  <input type="text" value={textFields.totalAuthorisedAmount}
-                    onChange={(e) => setTextField('totalAuthorisedAmount', e.target.value)} />
-                </div>
+                {renderNumField('deductions', 'Other Deductions')}
+                {renderCalcField('Total Authorised Amount', totalAuthorised)}
               </div>
-              <div className="form-group">
-                <label>Amount to be paid by Insured</label>
-                <input type="text" value={textFields.amountToBePaidByInsured}
-                  onChange={(e) => setTextField('amountToBePaidByInsured', e.target.value)} />
-              </div>
+              {renderCalcField('Amount to be paid by Insured', amountByInsured)}
 
               <div className="form-group">
                 <label>Remarks</label>
@@ -609,7 +680,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                 <div className="form-row">
                   <div className="form-group">
                     <label>Approved Amount</label>
-                    <div className="part-d-fill__readonly">{fmtCap(Number(approveAmount) || 0)}</div>
+                    <div className="part-d-fill__readonly">{fmtCap(totalAuthorised)}</div>
                   </div>
                   <div className="form-group">
                     <label>Claim Number</label>
@@ -617,7 +688,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                   </div>
                 </div>
                 <div className="form-group">
-                  <label>Authorization Letter (optional)</label>
+                  <label>Authorization Letter <span style={{ color: '#b91c1c' }}>*</span></label>
                   <input
                     type="file"
                     accept="application/pdf,image/*"
@@ -626,7 +697,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                   <small style={{ color: '#6b7280' }}>
                     {uploadedFile
                       ? `Attached: ${uploadedFile.name}`
-                      : 'Leave empty to auto-generate the letter from the template.'}
+                      : 'Required — upload the signed authorization letter to approve. Use “Print letter” to generate one to sign.'}
                   </small>
                 </div>
                 <div className="form-group">
@@ -654,22 +725,23 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                 <button type="button" className="btn btn--ghost" onClick={handlePrint} disabled={saving}>
                   {saving ? <Spinner size={16} /> : 'Print letter'}
                 </button>
-                <button type="button" className="btn btn--primary" onClick={handleSubmitApproval} disabled={saving}>
+                <button type="button" className="btn btn--primary" onClick={handleSubmitApproval} disabled={saving || !uploadedFile}>
                   {saving ? <Spinner size={16} /> : 'Approve'}
                 </button>
               </>
             ) : currentStep === 0 ? (
-              // Draft: save first.
-              <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving}>
+              // Draft: save first. Blocked while over the cap or claim number is blank.
+              <button type="button" className="btn btn--primary" onClick={handleSave} disabled={saving || exceedsRequested || !claimNumber.trim()}>
                 {saving ? <Spinner size={16} /> : 'Save'}
               </button>
             ) : (
-              // Saved: update edits, or proceed to the finalize panel.
+              // Saved: update edits, or proceed to the finalize panel. Both
+              // blocked while over the cap or claim number is blank.
               <>
-                <button type="button" className="btn btn--ghost" onClick={handleSave} disabled={saving}>
+                <button type="button" className="btn btn--ghost" onClick={handleSave} disabled={saving || exceedsRequested || !claimNumber.trim()}>
                   {saving ? <Spinner size={16} /> : 'Update'}
                 </button>
-                <button type="button" className="btn btn--primary" onClick={() => setShowApprovePanel(true)} disabled={saving}>
+                <button type="button" className="btn btn--primary" onClick={() => setShowApprovePanel(true)} disabled={saving || exceedsRequested || !claimNumber.trim()}>
                   Proceed
                 </button>
               </>

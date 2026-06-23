@@ -111,8 +111,23 @@ export const policyProviderService = {
     }
     return api.post(endpoint);
   },
-  // Providers onboarded to the current admin's hospital (feeds pre-auth selectors)
-  getForHospital: () => api.get('/hospital-providers/providers'),
+  // All providers mapped to the current admin's hospital (feeds pre-auth selectors).
+  // Pulls from /hospital-providers (no is_onboarded/is_active filter) and remaps the
+  // HospitalProviderResponse shape into the shape the pre-auth pages expect.
+  getForHospital: () =>
+    api.get('/hospital-providers').then((res) => ({
+      ...res,
+      data: (Array.isArray(res.data) ? res.data : []).map((m) => ({
+        id: m.policy_provider_id, // submitted as policy_provider_id
+        provider_id: m.provider_external_id,
+        name: m.provider_name,
+        email: m.email,
+        tpa_name: m.tpa_name,
+        tpa_toll_free_phone: m.tpa_toll_free_phone,
+        tpa_toll_free_fax: m.tpa_toll_free_fax,
+        room_charges: m.room_charges,
+      })),
+    })),
 };
 
 // Hospital ↔ provider onboarding (MOU + room charges)

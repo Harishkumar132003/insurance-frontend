@@ -1959,6 +1959,32 @@
   grid-column: 1 / -1;
 }
 
+// Per-day rate fields (Non ICU Room / ICU Charges) — smaller inputs since they
+// hold small per-day amounts, with the "rate × days = total" hint inline.
+.form-group--narrow {
+  input {
+    max-width: 160px;
+  }
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+
+  input {
+    max-width: 160px;
+    flex: 0 0 auto;
+  }
+
+  .field-inline__hint {
+    margin: 0;
+    white-space: nowrap;
+    // Match the textbox text size (inputs inherit the 16px body size).
+    font-size: $font-size-base;
+  }
+}
+
 .preauth-subgroup {
   margin-top: $space-5;
   padding: $space-4 $space-5;

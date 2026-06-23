@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Modal from './Modal';
 import Spinner from './Spinner';
 import { useToast } from './Toast';
-import { formTemplateService, claimCaseService } from '../services/api';
-import { renderPartDPdfBlob } from './partDTemplate';
+import { claimCaseService } from '../services/api';
 
 export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
   const toast = useToast();
@@ -16,28 +15,7 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
   const [remarks, setRemarks] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [loadingPartD, setLoadingPartD] = useState(true);
-  const htmlRef = useRef('');
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await formTemplateService.getFirstByType('PART_D');
-        if (cancelled) return;
-        const html = res?.data?.html_content || '';
-        htmlRef.current = html;
-        if (!html) toast.error('PART_D template not available');
-      } catch {
-        // axios interceptor surfaces toast
-      } finally {
-        if (!cancelled) setLoadingTemplate(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Approved amount + claim number come from the Part-D form (draft or
   // approval-bound). The Approve modal only displays them — the provider edits
@@ -74,30 +52,13 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
       toast.error('Approved amount is required');
       return;
     }
-    // If the user didn't attach a file, we fall back to generating one from
-    // the PART_D template — so the template must be loaded in that case.
-    if (!uploadedFile && !htmlRef.current) {
-      toast.error('Attach a file or wait for the PART_D template to load');
+    if (!uploadedFile) {
+      toast.error('Please attach the signed PDF');
       return;
     }
 
     setSaving(true);
     try {
-      let fileToSend;
-      if (uploadedFile) {
-        fileToSend = uploadedFile;
-      } else {
-        const blob = await renderPartDPdfBlob({
-          htmlTemplate: htmlRef.current,
-          claim,
-          approveAmount,
-          claimNumber,
-          remarks,
-        });
-        const filename = `part-d-${claim.claim_number || claim.claim_case_id}.pdf`;
-        fileToSend = new File([blob], filename, { type: 'application/pdf' });
-      }
-
       const requested = Number(claim.requested_amount) || 0;
       const approved = Number(approveAmount);
       const status = (requested > 0 && approved < requested) ? 'PARTIALLY_APPROVED' : 'APPROVED';
@@ -107,7 +68,7 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
       fd.append('approved_amount', String(approved));
       if (claimNumber.trim()) fd.append('claim_number', claimNumber.trim());
       if (remarks.trim()) fd.append('remarks', remarks.trim());
-      fd.append('file', fileToSend);
+      fd.append('file', uploadedFile);
 
       await claimCaseService.providerAction(claim.claim_case_id, fd);
       toast.success('Response submitted');
@@ -191,7 +152,7 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
         </div>
 
         <div className="form-group">
-          <label>Attach Signed PDF (optional)</label>
+          <label>Attach Signed PDF <span style={{ color: '#b91c1c' }}>*</span></label>
           <input
             type="file"
             accept="application/pdf,image/*"
@@ -211,7 +172,7 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
             </p>
           ) : (
             <p className="provider-approve__file-hint">
-              Leave empty to auto-generate a populated PART_D PDF on submit.
+              Required — upload the signed PDF to submit.
             </p>
           )}
         </div>
@@ -224,7 +185,7 @@ export default function ProviderApproveModal({ claim, onClose, onSubmitted }) {
             type="button"
             className="btn btn--primary"
             onClick={handleSubmit}
-            disabled={saving || loadingPartD || partDMissing || (!uploadedFile && loadingTemplate)}
+            disabled={saving || loadingPartD || partDMissing || !uploadedFile}
           >
             {saving ? <Spinner size={16} /> : 'Submit'}
           </button>
