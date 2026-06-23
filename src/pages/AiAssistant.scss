@@ -178,7 +178,37 @@
 
   &__error { color: $danger; }
 
-  &__answer { white-space: pre-wrap; }
+  &__answer {
+    // Markdown-rendered content (react-markdown + remark-gfm)
+    // The bubble sets white-space: pre-wrap; reset it here, otherwise the
+    // newlines/indentation between Markdown HTML tags render as literal gaps.
+    white-space: normal;
+    line-height: 1.45;
+    > :first-child { margin-top: 0; }
+    > :last-child { margin-bottom: 0; }
+    p { margin: 0 0 $space-2; }
+    ul, ol { margin: 4px 0; padding-left: 1.2rem; }
+    ul ul, ul ol, ol ul, ol ol { margin: 2px 0; }   // nested lists
+    li { margin: 0; }
+    li + li { margin-top: 3px; }
+    // Markdown "loose" lists wrap each item's text in <p>; collapse that spacing.
+    li p { margin: 0; }
+    strong, b { font-weight: 600; }
+    h1, h2, h3, h4 { font-size: $font-size-base; font-weight: 600; margin: $space-3 0 $space-1; }
+    code {
+      background: $bg-body; padding: 1px 5px; border-radius: $radius-sm;
+      font-size: $font-size-sm;
+    }
+    pre {
+      background: $bg-sidebar; color: $text-white; padding: $space-2;
+      border-radius: $radius-md; overflow-x: auto;
+      code { background: none; padding: 0; }
+    }
+    table { border-collapse: collapse; margin: $space-2 0; font-size: $font-size-sm; }
+    th, td { border: 1px solid $border-color; padding: $space-1 $space-2; text-align: left; }
+    th { background: $bg-card; font-weight: 600; }
+    a { color: $primary; text-decoration: underline; }
+  }
 
   &__table-wrap {
     margin-top: $space-3;
