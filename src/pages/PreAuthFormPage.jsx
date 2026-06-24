@@ -661,7 +661,6 @@ export default function PreAuthFormPage() {
 
     const SKIP_KEYS = new Set(['token', 'baseurl', 'clientId', 'provider_id', 'uhid', 'summary']);
     const prefilled = {};
-    const custom = [];
     for (const [key, rawValue] of Object.entries(aiData)) {
       if (rawValue === null || rawValue === undefined || rawValue === '' || SKIP_KEYS.has(key)) continue;
       const mapping = keyToSection[key];
@@ -679,7 +678,8 @@ export default function PreAuthFormPage() {
       }
 
       if (!mapping) {
-        custom.push({ key, value: String(value) });
+        // Drop AI keys that don't map to a form field — we never surface an
+        // "Additional Details" catch-all section.
         continue;
       }
 
@@ -691,8 +691,6 @@ export default function PreAuthFormPage() {
         prefilled[mapping.section][key] = value;
       }
     }
-
-    if (custom.length > 0) setCustomFields(custom);
 
     if (Object.keys(prefilled).length > 0) {
       setFormData((prev) => {
@@ -709,7 +707,6 @@ export default function PreAuthFormPage() {
         for (const sectionName of Object.keys(prefilled)) {
           updated[sectionName] = true;
         }
-        if (custom.length > 0) updated['custom_fields'] = true;
         return updated;
       });
       toast.success('Form pre-filled with AI data');
