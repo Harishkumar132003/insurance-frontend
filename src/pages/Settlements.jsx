@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { settlementService } from '../services/api';
+import { settlementService, policyProviderService } from '../services/api';
 import { toast } from '../components/Toast';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
@@ -23,7 +23,7 @@ const EMPTY_ITEM = {
 };
 
 function emptyHeader() {
-  return HEADER_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: '' }), {});
+  return HEADER_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: '' }), { policy_provider_id: '' });
 }
 
 export default function Settlements() {
@@ -45,6 +45,13 @@ export default function Settlements() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [fileView, setFileView] = useState(null); // { url, name, isPdf }
   const [rechecking, setRechecking] = useState(false);
+
+  const [providers, setProviders] = useState([]);
+  useEffect(() => {
+    policyProviderService.getForHospital()
+      .then((res) => setProviders(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setProviders([]));
+  }, []);
 
   const loadList = async () => {
     setLoadingList(true);
@@ -129,6 +136,7 @@ export default function Settlements() {
   };
 
   const onSave = async () => {
+    if (!header.policy_provider_id) { toast.error('Select a provider first'); return; }
     if (items.length === 0) { toast.error('Add at least one claim row'); return; }
     setSaving(true);
     try {
@@ -233,13 +241,31 @@ export default function Settlements() {
         <div className="settlements__card">
           <h2>Settlement Details</h2>
           <div className="settlements__grid">
+            <div className="settlements__field">
+              <label>Provider {header.policy_provider_id ? <span title="AI-suggested" style={{ color: '#4f46e5' }}>· suggested</span> : null}</label>
+              <select
+                value={header.policy_provider_id ?? ''}
+                onChange={(e) => {
+                  const pid = e.target.value || null;
+                  const prov = providers.find((p) => p.id === pid);
+                  setHeader((h) => ({ ...h, policy_provider_id: pid, tpa_insurer: prov ? prov.name : h.tpa_insurer }));
+                }}
+              >
+                <option value="">— Select provider —</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
             {HEADER_FIELDS.map((f) => (
               <div key={f.key} className="settlements__field">
                 <label>{f.label}</label>
                 <input
                   type={f.type}
                   value={header[f.key] ?? ''}
+                  readOnly={f.key === 'tpa_insurer'}
                   onChange={(e) => setHeader((h) => ({ ...h, [f.key]: e.target.value }))}
+                  style={f.key === 'tpa_insurer' ? { background: '#f3f4f6', cursor: 'default' } : undefined}
                 />
               </div>
             ))}
@@ -308,7 +334,7 @@ export default function Settlements() {
 
         <div className="settlements__actions">
           <button className="settlements__btn-ghost" onClick={() => setView('list')}>Cancel</button>
-          <button className="settlements__btn" onClick={onSave} disabled={saving || items.length === 0}>
+          <button className="settlements__btn" onClick={onSave} disabled={saving || items.length === 0 || !header.policy_provider_id}>
             {saving ? 'Saving…' : 'Save Settlement'}
           </button>
         </div>
@@ -511,6 +537,7 @@ function cleanItem(it = {}) {
 }
 function serializeHeader(h) {
   return {
+    policy_provider_id: emptyToNull(h.policy_provider_id),
     tpa_insurer: emptyToNull(h.tpa_insurer),
     total_settlement_amount: numOrNull(h.total_settlement_amount),
     payment_mode: emptyToNull(h.payment_mode),

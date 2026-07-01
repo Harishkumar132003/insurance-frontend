@@ -181,7 +181,7 @@
     label { font-size: $font-size-xs; color: $text-secondary; font-weight: 600; }
   }
 
-  input {
+  input, select {
     padding: $space-2 $space-3;
     border: 1px solid $border-color;
     border-radius: $radius-sm;
