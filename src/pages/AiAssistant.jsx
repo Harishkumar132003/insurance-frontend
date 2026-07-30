@@ -58,7 +58,7 @@ function Message({ msg }) {
           {msg.sql?.length > 0 && (
             <div className="ai-assistant__sql">
               <button className="ai-assistant__sql-toggle" onClick={() => setShowSql((s) => !s)}>
-                {showSql ? 'Hide' : 'Show'} SQL
+                {showSql ? 'Hide' : 'Show'} query
               </button>
               {showSql && <pre className="ai-assistant__sql-code">{msg.sql.join(';\n\n')}</pre>}
             </div>
