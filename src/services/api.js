@@ -74,6 +74,24 @@ export const userService = {
 export const workflowService = {
   run: (hospitalId, input) => api.post(`/run/${hospitalId}`, { input }),
   summarizeContext: (data) => api.post('/summarize-context', data),
+  // The case sheet a saved claim was pre-filled from, if any — lets the form
+  // re-show the confidence chips and the source document on reopen.
+  caseSheetForClaim: (claimCaseId) =>
+    api.get(`/case-sheets/by-claim-case/${claimCaseId}`, { silentStatuses: [404] }),
+  viewCaseSheet: (caseSheetId) =>
+    api.get(`/case-sheets/${caseSheetId}/file`, { responseType: 'blob' }),
+  // Alternative to `run`: pull the same {summary, data} envelope out of an
+  // uploaded case sheet PDF instead of the hospital's UHID workflow.
+  // One case sheet may be several pages — PDFs and/or photos.
+  extractCaseSheet: (files) => {
+    const formData = new FormData();
+    (Array.isArray(files) ? files : [files]).forEach((f) => formData.append('files', f));
+    return api.post('/extract-case-sheet', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  viewCaseSheetPage: (caseSheetId, index) =>
+    api.get(`/case-sheets/${caseSheetId}/files/${index}`, { responseType: 'blob' }),
 };
 
 export const promptService = {
@@ -154,6 +172,15 @@ export const hospitalProviderService = {
   update: (id, data) => api.put(`/hospital-providers/${id}`, data),
   delete: (id) => api.delete(`/hospital-providers/${id}`),
   viewMou: (id) => api.get(`/hospital-providers/${id}/mou`, { responseType: 'blob' }),
+  // Attach or replace the MOU on an existing mapping and re-extract its tariffs.
+  // Returns { mapping, extracted }; room_charges is only committed by `update`.
+  uploadMou: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/hospital-providers/${id}/mou`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // GET & POST /hospitals/{hospital_id}/config
@@ -303,6 +330,8 @@ export const dashboardService = {
 export const aiAssistantService = {
   // One-shot (kept for compatibility; UI uses the chat methods below).
   query: (question) => api.post('/ai/query', { question }).then((r) => r.data),
+  // Three ICD-10-PCS candidates for one pre-auth treatment row. Nothing is saved.
+  suggestIcd: (payload) => api.post('/ai/suggest-icd', payload).then((r) => r.data),
   listChats: () => api.get('/ai/chats').then((r) => r.data),
   createChat: () => api.post('/ai/chats').then((r) => r.data),
   getChat: (id) => api.get(`/ai/chats/${id}`).then((r) => r.data),

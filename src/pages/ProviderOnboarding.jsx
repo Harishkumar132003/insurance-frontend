@@ -187,6 +187,16 @@ function ProviderForm({ mapping, onClose, onSaved }) {
   const [mouFile, setMouFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Raw AI extraction, kept so create can persist it alongside the reviewed
+  // charges (the backend stores it in extracted_data for audit / re-edit).
+  const [rawExtract, setRawExtract] = useState(null);
+  // Filename of the MOU currently on file. Local state because a re-upload
+  // replaces it mid-edit, before the list is refetched.
+  const [currentMou, setCurrentMou] = useState(mapping?.mou_original_filename || null);
+  // Set when a re-extract would overwrite charges that are already filled in —
+  // renders an inline confirm instead of acting straight away.
+  const [pendingReplace, setPendingReplace] = useState(false);
+  const [mouUrl, setMouUrl] = useState(null);
 
   // 'existing' = attach an already-onboarded provider; 'new' = type fresh details.
   const [mode, setMode] = useState('new');
@@ -212,27 +222,92 @@ function ProviderForm({ mapping, onClose, onSaved }) {
 
   const handleMouChange = (e) => {
     setMouFile(e.target.files?.[0] || null);
+    setPendingReplace(false);
   };
 
-  const handleExtract = async () => {
-    if (!mouFile) {
-      toast.error('Choose an MOU file first');
-      return;
-    }
+  // Charges the admin would lose if an extraction overwrote them.
+  const hasCharges = roomTypes.length > 0 || icu !== '' || otCharge !== '';
+  // A document is already on file, so this is a replacement, not a first upload.
+  const hasMou = isEdit && !!currentMou;
+  const extractLabel = !isEdit
+    ? 'Extract Tariff'
+    : hasMou
+      ? 'Re-upload & Extract'
+      : 'Upload & Extract';
+
+  const applyExtracted = (data) => {
+    setRawExtract(data);
+    setRoomTypes(Array.isArray(data.room_type) ? data.room_type : []);
+    setIcu(data.icu ?? '');
+    setOtCharge(data.ot_charge ?? '');
+  };
+
+  // Create: extraction is a pure preview and the file rides along with the save.
+  // Edit: the file is attached/replaced server-side straight away (there's a
+  // mapping to attach it to), and only the charges wait for Save.
+  const runExtract = async () => {
+    setPendingReplace(false);
     setExtracting(true);
     try {
-      const res = await hospitalProviderService.extractMou(mouFile);
-      const data = res.data || {};
-      if (Array.isArray(data.room_type)) setRoomTypes(data.room_type);
-      if (data.icu != null) setIcu(data.icu);
-      if (data.ot_charge != null) setOtCharge(data.ot_charge);
-      toast.success('MOU tariffs extracted — review and edit before saving');
+      if (isEdit) {
+        const res = await hospitalProviderService.uploadMou(mapping.id, mouFile);
+        const { mapping: updated, extracted } = res.data || {};
+        applyExtracted(extracted || {});
+        const replaced = hasMou;
+        if (updated?.mou_original_filename) setCurrentMou(updated.mou_original_filename);
+        setMouFile(null);
+        toast.success(
+          replaced
+            ? 'MOU replaced — review the tariffs and save'
+            : 'MOU uploaded — review the tariffs and save'
+        );
+      } else {
+        const res = await hospitalProviderService.extractMou(mouFile);
+        applyExtracted(res.data || {});
+        toast.success('MOU tariffs extracted — review and edit before saving');
+      }
     } catch {
       toast.error('Could not extract MOU; fill the charges manually');
     } finally {
       setExtracting(false);
     }
   };
+
+  const handleExtract = () => {
+    if (!mouFile) {
+      toast.error('Choose an MOU file first');
+      return;
+    }
+    // Ask BEFORE uploading: in edit mode the file is replaced by the same call
+    // that extracts, so confirming afterwards would leave a new PDF sitting next
+    // to charges the user chose not to overwrite. Confirm whenever something
+    // would be destroyed — the stored document, the reviewed charges, or both.
+    if (hasCharges || hasMou) {
+      setPendingReplace(true);
+      return;
+    }
+    runExtract();
+  };
+
+  // Previewed inline rather than in a nested Modal: this form already sits in one
+  // with closeOnOverlayClick disabled to protect unsaved edits, and a second
+  // Modal's Esc handler would close the form along with the preview.
+  const handleToggleMouPreview = async () => {
+    if (mouUrl) {
+      URL.revokeObjectURL(mouUrl);
+      setMouUrl(null);
+      return;
+    }
+    try {
+      const res = await hospitalProviderService.viewMou(mapping.id);
+      setMouUrl(URL.createObjectURL(res.data));
+    } catch {
+      toast.error('Could not open the MOU');
+    }
+  };
+
+  // Release the blob when the form closes.
+  useEffect(() => () => { if (mouUrl) URL.revokeObjectURL(mouUrl); }, [mouUrl]);
 
   const addRoom = () => setRoomTypes((r) => [...r, { room: '', per_day_rent: '' }]);
   const setRoom = (i, key, val) =>
@@ -268,15 +343,15 @@ function ProviderForm({ mapping, onClose, onSaved }) {
       if (isEdit) {
         await hospitalProviderService.update(mapping.id, { ...form, room_charges });
         toast.success('Provider updated');
-      } else if (isExisting) {
-        await hospitalProviderService.create(
-          { policy_provider_id: selectedExistingId, room_charges: JSON.stringify(room_charges) },
-          mouFile
-        );
-        toast.success('Provider onboarded');
       } else {
+        // Send the raw extraction too, so the backend can keep it for audit
+        // instead of storing a copy of the reviewed charges.
+        const extracted_data = rawExtract ? JSON.stringify(rawExtract) : undefined;
+        const identity = isExisting
+          ? { policy_provider_id: selectedExistingId }
+          : { ...form };
         await hospitalProviderService.create(
-          { ...form, room_charges: JSON.stringify(room_charges) },
+          { ...identity, room_charges: JSON.stringify(room_charges), extracted_data },
           mouFile
         );
         toast.success('Provider onboarded');
@@ -355,23 +430,75 @@ function ProviderForm({ mapping, onClose, onSaved }) {
           </div>
         )}
 
-        {!isEdit && (
-          <div className="form-group">
-            <label>MOU Document</label>
-            <div className="po-form__mou">
-              <input type="file" accept=".pdf" onChange={handleMouChange} />
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={handleExtract}
-                disabled={!mouFile || extracting}
-              >
-                {extracting ? <Spinner size={14} /> : 'Extract Tariff'}
-              </button>
-            </div>
-            {extracting && <span className="po-form__hint">Extracting tariffs…</span>}
+        <div className="form-group">
+          <label>MOU Document{hasMou ? ' — re-upload' : ''}</label>
+          {isEdit && (
+            <p className="po-form__hint">
+              {currentMou ? (
+                <>
+                  On file: <strong>{currentMou}</strong>{' '}
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={handleToggleMouPreview}>
+                    {mouUrl ? 'Hide' : 'View'}
+                  </button>
+                </>
+              ) : (
+                'No MOU on file yet — upload one below to extract its tariffs.'
+              )}
+            </p>
+          )}
+          {mouUrl && <iframe className="po-mou-frame" src={mouUrl} title="Current MOU" />}
+          <div className="po-form__mou">
+            <input type="file" accept=".pdf" onChange={handleMouChange} />
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={handleExtract}
+              disabled={!mouFile || extracting || pendingReplace}
+            >
+              {extracting ? <Spinner size={14} /> : extractLabel}
+            </button>
           </div>
-        )}
+          {hasMou && !mouFile && !extracting && (
+            <span className="po-form__hint">
+              Choosing a file will replace the MOU on file and re-extract its tariffs.
+            </span>
+          )}
+          {mouFile && !extracting && !pendingReplace && (
+            <span className="po-form__hint">
+              {hasMou ? 'Replacing with: ' : 'Selected: '}{mouFile.name}
+            </span>
+          )}
+          {extracting && <span className="po-form__hint">Extracting tariffs…</span>}
+          {pendingReplace && (
+            // Inline rather than a nested Modal — this form is already inside one.
+            <div className="po-form__confirm">
+              <p>
+                {hasMou && (
+                  <>
+                    Replace <strong>{currentMou}</strong> with <strong>{mouFile?.name}</strong>?
+                    {' '}The old document is removed.
+                  </>
+                )}
+                {hasCharges && (
+                  <>
+                    {hasMou ? ' ' : `Use the tariffs from ${mouFile?.name}? `}
+                    The current charges
+                    {roomTypes.length > 0 && ` (${roomTypes.length} room type${roomTypes.length > 1 ? 's' : ''})`}
+                    {' '}will be overwritten with the values extracted from it.
+                  </>
+                )}
+              </p>
+              <div className="po-form__confirm-actions">
+                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setPendingReplace(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn--danger btn--sm" onClick={runExtract}>
+                  {hasMou ? 'Re-upload' : 'Replace'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="po-form__charges">
           <div className="po-form__charges-head">
