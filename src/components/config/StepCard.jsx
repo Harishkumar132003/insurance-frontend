@@ -44,9 +44,7 @@ export const RESPONSE_MAPPING_KEYS = [
   // Treatment Details
   { value: 'treatment_details', label: 'Treatment Details' },
   { value: 'drug_route', label: 'Drug Route' },
-  { value: 'surgery_name', label: 'Surgery Name' },
-  { value: 'surgery_icd_code', label: 'Surgery ICD Code' },
-  { value: 'other_treatment', label: 'Other Treatment' },
+  { value: 'surgery_icd_code', label: 'ICD Code' },
   { value: 'injury_cause', label: 'Injury Cause' },
   // Accident Details
   { value: 'is_rta', label: 'Is RTA' },

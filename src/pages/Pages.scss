@@ -361,6 +361,40 @@
     margin-bottom: $space-5;
   }
 
+  // Segmented control choosing between the two alternative patient-data
+  // sources (UHID lookup vs case sheet upload).
+  &__mode {
+    display: flex;
+    gap: $space-2;
+    margin-bottom: $space-5;
+
+    label {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: $space-2;
+      padding: $space-3 $space-4;
+      font-size: $font-size-sm;
+      color: $text-secondary;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      cursor: pointer;
+
+      &.is-active {
+        color: $primary;
+        font-weight: 600;
+        border-color: $primary;
+        background: rgba($primary, 0.06);
+      }
+
+      input {
+        accent-color: $primary;
+        cursor: pointer;
+      }
+    }
+  }
+
   &__results {
     margin-top: $space-6;
   }
@@ -1945,6 +1979,13 @@
     grid-template-columns: 1fr 1fr;
     gap: $space-5;
 
+    // Grid items default to min-width:auto, so a nowrap child — the case-sheet
+    // source quote — makes the 1fr track grow to the full string instead of
+    // truncating, and the card spills sideways. Let the tracks actually shrink.
+    > .form-group {
+      min-width: 0;
+    }
+
     &--after {
       margin-top: $space-5;
     }
@@ -1985,6 +2026,215 @@
   }
 }
 
+// "Pre-filled from case sheet: X.pdf [View]" — the provenance of the whole form,
+// shown whenever a case sheet is linked (on load, or carried from the AI-fill page).
+.case-sheet-ref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: $space-3;
+  margin-bottom: $space-5;
+  padding: $space-3 $space-4;
+  font-size: $font-size-sm;
+  color: $text-secondary;
+  background: rgba($primary, 0.06);
+  border: 1px solid rgba($primary, 0.18);
+  border-radius: $radius-md;
+
+  strong {
+    color: $text-primary;
+  }
+
+  // One button per uploaded page; wraps rather than overflowing on narrow screens.
+  &__files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+  }
+}
+
+// How directly the case sheet stated an AI-filled value. Sits next to the field
+// label; disappears as soon as the user edits that field.
+.field-confidence {
+  display: inline-block;
+  margin-left: $space-2;
+  padding: 1px $space-2;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-radius: $radius-full;
+  cursor: help;
+
+  &--high {
+    color: #166534;
+    background: #dcfce7;
+  }
+
+  &--medium {
+    color: #92400e;
+    background: #fef3c7;
+  }
+
+  // Inferred rather than stated — the one a reviewer should actually check.
+  &--low {
+    color: #991b1b;
+    background: #fee2e2;
+  }
+}
+
+// The verbatim fragment the value was taken from. Truncated to one line; the
+// full quote is in the title attribute.
+.field-source {
+  display: block;
+  // Never contribute more than the column it sits in — see the min-width:0 on
+  // .preauth-section__fields > .form-group, which is the other half of this.
+  max-width: 100%;
+  margin-top: $space-2;
+  overflow: hidden;
+  font-size: $font-size-sm;
+  font-style: italic;
+  color: $text-secondary;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Multi-value picker (Drug Route): removable chips above an "add" dropdown that
+// only lists what hasn't been picked yet. Keeps 25 options compact inside a
+// repeatable Treatment card.
+.preauth-multi {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+  // .form-group is a COLUMN flex container (defined globally in Login.scss), so
+  // its cross axis is horizontal: any align-self other than stretch would shrink
+  // this to its widest child and make the picker's width follow the chips.
+  width: 100%;
+
+  // Stand-in for the picker once every option is taken, so the field keeps its
+  // height and the neighbouring input doesn't shift up.
+  &__all-picked {
+    padding: $space-3 0;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  &__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+  }
+
+  &__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: 4px $space-3;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    background: rgba($primary, 0.08);
+    border: 1px solid rgba($primary, 0.25);
+    border-radius: $radius-full;
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      padding: 0;
+      font-size: $font-size-base;
+      line-height: 1;
+      color: $text-secondary;
+      cursor: pointer;
+      background: none;
+      border: none;
+
+      &:hover {
+        color: $danger;
+      }
+    }
+  }
+}
+
+// ICD Code: free-text input + "Suggest ICD", with the AI's candidates listed
+// beneath. Deliberately not .field-inline — that caps inputs at 160px.
+.icd-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+
+    // A PCS code is 7 characters — don't stretch the box across the whole row.
+    input {
+      flex: 0 1 240px;
+      min-width: 0;
+    }
+  }
+
+  &__btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    white-space: nowrap;
+  }
+
+  // Three across on a wide screen, stacking as space runs out.
+  &__list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: $space-3;
+  }
+
+  &__card {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px $space-3;
+    align-items: baseline;
+    align-content: start;
+    width: 100%;
+    padding: $space-3 $space-4;
+    text-align: left;
+    cursor: pointer;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+
+    &:hover {
+      border-color: $primary;
+    }
+
+    &--selected {
+      border-color: $primary;
+      box-shadow: inset 0 0 0 1px $primary;
+    }
+  }
+
+  // Same face and size as the rest of the form — the weight and colour are
+  // enough to read as the code without switching to monospace.
+  &__code {
+    font-size: $font-size-sm;
+    font-weight: 600;
+    color: $primary;
+  }
+
+  &__desc {
+    font-size: $font-size-sm;
+    color: $text-primary;
+  }
+
+  // Rationale spans the full width on its own row, under the code + description.
+  &__why {
+    grid-column: 1 / -1;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+}
+
 .preauth-subgroup {
   margin-top: $space-5;
   padding: $space-4 $space-5;
@@ -1999,6 +2249,13 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: $space-4;
+  }
+
+  // A repeater nested inside a subgroup card (Treatment Plan → Investigations)
+  // would otherwise be $bg-body on $bg-body. Lift the entries to card white so
+  // they still read as separate blocks.
+  .preauth-repeat__item {
+    background: $bg-card;
   }
 }
 
