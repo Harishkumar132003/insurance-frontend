@@ -734,7 +734,7 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
     `Please find enclosed the cashless pre-authorisation request (Part C) for our patient ${submitResult.patient_name || '—'} ` +
     `(UHID: ${submitResult.uhid || '—'}${insured.policy_number ? `, Policy: ${insured.policy_number}` : ''}).\n\n` +
     `Diagnosis: ${ti.provisional_diagnosis || submitResult.diagnosis || '—'} (ICD-10: ${ti.icd10_code || submitResult.icd10_code || '—'})\n` +
-    `Proposed Treatment: ${ti.surgery_name || treatmentText(ti.treatment_details) || '—'}\n` +
+    `Proposed Treatment: ${treatmentText(ti.treatment_details) || '—'}\n` +
     `Admission: ${hosp.is_emergency ? 'Emergency' : 'Planned'} — ${hosp.admission_date || '—'}${hosp.admission_time ? ' ' + hosp.admission_time : ''}\n` +
     `Expected Stay: ${hosp.expected_days ?? '—'} day(s)${Number(hosp.icu_days) > 0 ? ' (ICU required)' : ''}\n` +
     `Requested Amount: ${formatINR(Number(hosp.costs?.total_cost) || Number(submitResult.requested_amount) || 0)}\n\n` +
@@ -1803,7 +1803,7 @@ export default function PreAuthForm() {
         doctor_registration: doctor.registration || doctor.registration_number || doctor.doctor_registration || '',
         doctor_contact: doctor.contact || doctor.contact_number || doctor.doctor_contact || '',
         // Hospitalization / treatment — for the SubmitPortalForm prefill
-        treatment: doctor.surgery_name || treatmentText(doctor.treatment_details) || doctor.treatment_plan || '',
+        treatment: treatmentText(doctor.treatment_details) || '',
         admission_mode: hospitalization.is_emergency ? 'Emergency' : 'Planned',
         admission_date: hospitalization.admission_date || '',
         admission_time: hospitalization.admission_time || '',

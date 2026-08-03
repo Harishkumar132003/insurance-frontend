@@ -189,7 +189,23 @@ function PatientSummaryForm({ onResult }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  // Two alternative sources for the same patient data: the hospital's UHID
+  // workflow, or an uploaded case sheet. Only one runs.
+  const [mode, setMode] = useState('uhid');
+  const [caseSheet, setCaseSheet] = useState([]);
+  const [fieldCount, setFieldCount] = useState(0);
   const summary = extractSummary(result);
+
+  // Switching source clears the previous result so the two can never be
+  // silently combined — the Proceed button always reflects one source.
+  const switchMode = (next) => {
+    if (next === mode) return;
+    setMode(next);
+    setResult(null);
+    setFieldCount(0);
+    setCaseSheet([]);
+    onResult(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -216,39 +232,159 @@ function PatientSummaryForm({ onResult }) {
     }
   };
 
+  // Case sheet path. The endpoint returns the same {summary, data} envelope the
+  // UHID workflow does, so everything downstream — the summary card, onResult,
+  // handleProceed — works unchanged.
+  // Mirror the server's limits so an oversized upload is caught before it's sent.
+  const MAX_CASE_SHEET_FILES = 10;
+  const MAX_CASE_SHEET_MB = 10;
+
+  const handleCaseSheetChange = (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length > MAX_CASE_SHEET_FILES) {
+      toast.error(`Up to ${MAX_CASE_SHEET_FILES} pages per case sheet`);
+      return;
+    }
+    const tooBig = picked.find((f) => f.size > MAX_CASE_SHEET_MB * 1024 * 1024);
+    if (tooBig) {
+      toast.error(`${tooBig.name} is over ${MAX_CASE_SHEET_MB} MB`);
+      return;
+    }
+    setCaseSheet(picked);
+  };
+
+  const handleCaseSheetSubmit = async (e) => {
+    e.preventDefault();
+    if (!caseSheet?.length) {
+      toast.error('Choose the case sheet pages first');
+      return;
+    }
+
+    setLoading(true);
+    setResult(null);
+    setFieldCount(0);
+    try {
+      const res = await workflowService.extractCaseSheet(caseSheet);
+      const data = res.data || {};
+      const count = Object.keys(data.data || {}).length;
+      setResult(data);
+      setFieldCount(count);
+      if (data.data?.uhid) setUhid(data.data.uhid);
+      onResult({ uhid: data.data?.uhid || '', data });
+      if (count === 0) {
+        toast.error('Nothing could be read from those pages — fill the form manually');
+      } else {
+        toast.success(`Extracted ${count} field${count > 1 ? 's' : ''} from the case sheet`);
+      }
+    } catch {
+      // handled by interceptor
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="workflow__panel">
       <div className="workflow__form-card">
         <h2 className="workflow__card-title">Patient Summary</h2>
-        <p className="workflow__card-desc">Fetch patient summary using their UHID</p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Patient ID (UHID)</label>
+        <p className="workflow__card-desc">
+          {mode === 'uhid'
+            ? 'Fetch patient summary using their UHID'
+            : 'Upload the case sheet and let AI read it'}
+        </p>
+
+        <div className="workflow__mode">
+          <label className={mode === 'uhid' ? 'is-active' : ''}>
             <input
-              type="text"
-              placeholder="e.g. 260029370955"
-              value={uhid}
-              onChange={(e) => setUhid(e.target.value)}
-              autoFocus
+              type="radio"
+              name="patient-source"
+              checked={mode === 'uhid'}
+              onChange={() => switchMode('uhid')}
             />
-          </div>
-          <div className="workflow__tip">
-            <IconInfo size={16} className="workflow__tip-icon" />
-            <span>
-              <strong>Tip:</strong> The UHID is the unique hospital identifier assigned
-              to the patient at registration. AI will fetch demographics, diagnosis,
-              and treatment history automatically.
-            </span>
-          </div>
-          <button
-            type="submit"
-            className="btn btn--primary btn--full"
-            disabled={loading}
-          >
-            {loading ? <Spinner size={18} /> : 'Get Summary'}
-          </button>
-        </form>
+            <span>By UHID</span>
+          </label>
+          <label className={mode === 'case_sheet' ? 'is-active' : ''}>
+            <input
+              type="radio"
+              name="patient-source"
+              checked={mode === 'case_sheet'}
+              onChange={() => switchMode('case_sheet')}
+            />
+            <span>By Case Sheet</span>
+          </label>
+        </div>
+
+        {mode === 'uhid' ? (
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>Patient ID (UHID)</label>
+              <input
+                type="text"
+                placeholder="e.g. 260029370955"
+                value={uhid}
+                onChange={(e) => setUhid(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="workflow__tip">
+              <IconInfo size={16} className="workflow__tip-icon" />
+              <span>
+                <strong>Tip:</strong> The UHID is the unique hospital identifier assigned
+                to the patient at registration. AI will fetch demographics, diagnosis,
+                and treatment history automatically.
+              </span>
+            </div>
+            <button
+              type="submit"
+              className="btn btn--primary btn--full"
+              disabled={loading}
+            >
+              {loading ? <Spinner size={18} /> : 'Get Summary'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleCaseSheetSubmit}>
+            <div className="form-group">
+              <label>Case Sheet (PDF or photos)</label>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,image/jpeg,image/png,image/webp"
+                onChange={handleCaseSheetChange}
+              />
+              {caseSheet?.length > 0 && (
+                <small className="workflow__provider-hint">
+                  {caseSheet.length} page{caseSheet.length > 1 ? 's' : ''}:{' '}
+                  {caseSheet.map((f) => f.name).join(', ')}
+                </small>
+              )}
+            </div>
+            <div className="workflow__tip">
+              <IconInfo size={16} className="workflow__tip-icon" />
+              <span>
+                <strong>Tip:</strong> Upload the whole case sheet — a PDF, or a photo of
+                each page (up to {MAX_CASE_SHEET_FILES}). AI reads them together for
+                demographics, diagnosis, findings, treatment and investigations. You review
+                and edit everything on the form.
+              </span>
+            </div>
+            <button
+              type="submit"
+              className="btn btn--primary btn--full"
+              disabled={loading || !caseSheet?.length}
+            >
+              {loading ? <Spinner size={18} /> : 'Extract Case Sheet'}
+            </button>
+          </form>
+        )}
       </div>
+
+      {fieldCount > 0 && (
+        <p className="workflow__provider-hint" style={{ marginTop: 12 }}>
+          Extracted <strong>{fieldCount}</strong> field{fieldCount > 1 ? 's' : ''}
+          {caseSheet?.length ? ` from ${caseSheet.length} page${caseSheet.length > 1 ? 's' : ''}` : ''}
+        </p>
+      )}
 
       {summary && (
         <div className="workflow__section" style={{ marginTop: 12 }}>
@@ -479,6 +615,15 @@ export default function PreAuthAIFillPage() {
         aiProviderId,
         policyChronicConditions: extractChronicConditions(policyResult?.data),
         policyCostEstimates: extractCostEstimates(policyResult?.data),
+        // Repeatable groups can't ride in aiData — the form's flat key mapping
+        // doesn't cover repeatableGroups — so they travel on their own keys.
+        aiTreatments: patientResult?.data?.treatments,
+        aiInvestigations: patientResult?.data?.investigations,
+        // Per-field confidence + provenance from a case sheet, keyed the same way
+        // as aiData, plus the stored extraction to link on save.
+        aiFieldMeta: patientResult?.data?.field_meta,
+        aiCaseSheetId: patientResult?.data?.case_sheet_id,
+        aiCaseSheetFiles: patientResult?.data?.files,
       },
     });
   };
