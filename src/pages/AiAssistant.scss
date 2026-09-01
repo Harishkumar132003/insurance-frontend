@@ -107,8 +107,49 @@
   }
 
   &__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: $space-4;
+    flex-wrap: wrap;
+
     h1 { font-size: $font-size-2xl; color: $text-primary; }
     p { color: $text-secondary; margin-top: $space-1; font-size: $font-size-sm; }
+  }
+
+  &__head-text { min-width: 0; }
+
+  // Segmented Classic / Hybrid switch.
+  &__engine {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    overflow: hidden;
+  }
+  &__engine-btn {
+    background: $bg-card;
+    border: none;
+    color: $text-secondary;
+    font-size: $font-size-xs;
+    padding: $space-2 $space-3;
+    cursor: pointer;
+
+    &.is-active { background: $primary; color: $text-white; }
+    &:disabled { cursor: not-allowed; opacity: 0.6; }
+  }
+  &__engine-note {
+    margin-top: $space-2;
+    color: $text-secondary;
+    font-size: $font-size-xs;
+  }
+
+  // Derived Cube view shown next to the "Show query" toggle in hybrid mode.
+  &__view-tag {
+    margin-left: $space-3;
+    color: $text-secondary;
+    font-size: $font-size-xs;
+    font-family: monospace;
   }
 
   &__chat {
