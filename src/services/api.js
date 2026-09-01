@@ -385,6 +385,47 @@ export const aiAssistantService = {
   deleteChat: (id) => api.delete(`/ai/chats/${id}`),
 };
 
+// Experimental hybrid-retrieval agent (/ai2). Separate backend pipeline: concept
+// extraction -> parallel vector + keyword search -> RRF merge -> LLM re-rank ->
+// member selection -> Cube SQL.
+//
+// Three differences from aiAssistantService that callers must handle:
+//   * no SSE — one request, one response, so there is no progress to stream;
+//   * no persistence — nothing is stored server-side, so answers live only in
+//     component state and disappear on reload;
+//   * `sql` comes back as a single string, not an array.
+// `normalizeAnswer` bridges the last one so the message shape matches v1 and the
+// existing ResultTable / "Show query" toggle work unchanged.
+export const aiHybridService = {
+  query: (question, { hospitalId = null, includeTrace = false, stopAfter = 'answer', signal } = {}) =>
+    api
+      .post(
+        '/ai2/query',
+        {
+          question,
+          hospital_id: hospitalId,
+          stop_after: stopAfter,
+          include_trace: includeTrace,
+        },
+        { signal },
+      )
+      .then((r) => r.data),
+
+  health: () => api.get('/ai2/health').then((r) => r.data),
+
+  // Shape a /ai2/query response like an aiAssistantService `done` payload.
+  normalizeAnswer: (data) => ({
+    content: data?.answer ?? '',
+    sql: data?.sql ? [data.sql] : [],
+    columns: data?.columns || [],
+    rows: data?.rows || [],
+    view: data?.view || null,
+    notes: data?.notes || null,
+    kind: data?.kind || null,
+    trace: data?.trace || null,
+  }),
+};
+
 // Batch settlement (remittance advice): upload a PDF/Excel/CSV, AI-extract the
 // header + per-claim items, review/edit, then save (file is stored, each line
 // mapped to a claim case via claim_number).
