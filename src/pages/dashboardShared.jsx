@@ -214,8 +214,8 @@ const STATUS_COLOR = {
   pre_auth_submitted: '#3b82f6',
   pre_auth_approved:  '#10b981',
   claim_submitted:    '#6366f1',
-  claim_approved:     '#0e7490',
-  invoice_open:       '#f59e0b',
+  awaiting_settlement: '#0e7490',
+  partially_settled:   '#f59e0b',
 };
 
 export function StatusDistributionCard({ buckets }) {
