@@ -92,10 +92,44 @@ const BD_COLUMN_BY_KEY = Object.fromEntries(
 );
 
 // One Cost Estimates row as the provider reviews it. `claimed` freezes the
-// hospital's ask so a reduced approval stays legible; `amount` is editable.
-const toBillItem = (key, label, description, amount) => ({
-  key, label, description: description || '', claimed: amount ?? '', amount: amount ?? '',
+// hospital's ask so a reduced approval stays legible; `amount` is editable;
+// `reason` explains a cut. `claimed` is an explicit argument rather than a copy
+// of `amount` — deriving it meant a reloaded row lost the original ask, which
+// hid the "Claimed" hint and disabled the disallowance requirement.
+// `claimedDays` freezes the day count behind a per-day row (room / ICU) for the
+// same reason `claimed` freezes the rate: after a save, bd_expected_days holds
+// the APPROVED days, so without a frozen baseline a day cut becomes invisible on
+// reload. Null on flat rows, which bill at one unit.
+const toBillItem = (key, label, description, amount, claimed, reason, claimedDays) => ({
+  key,
+  label,
+  description: description || '',
+  // Legacy rows persisted before `claimed` existed fall back to the amount.
+  claimed: claimed === undefined || claimed === null ? (amount ?? '') : claimed,
+  amount: amount ?? '',
+  reason: reason || '',
+  claimedDays: claimedDays === undefined ? null : claimedDays,
 });
+
+// Days the hospital asked for on this row. Legacy rows carry no baseline, so
+// they fall back to what the row bills at now — no phantom day reduction.
+const claimedDaysOf = (it, approvedDays) => (
+  it?.claimedDays === null || it?.claimedDays === undefined || it?.claimedDays === ''
+    ? approvedDays : _n(it.claimedDays)
+);
+
+// A line is "reduced" when the provider cut the per-day RATE, or cut the LINE
+// TOTAL (rate x days) — the second is what catches a day-count cut on the room
+// and ICU rows, where the rate can stay untouched while the line halves.
+// Both tests are strict less-than: approving more than asked is not a
+// disallowance. `approvedDays` is 1 for flat rows, which collapses this to the
+// plain rate comparison those rows have always used.
+const isReducedLine = (it, approvedDays = 1) => {
+  if (!it) return false;
+  if (it.claimed === '' || it.claimed === null || it.claimed === undefined) return false;
+  if (_n(it.amount) < _n(it.claimed)) return true;
+  return _n(it.amount) * approvedDays < _n(it.claimed) * claimedDaysOf(it, approvedDays);
+};
 
 // Rebuild rows from the flat scalar columns — used for a pre-auth or a saved
 // letter that predates the itemised breakdown, so neither opens empty.
@@ -149,8 +183,8 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   const [uploadedFile, setUploadedFile] = useState(null);
 
   const setBillField = (key, value) => setBill((prev) => ({ ...prev, [key]: value }));
-  const setItemAmount = (index, value) =>
-    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, amount: value } : it)));
+  const setItemField = (index, key, value) =>
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [key]: value } : it)));
 
   const fmtCap = (n) => Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
@@ -169,16 +203,24 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   // Enhancement: room / ICU are flat amounts (no day multiplication).
   const nonIcuDays = Math.max(0, _n(bill.expectedDays) - _n(bill.icuDays));
 
+  // Days a row currently bills at. Flat rows bill once, so every caller can
+  // multiply unconditionally.
+  const rowDays = (it) => {
+    if (isEnhancement) return 1;
+    if (it?.key === 'room_rent') return nonIcuDays;
+    if (it?.key === 'icu_charges') return _n(bill.icuDays);
+    return 1;
+  };
+
   // One line's contribution: the two room heads are per-day rates × their day
   // count, everything else is flat — the same arithmetic the fixed form used,
   // so identical inputs still produce an identical total.
-  const itemLineTotal = (it) => {
-    const amt = _n(it?.amount);
-    if (isEnhancement) return amt;
-    if (it?.key === 'room_rent') return amt * nonIcuDays;
-    if (it?.key === 'icu_charges') return amt * _n(bill.icuDays);
-    return amt;
-  };
+  const itemLineTotal = (it) => _n(it?.amount) * rowDays(it);
+
+  // Reduction test bound to this round's day counts. Every caller goes through
+  // it so the render, the Approve gate and the persisted flag can never
+  // disagree about whether a line was cut.
+  const isReduced = (it) => isReducedLine(it, rowDays(it));
   const itemsTotal = items.reduce((sum, it) => sum + itemLineTotal(it), 0);
 
   // Heads not yet on the breakdown, plus each investigation the hospital named
@@ -213,6 +255,12 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   // requested (Requested − Total Authorised), never negative.
   const amountByInsured = Math.max(0, requestedCap - totalAuthorised);
 
+  // A line approved below the hospital's ask must say why. Drives both the
+  // Approve guard and the button's disabled state.
+  const missingReasonLines = items
+    .filter((it) => isReduced(it) && !(it.reason || '').trim())
+    .map((it) => it.label);
+
   // Bill Breakdown defaults pulled from the pre-auth cost estimates (already in
   // the claim payload — no extra fetch needed). Enhancement rounds start blank.
   // The rows the hospital actually claimed. Falls back to the flat scalars for
@@ -228,11 +276,23 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       });
     }
     const h = claim?.form_data_json?.hospitalization || {};
+    // Freeze the hospital's day counts alongside its rates, so a later cut to
+    // Expected Stay / ICU Days is still measurable against the original ask.
+    // Ward days are derived the same way the live total derives them.
+    const claimedIcu = _n(h.icu_days);
+    const claimedDaysFor = (key) => {
+      if (key === 'room_rent') return Math.max(0, _n(h.expected_days) - claimedIcu);
+      if (key === 'icu_charges') return claimedIcu;
+      return null;
+    };
     const costItems = Array.isArray(h.cost_items) ? h.cost_items : [];
     if (costItems.length > 0) {
       return costItems
         .filter((it) => it && it.key)
-        .map((it) => toBillItem(it.key, it.label || it.key, it.description, it.amount));
+        .map((it) => toBillItem(
+          it.key, it.label || it.key, it.description, it.amount,
+          undefined, undefined, claimedDaysFor(it.key),
+        ));
     }
     return itemsFromScalars(h.costs || {}, (src, costKey) => src[costKey]);
   };
@@ -278,7 +338,12 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       || data.bd_investigation_cost != null
       || data.as_total_bill_amount != null;
     if (data.is_persisted && savedItems && savedItems.length > 0) {
-      setItems(savedItems.map((it) => toBillItem(it.key, it.label, it.description, it.amount)));
+      setItems(savedItems.map(
+        (it) => toBillItem(
+          it.key, it.label, it.description, it.amount,
+          it.claimed, it.reason, it.claimedDays,
+        ),
+      ));
     } else if (data.is_persisted && hasNumeric) {
       // A letter saved before the itemised breakdown — rebuild rows from its
       // own scalars so the provider's earlier edits survive.
@@ -435,6 +500,12 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       description: it.description ?? '',
       claimed: it.claimed === '' || it.claimed == null ? null : Number(it.claimed),
       amount: _n(it.amount),
+      // The frozen day baseline rides along so a reopened letter can still tell
+      // an approved day count from the one the hospital asked for.
+      claimedDays: it.claimedDays == null || it.claimedDays === ''
+        ? null : Number(it.claimedDays),
+      // Only meaningful on a reduced line; blank elsewhere.
+      reason: isReduced(it) ? (it.reason || '').trim() : '',
     })),
     bd_expected_days: _n(bill.expectedDays),
     bd_icu_days: _n(bill.icuDays),
@@ -551,6 +622,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       toast.error(`Approved amount cannot exceed the requested amount (${fmtCap(requestedCap)})`);
       return;
     }
+    if (missingReasonLines.length > 0) {
+      toast.error(`Give a disallowance reason for: ${missingReasonLines.join(', ')}`);
+      return;
+    }
     setSaving(true);
     try {
       // 1. Persist field values (draft pre-approval) so the bill breakdown is
@@ -584,6 +659,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
           label: it.label ?? '',
           claimed: it.claimed === '' || it.claimed == null ? null : Number(it.claimed),
           approved: _n(it.amount),
+          reason: isReduced(it) ? (it.reason || '').trim() : '',
         }))));
       }
       fd.append('file', uploadedFile);
@@ -786,6 +862,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                         <th>Expense Category</th>
                         <th>Description</th>
                         <th className="part-d-fill__bill-amount-col">Approved (₹)</th>
+                        <th className="part-d-fill__bill-reason-col">Disallowance Reason</th>
                         <th className="part-d-fill__bill-remove" />
                       </tr>
                     </thead>
@@ -796,6 +873,8 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                           && (it.key === 'room_rent' || it.key === 'icu_charges');
                         const days = it.key === 'icu_charges' ? _n(bill.icuDays) : nonIcuDays;
                         const isConstant = CONSTANT_ROW_KEYS.includes(it.key);
+                        const reduced = isReduced(it);
+                        const claimedDays = claimedDaysOf(it, days);
                         return (
                           <tr key={`${it.key}-${idx}`}>
                             <td>
@@ -811,19 +890,40 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                                 min="0"
                                 value={it.amount}
                                 onWheel={(e) => e.currentTarget.blur()}
-                                onChange={(e) => setItemAmount(idx, e.target.value)}
+                                onChange={(e) => setItemField(idx, 'amount', e.target.value)}
                               />
                               {perDay && _n(it.amount) > 0 && days > 0 && (
                                 <small className="part-d-fill__bill-hint">
                                   {`× ${days} day${days > 1 ? 's' : ''} = ${fmtCap(itemLineTotal(it))}`}
                                 </small>
                               )}
-                              {/* What the hospital asked, when the provider has cut it. */}
-                              {it.claimed !== '' && it.claimed != null
-                                && _n(it.claimed) !== _n(it.amount) && (
+                              {/* What the hospital asked, when the provider has
+                                  cut it. A per-day row spells out the original
+                                  days too — otherwise a day-only cut reads as
+                                  "Claimed ₹5,000" beside an approved ₹5,000. */}
+                              {reduced && (
                                 <small className="part-d-fill__bill-claimed">
-                                  {`Claimed ${fmtCap(it.claimed)}`}
+                                  {perDay && claimedDays > 0
+                                    ? `Claimed ${fmtCap(it.claimed)} × ${claimedDays} day${claimedDays > 1 ? 's' : ''} = ${fmtCap(_n(it.claimed) * claimedDays)}`
+                                    : `Claimed ${fmtCap(it.claimed)}`}
                                 </small>
+                              )}
+                            </td>
+                            <td className="part-d-fill__bill-reason">
+                              {/* Only a reduced line needs explaining — a line
+                                  approved in full has nothing to disallow. */}
+                              {reduced ? (
+                                <input
+                                  type="text"
+                                  value={it.reason || ''}
+                                  placeholder="Why was this reduced?"
+                                  aria-label={`Disallowance reason for ${it.label}`}
+                                  className={(it.reason || '').trim()
+                                    ? '' : 'part-d-fill__bill-reason--missing'}
+                                  onChange={(e) => setItemField(idx, 'reason', e.target.value)}
+                                />
+                              ) : (
+                                <span className="part-d-fill__bill-na">N/A</span>
                               )}
                             </td>
                             <td className="part-d-fill__bill-remove">
@@ -949,7 +1049,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                 <button type="button" className="btn btn--ghost" onClick={handlePrint} disabled={saving}>
                   {saving ? <Spinner size={16} /> : 'Print letter'}
                 </button>
-                <button type="button" className="btn btn--primary" onClick={handleSubmitApproval} disabled={saving || !uploadedFile}>
+                <button type="button" className="btn btn--primary" onClick={handleSubmitApproval} disabled={saving || !uploadedFile || missingReasonLines.length > 0}>
                   {saving ? <Spinner size={16} /> : 'Approve'}
                 </button>
               </>

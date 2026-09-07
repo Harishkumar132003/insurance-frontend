@@ -4379,6 +4379,46 @@
     color: #b45309;
   }
 
+  &__bill-reason-col {
+    width: 220px;
+  }
+
+  // Only a reduced line gets an input here; a full-value line shows N/A.
+  &__bill-reason {
+    input {
+      width: 100%;
+      padding: $space-2 $space-3;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: $bg-card;
+      outline: none;
+      transition: border-color $transition-fast, box-shadow $transition-fast;
+
+      &:focus {
+        border-color: $primary;
+        box-shadow: 0 0 0 3px rgba($primary, 0.1);
+      }
+    }
+
+    // Approval is blocked until this is filled, so flag it up front rather
+    // than only on the toast.
+    input.part-d-fill__bill-reason--missing {
+      border-color: $danger;
+      background: rgba($danger, 0.04);
+
+      &:focus {
+        box-shadow: 0 0 0 3px rgba($danger, 0.1);
+      }
+    }
+  }
+
+  &__bill-na {
+    font-size: $font-size-sm;
+    color: $text-light;
+  }
+
   &__bill-remove {
     width: 44px;
     text-align: center !important;
@@ -4412,6 +4452,17 @@
 
     &__bill-amount input {
       width: 100%;
+    }
+
+    &__bill-reason::before {
+      content: 'Disallowance reason';
+      display: block;
+      margin-bottom: $space-1;
+      font-size: $font-size-xs;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: $text-secondary;
     }
   }
 }

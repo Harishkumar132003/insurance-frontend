@@ -494,6 +494,7 @@ function ProviderDecisionView({ formValues, claim }) {
                   <th>Line item</th>
                   <th style={{ textAlign: 'right' }}>Claimed</th>
                   <th style={{ textAlign: 'right' }}>Approved</th>
+                  <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
@@ -502,6 +503,7 @@ function ProviderDecisionView({ formValues, claim }) {
                     <td>{ln?.label || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{formatINR(ln?.claimed)}</td>
                     <td style={{ textAlign: 'right' }}>{formatINR(ln?.approved)}</td>
+                    <td>{(ln?.reason || '').trim() || '—'}</td>
                   </tr>
                 ))}
                 <tr className="claim-review__total-row">
@@ -512,6 +514,7 @@ function ProviderDecisionView({ formValues, claim }) {
                   <td style={{ textAlign: 'right' }}>
                     <strong>{formatINR(formValues.approved_breakdown.reduce((s, l) => s + (Number(l?.approved) || 0), 0))}</strong>
                   </td>
+                  <td />
                 </tr>
               </tbody>
             </table>
