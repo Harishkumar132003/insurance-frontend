@@ -168,19 +168,23 @@ function KPIStrip({ kpis, onNavigate }) {
       key: 'receivables',
       label: 'Outstanding Receivables',
       value: formatCompactINR(kpis.outstanding_receivables_amount),
-      subtitle: `Across ${kpis.outstanding_receivables_count} invoice${kpis.outstanding_receivables_count === 1 ? '' : 's'}`,
+      subtitle: `Awaiting settlement on ${kpis.outstanding_receivables_count} case${kpis.outstanding_receivables_count === 1 ? '' : 's'}`,
       color: '#1d4ed8',
       bg: '#dbeafe',
-      onClick: () => onNavigate('/invoices'),
+      onClick: () => onNavigate('/settlements'),
     },
     {
-      key: 'approved',
-      label: 'Approved',
-      value: formatCompactINR(kpis.approved_this_month_amount),
-      subtitle: `${kpis.approved_this_month_count} case${kpis.approved_this_month_count === 1 ? '' : 's'} in period`,
-      color: '#15803d',
-      bg: '#dcfce7',
-      onClick: () => onNavigate('/claims'),
+      key: 'cancelled',
+      label: 'Cancelled',
+      value: kpis.cancelled_count,
+      // Share of the period's cases that were dropped. Slate rather than red:
+      // this is informational, and Action Needed already owns the red slot.
+      subtitle: kpis.total_cases_in_period
+        ? `${Math.round((kpis.cancelled_count / kpis.total_cases_in_period) * 100)}% of ${kpis.total_cases_in_period} cases in period`
+        : 'None in period',
+      color: '#475569',
+      bg: '#e2e8f0',
+      onClick: () => onNavigate('/claim-list'),
     },
   ];
 

@@ -21,7 +21,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // A 401 from the login call is a wrong credential, NOT an expired session.
+    // Redirecting here reloaded the login page mid-submit, which wiped the form
+    // and swallowed the server's message — so the user saw nothing at all.
+    // Let it fall through; Login.jsx renders it on the field that is wrong.
+    const isLoginRequest = /\/auth\/login\/?$/.test(error.config?.url || '');
+    if (error.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
       window.location.href = '/login';

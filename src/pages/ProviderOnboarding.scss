@@ -117,6 +117,14 @@
     gap: 0.4rem;
     font-size: 0.8rem;
     color: #6b7280;
+
+    // A standalone descriptive line rather than an inline note. The base style
+    // is inline-flex, so two adjacent hints would otherwise run together on one
+    // line (a description followed by an empty-state).
+    &--block {
+      display: flex;
+      margin: 0 0 0.4rem;
+    }
   }
 
   &__charges {
@@ -130,6 +138,13 @@
       align-items: center;
       margin-bottom: 0.5rem;
       h4 { margin: 0; font-size: 0.9rem; }
+
+      // The first head is spaced by the section's own border-top/padding; any
+      // later one (Covered Diagnoses) needs its own separation from the block
+      // of fields above it.
+      &:not(:first-child) {
+        margin-top: 1.5rem;
+      }
     }
   }
 
@@ -181,8 +196,17 @@
     margin-bottom: 0.5rem;
   }
 
+  &__diagnosis-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
   // Match the styled .form-group inputs for the bare room-charge / select fields.
   &__room-row input,
+  &__diagnosis-row input,
   select {
     width: 100%;
     padding: 0.5rem 0.75rem;

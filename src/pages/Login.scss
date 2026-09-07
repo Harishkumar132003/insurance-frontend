@@ -114,3 +114,15 @@
   font-size: $font-size-xs;
   color: $danger;
 }
+
+// Form-level failures that belong to neither field — an unreachable server, or a
+// message the API returned that names no field.
+.login__error {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba($danger, 0.35);
+  border-radius: 6px;
+  background: rgba($danger, 0.08);
+  color: $danger;
+  font-size: $font-size-sm;
+  line-height: 1.4;
+}

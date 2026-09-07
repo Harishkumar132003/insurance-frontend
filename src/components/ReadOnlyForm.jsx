@@ -1,5 +1,12 @@
 import { FORM_SECTIONS } from '../pages/PreAuthFormPage';
 
+// Amounts in the cost table. Kept local so this component stays standalone.
+function formatMoney(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = Number(v);
+  return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : String(v);
+}
+
 // Format a single field value for read-only display: booleans → Yes/No,
 // select/radio with object options → option label, empty → em-dash.
 export function formatReadValue(value, field) {
@@ -85,6 +92,41 @@ export default function ReadOnlyForm({ dataJson }) {
         ));
       });
 
+  // Cost Estimates: show the line-item table the hospital actually built, so
+  // the reviewer sees each description and every investigation priced
+  // separately. Forms saved before the table existed have no cost_items — those
+  // fall back to the flat scalar fields, which are still written on every save.
+  const renderCostItems = (sectionData) => {
+    const items = (Array.isArray(sectionData?.cost_items) ? sectionData.cost_items : [])
+      .filter((it) => it && (it.label || it.amount != null));
+    if (items.length === 0) return null;
+    const total = sectionData?.costs?.total_cost;
+    return (
+      <table className="claim-review__table">
+        <thead>
+          <tr>
+            <th>Expense Category</th>
+            <th>Description</th>
+            <th style={{ textAlign: 'right' }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, idx) => (
+            <tr key={idx}>
+              <td>{it.label || '—'}</td>
+              <td>{it.description || '—'}</td>
+              <td style={{ textAlign: 'right' }}>{formatMoney(it.amount)}</td>
+            </tr>
+          ))}
+          <tr className="claim-review__total-row">
+            <td colSpan={2}><strong>Total Cost</strong></td>
+            <td style={{ textAlign: 'right' }}><strong>{formatMoney(total)}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    );
+  };
+
   return (
     <div className="portal-form__readonly">
       {FORM_SECTIONS.map((section) => {
@@ -119,9 +161,11 @@ export default function ReadOnlyForm({ dataJson }) {
               .map((sg) => (
                 <div key={sg.key} className="portal-form__readonly-subgroup">
                   <div className="portal-form__readonly-subtitle">{sg.label}</div>
-                  <div className="portal-form__readonly-grid">
-                    {renderFieldList(sg.fields, sectionData, sg.key)}
-                  </div>
+                  {(sg.key === 'costs' && renderCostItems(sectionData)) || (
+                    <div className="portal-form__readonly-grid">
+                      {renderFieldList(sg.fields, sectionData, sg.key)}
+                    </div>
+                  )}
                 </div>
               ))}
           </div>

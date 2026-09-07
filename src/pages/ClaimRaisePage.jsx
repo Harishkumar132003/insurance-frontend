@@ -38,19 +38,34 @@ const toBillPayload = (i) => (i.perDay
   ? { label: i.label.trim(), amount: Number(lineAmount(i)), rate: Number(i.rate) || 0, days: Number(i.days) || 0 }
   : { label: i.label.trim(), amount: Number(i.amount) });
 
-// Mirrors the pre-auth cost estimate: the two per-day room lines + the flat
-// cost categories (investigation, OT, professional fees, medicines, package,
-// other expenses).
+// Mirrors the pre-auth Cost Estimates section: the two per-day room lines are
+// always present and not removable; every other head is added on demand, so a
+// claim only ever shows the lines actually being billed.
 const DEFAULT_LINE_ITEMS = [
   { label: 'Non ICU Room (per day)', perDay: true, rate: '', days: '', amount: '' },
   { label: 'ICU Charges (per day)', perDay: true, rate: '', days: '', amount: '' },
-  { label: 'Investigation Cost', amount: '' },
-  { label: 'OT Charges', amount: '' },
-  { label: 'Professional Fees', amount: '' },
-  { label: 'Medicines Cost', amount: '' },
-  { label: 'Package Charges', amount: '' },
-  { label: 'Other Expenses', amount: '' },
 ];
+
+// Offered by "+ Add expense", once each.
+const CLAIM_ADDABLE_CATEGORIES = [
+  'OT Charges',
+  'Professional Fees',
+  'Medicines Cost',
+  'Package Charges',
+  'Other Expenses',
+];
+
+// The named investigations the hospital listed on the pre-auth, so a claim line
+// can be billed against the investigation itself rather than one lumped figure.
+// `claim_bill_item.label` is free text, so these persist with no schema change.
+const preAuthInvestigationLabels = (claimCase) => {
+  const forms = Array.isArray(claimCase?.form_data) ? claimCase.form_data : [];
+  const preAuth = [...forms].reverse().find((f) => (f?.sections?.hospitalization?.cost_items || []).length);
+  const costItems = preAuth?.sections?.hospitalization?.cost_items || [];
+  return costItems
+    .filter((it) => it && it.key === 'investigation' && String(it.label || '').trim())
+    .map((it) => it.label.trim());
+};
 
 const hasApprovedAmount = (cc) => {
   const n = Number(cc?.approved_amount);
@@ -476,7 +491,15 @@ export default function ClaimRaisePage() {
       return next;
     }));
   };
-  const addLine = () => setItems((prev) => [...prev, { label: '', amount: '' }]);
+  const addLine = (label) => setItems((prev) => [...prev, { label, amount: '' }]);
+
+  // Fixed categories not yet used, plus each pre-auth investigation not yet
+  // used. Matching the pre-auth's "once each" rule keeps one row per head.
+  const usedLabels = new Set(items.map((it) => String(it.label || '').trim()));
+  const addOptions = [
+    ...CLAIM_ADDABLE_CATEGORIES,
+    ...preAuthInvestigationLabels(claimCase),
+  ].filter((label) => !usedLabels.has(label));
   const removeLine = (idx) => setItems((prev) => prev.filter((_, i) => i !== idx));
 
   const handleAddFiles = (categoryKey, files) => {
@@ -841,10 +864,9 @@ export default function ClaimRaisePage() {
                   type="text"
                   value={it.label}
                   disabled={readOnly}
-                  readOnly={it.perDay}
-                  onChange={(e) => updateItem(idx, 'label', e.target.value)}
+                  readOnly
                   placeholder="e.g. Surgery charges"
-                  style={it.perDay ? { background: '#f3f4f6', cursor: 'default' } : undefined}
+                  style={{ background: '#f3f4f6', cursor: 'default' }}
                 />
               </Field>
               {it.perDay ? (
@@ -912,7 +934,20 @@ export default function ClaimRaisePage() {
           ))}
           {!readOnly && (
             <div style={{ gridColumn: 'span 6' }}>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={addLine}>+ Add line</button>
+              {addOptions.length > 0 ? (
+                <select
+                  className="cost-table__add"
+                  value=""
+                  onChange={(e) => { if (e.target.value) addLine(e.target.value); }}
+                >
+                  <option value="">+ Add expense…</option>
+                  {addOptions.map((label) => (
+                    <option key={label} value={label}>{label}</option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{ fontSize: 13, color: '#6b7280' }}>All expense categories added.</span>
+              )}
             </div>
           )}
           <ReadField

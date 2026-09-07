@@ -2362,6 +2362,217 @@
 }
 
 // File input
+// Searchable dropdown (Provisional Diagnosis). The inner input deliberately
+// inherits the shared `.form-group input` styling so it is indistinguishable
+// from the plain fields beside it; only the menu is styled here.
+.searchable-select {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+
+  &__input {
+    width: 100%;
+    // Room for the clear button.
+    padding-right: $space-8 !important;
+    cursor: pointer;
+  }
+
+  &__clear {
+    position: absolute;
+    top: 50%;
+    right: $space-3;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: $radius-full;
+    background: transparent;
+    color: $text-light;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background $transition-fast, color $transition-fast;
+
+    &:hover {
+      background: $bg-body;
+      color: $text-primary;
+    }
+  }
+
+  &__menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 240px;
+    margin: 0;
+    padding: $space-1;
+    overflow-y: auto;
+    list-style: none;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    box-shadow: $shadow-lg;
+  }
+
+  &__opt {
+    padding: $space-2 $space-3;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    color: $text-primary;
+    cursor: pointer;
+
+    &.is-active {
+      background: rgba($primary, 0.08);
+    }
+
+    &.is-selected {
+      font-weight: 600;
+      color: $primary;
+    }
+
+    // The "Use ..." entry for text that matches no option.
+    &.is-new {
+      color: $text-secondary;
+      font-style: italic;
+    }
+  }
+
+  &__empty {
+    padding: $space-2 $space-3;
+    font-size: $font-size-sm;
+    color: $text-light;
+  }
+}
+
+// Cost Estimates line-item table (pre-auth form). Grid rather than <table> so
+// each cell can stack its hints (MOU coverage, per-day math, policy sub-limit)
+// under the control without breaking column alignment.
+.cost-table {
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+
+  &__row {
+    display: grid;
+    grid-template-columns: minmax(160px, 1.4fr) minmax(160px, 2fr) minmax(120px, 1fr) 40px;
+    gap: $space-3;
+    align-items: start;
+  }
+
+  &__row--head {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: $text-secondary;
+    padding-bottom: $space-2;
+    border-bottom: 1px solid $border-color;
+    align-items: center;
+  }
+
+  &__cell {
+    display: flex;
+    flex-direction: column;
+    gap: $space-1;
+    min-width: 0;
+
+    input {
+      width: 100%;
+      padding: $space-2 $space-3;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: $bg-card;
+      outline: none;
+      transition: border-color $transition-fast, box-shadow $transition-fast;
+
+      &:focus {
+        border-color: $primary;
+        box-shadow: 0 0 0 3px rgba($primary, 0.1);
+      }
+    }
+  }
+
+  &__cell--action {
+    align-items: center;
+    justify-content: center;
+  }
+
+  // The category is display-only — it was chosen on "+ Add" — but is styled as
+  // a filled input so the three columns read as one row of boxes.
+  &__category {
+    background: $bg-body !important;
+    font-weight: 500;
+    cursor: default;
+
+    &:focus {
+      border-color: $border-color !important;
+      box-shadow: none !important;
+    }
+  }
+
+  &__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $space-3;
+    flex-wrap: wrap;
+    margin-top: $space-2;
+    padding-top: $space-3;
+    border-top: 1px solid $border-color;
+  }
+
+  &__add {
+    padding: $space-2 $space-3;
+    border: 1px dashed $border-color;
+    border-radius: $radius-md;
+    font-size: $font-size-sm;
+    color: $primary;
+    background: $bg-card;
+    cursor: pointer;
+  }
+
+  &__all-added {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  &__total {
+    display: flex;
+    align-items: baseline;
+    gap: $space-3;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+
+    strong {
+      font-size: 1.05rem;
+      color: $text-primary;
+    }
+  }
+
+  // Stack into labelled blocks on narrow screens; a 4-column grid can't shrink
+  // far enough for the description and amount to stay usable.
+  @media (max-width: 720px) {
+    &__row--head { display: none; }
+
+    &__row {
+      grid-template-columns: 1fr 40px;
+      gap: $space-2;
+      padding-bottom: $space-3;
+      border-bottom: 1px solid $border-color;
+    }
+
+    &__cell--action { align-items: flex-end; }
+  }
+}
+
 .form-group input[type="file"] {
   padding: $space-2;
   font-size: $font-size-sm;
@@ -4030,6 +4241,23 @@
     align-items: center;
   }
 
+  // Inputs fall back to their intrinsic ~243px width, so in a .form-row they
+  // came out visibly narrower than the readonly fields beside them, which do
+  // fill the column. Scoped to this modal so other forms are untouched.
+  input,
+  select,
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  // Height parity with __readonly so a row mixing an input and a derived value
+  // lines up on the same baseline.
+  input,
+  select {
+    min-height: 38px;
+  }
+
   &__inputs {
     display: flex;
     flex-direction: column;
@@ -4051,6 +4279,140 @@
     border: 1px solid $border-color;
     border-radius: $radius-md;
     background: #fff;
+  }
+
+  // ── Itemised bill breakdown ──
+  // One row per line the hospital claimed. The amount inputs are styled to match
+  // the .form-group fields around them — this started from the read-only
+  // .claim-review__table, which carries no input styling at all.
+  // The border/radius live on the wrapper so the corners actually clip.
+  &__bill-wrap {
+    border: 1px solid $border-color;
+    border-radius: $radius-md;
+    overflow: hidden;
+  }
+
+  &__bill {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: $font-size-sm;
+
+    th,
+    td {
+      padding: $space-3;
+      border-bottom: 1px solid $border-color;
+      vertical-align: middle;
+      text-align: left;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    th {
+      font-size: $font-size-xs;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: $text-secondary;
+      background: $bg-body;
+    }
+  }
+
+  &__bill-amount-col {
+    text-align: center !important;
+    width: 200px;
+  }
+
+  &__bill-cat {
+    font-weight: 500;
+    color: $text-primary;
+  }
+
+  // Qualifier on the two per-day heads, muted so it reads as a unit not a label.
+  &__bill-perday {
+    margin-left: 6px;
+    font-size: $font-size-xs;
+    color: $text-secondary;
+  }
+
+  &__bill-desc {
+    color: $text-secondary;
+    overflow-wrap: anywhere;
+  }
+
+  &__bill-amount {
+    text-align: center !important;
+
+    input {
+      width: 140px;
+      padding: $space-2 $space-3;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: $bg-card;
+      text-align: center;
+      outline: none;
+      transition: border-color $transition-fast, box-shadow $transition-fast;
+
+      &:focus {
+        border-color: $primary;
+        box-shadow: 0 0 0 3px rgba($primary, 0.1);
+      }
+    }
+  }
+
+  &__bill-hint,
+  &__bill-claimed {
+    display: block;
+    margin-top: $space-1;
+    font-size: $font-size-xs;
+  }
+
+  &__bill-hint {
+    color: $primary;
+  }
+
+  // The hospital's original ask, shown only when the provider has cut the line.
+  &__bill-claimed {
+    color: #b45309;
+  }
+
+  &__bill-remove {
+    width: 44px;
+    text-align: center !important;
+  }
+
+  &__bill-empty {
+    margin: 0;
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+
+  // Stack into labelled blocks on narrow screens — three columns plus a 140px
+  // input can't shrink far enough to stay usable inside the modal.
+  @media (max-width: 720px) {
+    &__bill thead {
+      display: none;
+    }
+
+    &__bill td {
+      display: block;
+      padding: $space-2 $space-3;
+      border-bottom: none;
+      text-align: left !important;
+    }
+
+    &__bill tbody tr {
+      display: block;
+      padding: $space-2 0;
+      border-bottom: 1px solid $border-color;
+    }
+
+    &__bill-amount input {
+      width: 100%;
+    }
   }
 }
 
