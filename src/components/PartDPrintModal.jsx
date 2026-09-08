@@ -67,6 +67,11 @@ const EMPTY_BILL = {
   investigationCost: '', otCharges: '', professionalFees: '',
   medicinesCost: '', packageCharges: '', otherExpenses: '',
   discount: '', coPay: '', deductibles: '', deductions: '',
+  // Bill-level disallowances. Each is an amount the approver types plus the
+  // reason for it — nothing in the system stores a zone or a co-pay rate to
+  // compute them from. Distinct from the per-row `reason` on bd_items, which
+  // explains a single cut line.
+  zonal: '', zonalReason: '', coPayReason: '',
 };
 
 const _n = (v) => Number(v) || 0;
@@ -243,7 +248,8 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   const removeItem = (index) => setItems((prev) => prev.filter((_, i) => i !== index));
 
   const totalBill = itemsTotal;
-  const totalDeductions = _n(bill.discount) + _n(bill.coPay) + _n(bill.deductibles) + _n(bill.deductions);
+  const totalDeductions = _n(bill.discount) + _n(bill.coPay) + _n(bill.zonal)
+    + _n(bill.deductibles) + _n(bill.deductions);
   const totalAuthorised = Math.max(0, totalBill - totalDeductions);
 
   // The cap is what the hospital asked for this round (enhancement increment or
@@ -260,6 +266,17 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   const missingReasonLines = items
     .filter((it) => isReduced(it) && !(it.reason || '').trim())
     .map((it) => it.label);
+
+  // Bill-level disallowances follow the same rule as a cut line: charging one
+  // without saying why is what this feature exists to prevent. A zero or blank
+  // amount is not a disallowance and needs no reason.
+  const BILL_DISALLOWANCES = [
+    ['zonal', 'zonalReason', 'Zonal Disallowance'],
+    ['coPay', 'coPayReason', 'Co-pay Disallowance'],
+  ];
+  const missingDisallowanceReasons = BILL_DISALLOWANCES
+    .filter(([amtKey, reasonKey]) => _n(bill[amtKey]) > 0 && !(bill[reasonKey] || '').trim())
+    .map(([, , label]) => label);
 
   // Bill Breakdown defaults pulled from the pre-auth cost estimates (already in
   // the claim payload — no extra fetch needed). Enhancement rounds start blank.
@@ -365,6 +382,9 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
         otherExpenses: data.bd_other_expenses ?? '',
         discount: data.as_discount ?? '',
         coPay: data.as_co_pay ?? '',
+        coPayReason: data.co_pay_reason ?? '',
+        zonal: data.as_zonal ?? '',
+        zonalReason: data.zonal_reason ?? '',
         deductibles: data.as_deductibles ?? '',
         deductions: data.as_deductions ?? '',
       });
@@ -476,9 +496,18 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       bd.bd_other_expenses ? `Other ${rs(bd.bd_other_expenses)}` : '',
     ].filter(Boolean).join(', '),
     totalBillAmount: rs(totalBill),
-    deductionsDetail: '',
+    // The two disallowance reasons, which is exactly what this row is for.
+    // It was previously hard-coded blank, so nothing regresses when neither
+    // disallowance is applied.
+    deductionsDetail: [
+      _n(bill.zonal) > 0 && (bill.zonalReason || '').trim()
+        ? `Zonal: ${bill.zonalReason.trim()}` : '',
+      _n(bill.coPay) > 0 && (bill.coPayReason || '').trim()
+        ? `Co-pay: ${bill.coPayReason.trim()}` : '',
+    ].filter(Boolean).join('; '),
     discount: bill.discount !== '' ? rs(bill.discount) : '',
     coPay: bill.coPay !== '' ? rs(bill.coPay) : '',
+    zonal: bill.zonal !== '' ? rs(bill.zonal) : '',
     deductibles: bill.deductibles !== '' ? rs(bill.deductibles) : '',
     totalAuthorisedAmount: rs(totalAuthorised),
     amountToBePaidByInsured: rs(amountByInsured),
@@ -512,6 +541,11 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
     as_total_bill_amount: totalBill,
     as_discount: _n(bill.discount),
     as_co_pay: _n(bill.coPay),
+    as_zonal: _n(bill.zonal),
+    // A reason only means something next to a non-zero amount; clearing the
+    // amount clears the reason so a stale explanation can't linger.
+    co_pay_reason: _n(bill.coPay) > 0 ? (bill.coPayReason || '').trim() : '',
+    zonal_reason: _n(bill.zonal) > 0 ? (bill.zonalReason || '').trim() : '',
     as_deductibles: _n(bill.deductibles),
     as_deductions: _n(bill.deductions),
     as_amount_to_be_paid_by_insured: amountByInsured,
@@ -622,6 +656,10 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       toast.error(`Approved amount cannot exceed the requested amount (${fmtCap(requestedCap)})`);
       return;
     }
+    if (missingDisallowanceReasons.length > 0) {
+      toast.error(`Give a reason for: ${missingDisallowanceReasons.join(', ')}`);
+      return;
+    }
     if (missingReasonLines.length > 0) {
       toast.error(`Give a disallowance reason for: ${missingReasonLines.join(', ')}`);
       return;
@@ -662,6 +700,16 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
           reason: isReduced(it) ? (it.reason || '').trim() : '',
         }))));
       }
+      // Same grouped shape the claim approval sends, so EmailFormValues renders
+      // both flows' disallowances through one block.
+      if (_n(bill.zonal) > 0 || _n(bill.coPay) > 0) {
+        fd.append('deductions', JSON.stringify({
+          zonal: { amount: _n(bill.zonal), reason: (bill.zonalReason || '').trim() },
+          co_pay: { amount: _n(bill.coPay), reason: (bill.coPayReason || '').trim() },
+          gross_approved: totalBill,
+          total: totalDeductions,
+        }));
+      }
       fd.append('file', uploadedFile);
 
       await claimCaseService.providerAction(claimCaseId, fd);
@@ -700,6 +748,34 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       </div>
     </div>
   );
+
+  // A bill-level disallowance: the amount, and the reason it was applied. The
+  // reason turns required the moment the amount goes above zero, mirroring the
+  // per-line rule in the bill table above.
+  const renderDisallowance = (amtKey, reasonKey, label) => {
+    const needsReason = _n(bill[amtKey]) > 0;
+    const filled = (bill[reasonKey] || '').trim();
+    return (
+      <div className="form-row" key={amtKey}>
+        {renderNumField(amtKey, label)}
+        <div className="form-group">
+          <label>
+            {`${label} Reason`}
+            {needsReason && <span style={{ color: '#b91c1c' }}> *</span>}
+          </label>
+          <input
+            type="text"
+            value={bill[reasonKey] || ''}
+            disabled={!needsReason}
+            placeholder={needsReason ? `Why was this ${label.toLowerCase()} applied?` : 'N/A'}
+            aria-label={`${label} reason`}
+            className={needsReason && !filled ? 'part-d-fill__bill-reason--missing' : ''}
+            onChange={(e) => setBillField(reasonKey, e.target.value)}
+          />
+        </div>
+      </div>
+    );
+  };
 
   // Read-only computed amount (Total Bill / Total Authorised / Insured).
   const renderCalcField = (label, value) => (
@@ -973,12 +1049,16 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                 {renderCalcField('Total Bill Amount', totalBill)}
                 {renderNumField('discount', 'Discount')}
               </div>
+              {/* Both feed totalDeductions like every other line here; they
+                  just have to say why. */}
+              {renderDisallowance('zonal', 'zonalReason', 'Zonal Disallowance')}
+              {renderDisallowance('coPay', 'coPayReason', 'Co-pay Disallowance')}
               <div className="form-row">
-                {renderNumField('coPay', 'Co-Pay')}
                 {renderNumField('deductibles', 'Deductibles')}
+                {renderNumField('deductions', 'Other Deductions')}
               </div>
               <div className="form-row">
-                {renderNumField('deductions', 'Other Deductions')}
+                {renderCalcField('Total Deductions', totalDeductions)}
                 {renderCalcField('Total Authorised Amount', totalAuthorised)}
               </div>
               <div className="form-row">
@@ -1049,7 +1129,8 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                 <button type="button" className="btn btn--ghost" onClick={handlePrint} disabled={saving}>
                   {saving ? <Spinner size={16} /> : 'Print letter'}
                 </button>
-                <button type="button" className="btn btn--primary" onClick={handleSubmitApproval} disabled={saving || !uploadedFile || missingReasonLines.length > 0}>
+                <button type="button" className="btn btn--primary" onClick={handleSubmitApproval} disabled={saving || !uploadedFile || missingReasonLines.length > 0
+                  || missingDisallowanceReasons.length > 0}>
                   {saving ? <Spinner size={16} /> : 'Approve'}
                 </button>
               </>

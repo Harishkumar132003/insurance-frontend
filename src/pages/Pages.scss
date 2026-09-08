@@ -4524,6 +4524,27 @@
     }
   }
 
+  // The disallowance table holds two inputs per row. Without a fixed layout the
+  // browser sizes columns from the inputs' intrinsic width, which pushed the
+  // Reason column past the modal edge. Fixed widths + min-width:0 let the
+  // inputs shrink into their cells instead.
+  &__table--disallow {
+    table-layout: fixed;
+
+    th:nth-child(1), td:nth-child(1) { width: 30%; }
+    th:nth-child(2), td:nth-child(2) { width: 24%; }
+    th:nth-child(3), td:nth-child(3) { width: 46%; }
+
+    input {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+
+    // Keeps "Net Approved" on one line rather than wrapping to two.
+    td:nth-child(1) { white-space: nowrap; }
+  }
+
   &__total-row td {
     border-top: 2px solid #d1d5db;
     border-bottom: none;

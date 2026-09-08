@@ -133,6 +133,11 @@ export default function ProviderClaimDetail() {
   const [claimApprovedLines, setClaimApprovedLines] = useState([]);
   const [claimApproveAmountFallback, setClaimApproveAmountFallback] = useState('');
   const [claimApproveRemarks, setClaimApproveRemarks] = useState('');
+  // Bill-level disallowances applied AFTER the per-line cuts. Amount + reason
+  // each; nothing in the system stores a zone or a co-pay rate to derive them.
+  const [claimDisallow, setClaimDisallow] = useState({
+    zonal: '', zonalReason: '', coPay: '', coPayReason: '',
+  });
   const [claimApproveFile, setClaimApproveFile] = useState(null);
   const [claimApproveSaving, setClaimApproveSaving] = useState(false);
   const [partD, setPartD] = useState({ open: false, emailId: null });
@@ -416,6 +421,7 @@ export default function ProviderClaimDetail() {
         ? String(claimData.claimed_amount) : ''
     );
     setClaimApproveRemarks('');
+    setClaimDisallow({ zonal: '', zonalReason: '', coPay: '', coPayReason: '' });
     setClaimApproveFile(null);
     setClaimApproveOpen(true);
   };
@@ -444,6 +450,26 @@ export default function ProviderClaimDetail() {
     (s, ln) => s + (Number(ln.approved) || 0), 0,
   );
 
+  // Bill-level disallowances come off the line sum. `claimNetApproved` is the
+  // figure that must reach the server: claims.approved_amount is set straight
+  // from it, and both the invoice gate and the Raise Invoice prefill read that
+  // column — send the gross sum and the hospital gets invoiced for money that
+  // was deducted.
+  const _dn = (v) => Number(v) || 0;
+  const claimGross = claimApprovedLines.length > 0
+    ? claimTotalApproved : _dn(claimApproveAmountFallback);
+  const claimDeductions = _dn(claimDisallow.zonal) + _dn(claimDisallow.coPay);
+  const claimNetApproved = Math.max(0, claimGross - claimDeductions);
+
+  // A disallowance without an explanation is exactly what this prevents.
+  const CLAIM_DISALLOWANCES = [
+    ['zonal', 'zonalReason', 'Zonal Disallowance'],
+    ['coPay', 'coPayReason', 'Co-pay Disallowance'],
+  ];
+  const claimMissingDisallowReasons = CLAIM_DISALLOWANCES
+    .filter(([a, r]) => _dn(claimDisallow[a]) > 0 && !(claimDisallow[r] || '').trim())
+    .map(([, , label]) => label);
+
   const handleClaimApproveSubmit = async () => {
     if (!claim) return;
     // Validate every per-line approved amount.
@@ -459,10 +485,17 @@ export default function ProviderClaimDetail() {
         return;
       }
     }
+    if (claimMissingDisallowReasons.length > 0) {
+      toast.error(`Give a reason for: ${claimMissingDisallowReasons.join(', ')}`);
+      return;
+    }
     const itemized = claimApprovedLines.length > 0;
-    const amt = itemized ? claimTotalApproved : Number(claimApproveAmountFallback);
+    // Net of the bill-level disallowances — this is what gets approved.
+    const amt = claimNetApproved;
     if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error('Approved amount must be greater than zero');
+      toast.error(claimDeductions > 0
+        ? 'Disallowances cannot reduce the approved amount to zero'
+        : 'Approved amount must be greater than zero');
       return;
     }
     const claimedTotal = itemized
@@ -483,6 +516,23 @@ export default function ProviderClaimDetail() {
             approved: Number(ln.approved) || 0,
           })),
         ));
+      }
+      // One grouped JSON field rather than four scalars: form_values is
+      // untyped JSONB, so this rides through the route and controller verbatim
+      // and stays extensible if another disallowance type is added.
+      if (claimDeductions > 0) {
+        fd.append('deductions', JSON.stringify({
+          zonal: {
+            amount: _dn(claimDisallow.zonal),
+            reason: (claimDisallow.zonalReason || '').trim(),
+          },
+          co_pay: {
+            amount: _dn(claimDisallow.coPay),
+            reason: (claimDisallow.coPayReason || '').trim(),
+          },
+          gross_approved: claimGross,
+          total: claimDeductions,
+        }));
       }
       if (claimApproveRemarks.trim()) fd.append('remarks', claimApproveRemarks.trim());
       if (claimApproveFile) fd.append('file', claimApproveFile);
@@ -753,6 +803,7 @@ export default function ProviderClaimDetail() {
                   <thead>
                     <tr>
                       <th>Line item</th>
+                      <th>Bill ID</th>
                       <th style={{ textAlign: 'right' }}>Amount</th>
                     </tr>
                   </thead>
@@ -760,11 +811,14 @@ export default function ProviderClaimDetail() {
                     {claimData.bill_breakdown.map((it, idx) => (
                       <tr key={idx}>
                         <td>{it.label}</td>
+                        {/* Claims raised before Bill ID existed have none. */}
+                        <td>{(it.bill_id || '').trim() || '—'}</td>
                         <td style={{ textAlign: 'right' }}>{formatINR(it.amount)}</td>
                       </tr>
                     ))}
                     <tr className="claim-review__total-row">
                       <td><strong>Total claim</strong></td>
+                      <td />
                       <td style={{ textAlign: 'right' }}><strong>{formatINR(claimData.claimed_amount)}</strong></td>
                     </tr>
                   </tbody>
@@ -834,14 +888,14 @@ export default function ProviderClaimDetail() {
       {claimApproveOpen && (() => {
         const itemized = claimApprovedLines.length > 0;
         const decisionLabel = itemized
-          ? (claimTotalApproved < claimTotalClaimed && claimTotalApproved > 0
+          ? (claimNetApproved < claimTotalClaimed && claimNetApproved > 0
               ? 'Partial approval'
-              : claimTotalApproved === claimTotalClaimed
+              : claimNetApproved === claimTotalClaimed
                 ? 'Full approval'
-                : claimTotalApproved === 0 ? '—' : 'Over-approval')
+                : claimNetApproved === 0 ? '—' : 'Over-approval')
           : null;
         return (
-          <Modal title="Approve Claim" onClose={closeClaimApprove}>
+          <Modal title="Approve Claim" size="lg" onClose={closeClaimApprove}>
             <div className="modal-form">
               <div className="form-group">
                 <label>Patient</label>
@@ -913,6 +967,69 @@ export default function ProviderClaimDetail() {
                 </>
               )}
 
+              {/* Bill-level disallowances, applied after the per-line cuts.
+                  Shared by the itemized and fallback paths. */}
+              <div className="form-group">
+                <label>Disallowances</label>
+                <table className="claim-review__table claim-review__table--disallow">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Amount</th>
+                      <th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CLAIM_DISALLOWANCES.map(([amtKey, reasonKey, label]) => {
+                      const needsReason = _dn(claimDisallow[amtKey]) > 0;
+                      const filled = (claimDisallow[reasonKey] || '').trim();
+                      return (
+                        <tr key={amtKey}>
+                          <td>{label}</td>
+                          <td>
+                            <input
+                              type="number"
+                              min="0"
+                              value={claimDisallow[amtKey]}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              placeholder="0"
+                              aria-label={label}
+                              onChange={(e) => setClaimDisallow(
+                                (prev) => ({ ...prev, [amtKey]: e.target.value }),
+                              )}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              value={claimDisallow[reasonKey] || ''}
+                              disabled={!needsReason}
+                              placeholder={needsReason ? 'Why was this applied?' : 'N/A'}
+                              aria-label={`${label} reason`}
+                              style={needsReason && !filled
+                                ? { borderColor: '#b91c1c' } : undefined}
+                              onChange={(e) => setClaimDisallow(
+                                (prev) => ({ ...prev, [reasonKey]: e.target.value }),
+                              )}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="claim-review__total-row">
+                      <td><strong>Net Approved</strong></td>
+                      <td><strong>{formatINR(claimNetApproved)}</strong></td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+                {claimDeductions > 0 && (
+                  <p className="provider-approve__file-hint" style={{ marginTop: 6 }}>
+                    {`${formatINR(claimGross)} less ${formatINR(claimDeductions)} deducted`}
+                  </p>
+                )}
+              </div>
+
               <div className="form-group">
                 <label>Remarks</label>
                 <textarea
@@ -944,7 +1061,7 @@ export default function ProviderClaimDetail() {
                   type="button"
                   className="btn btn--primary"
                   onClick={handleClaimApproveSubmit}
-                  disabled={claimApproveSaving}
+                  disabled={claimApproveSaving || claimMissingDisallowReasons.length > 0}
                 >
                   {claimApproveSaving ? <Spinner size={16} /> : 'Submit'}
                 </button>

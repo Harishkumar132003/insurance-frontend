@@ -323,6 +323,20 @@
   &--low  { background: #fee2e2; color: #b91c1c; }
 }
 
+// The rupee shortfall beside the conversion %. Same traffic-light hue as the
+// % it sits next to, but text-only — two filled pills per row competed with
+// the bar itself and made the column read as louder than the data.
+.funnel__drop {
+  font-size: $font-size-xs;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+
+  &--good { color: #15803d; }
+  &--mid  { color: #b45309; }
+  &--low  { color: #b91c1c; }
+}
+
 // ── Activity feed ───────────────────────────────────────────────────
 
 .activity {
