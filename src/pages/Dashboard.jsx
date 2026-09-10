@@ -168,7 +168,9 @@ function KPIStrip({ kpis, onNavigate }) {
       key: 'receivables',
       label: 'Outstanding Receivables',
       value: formatCompactINR(kpis.outstanding_receivables_amount),
-      subtitle: `Awaiting settlement on ${kpis.outstanding_receivables_count} case${kpis.outstanding_receivables_count === 1 ? '' : 's'}`,
+      // A live balance, not a flow: it deliberately ignores the date range, so
+      // the subtitle says so rather than letting it read as period figure.
+      subtitle: `${kpis.outstanding_receivables_count} case${kpis.outstanding_receivables_count === 1 ? '' : 's'} awaiting settlement · all time`,
       color: '#1d4ed8',
       bg: '#dbeafe',
       onClick: () => onNavigate('/settlements'),

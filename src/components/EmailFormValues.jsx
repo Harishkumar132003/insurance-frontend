@@ -494,6 +494,7 @@ function ProviderDecisionView({ formValues, claim }) {
                   <th>Line item</th>
                   <th style={{ textAlign: 'right' }}>Claimed</th>
                   <th style={{ textAlign: 'right' }}>Approved</th>
+                  <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
@@ -502,6 +503,7 @@ function ProviderDecisionView({ formValues, claim }) {
                     <td>{ln?.label || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{formatINR(ln?.claimed)}</td>
                     <td style={{ textAlign: 'right' }}>{formatINR(ln?.approved)}</td>
+                    <td>{(ln?.reason || '').trim() || '—'}</td>
                   </tr>
                 ))}
                 <tr className="claim-review__total-row">
@@ -512,12 +514,58 @@ function ProviderDecisionView({ formValues, claim }) {
                   <td style={{ textAlign: 'right' }}>
                     <strong>{formatINR(formValues.approved_breakdown.reduce((s, l) => s + (Number(l?.approved) || 0), 0))}</strong>
                   </td>
+                  <td />
                 </tr>
               </tbody>
             </table>
           </div>
         </Section>
       )}
+
+      {/* Bill-level disallowances taken off the approved lines. Absent on every
+          approval made before this existed, so the whole section stays hidden
+          rather than rendering an empty table. */}
+      {formValues.deductions && (() => {
+        const d = formValues.deductions;
+        const rows = [
+          ['Zonal Disallowance', d.zonal],
+          ['Co-pay Disallowance', d.co_pay],
+        ].filter(([, v]) => v && (Number(v.amount) || 0) > 0);
+        if (rows.length === 0) return null;
+        return (
+          <Section title="Disallowances" hint="Deducted from the approved bill" cols={1}>
+            <div className="claim-review__table-wrap" style={{ gridColumn: 'span 1' }}>
+              <table className="claim-review__table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(([label, v]) => (
+                    <tr key={label}>
+                      <td>{label}</td>
+                      <td style={{ textAlign: 'right' }}>{formatINR(v.amount)}</td>
+                      <td>{(v.reason || '').trim() || '—'}</td>
+                    </tr>
+                  ))}
+                  <tr className="claim-review__total-row">
+                    <td><strong>Total deducted</strong></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <strong>
+                        {formatINR(rows.reduce((s, [, v]) => s + (Number(v.amount) || 0), 0))}
+                      </strong>
+                    </td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        );
+      })()}
 
       {(formValues.remarks || formValues.query_details) && (
         <Section title={isAdr ? 'Query details / remarks' : 'Remarks'} cols={1}>
@@ -550,6 +598,7 @@ function ClaimSubmitView({ formValues, claim }) {
             <thead>
               <tr>
                 <th>Line item</th>
+                <th>Bill ID</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
               </tr>
             </thead>
@@ -557,11 +606,14 @@ function ClaimSubmitView({ formValues, claim }) {
               {items.map((it, idx) => (
                 <tr key={idx}>
                   <td>{it?.label || '—'}</td>
+                  {/* Emails snapshotted before Bill ID existed have none. */}
+                  <td>{(it?.bill_id || '').trim() || '—'}</td>
                   <td style={{ textAlign: 'right' }}>{formatINR(it?.amount)}</td>
                 </tr>
               ))}
               <tr className="claim-review__total-row">
                 <td><strong>Total claim</strong></td>
+                <td />
                 <td style={{ textAlign: 'right' }}><strong>{formatINR(claimedAmount)}</strong></td>
               </tr>
             </tbody>

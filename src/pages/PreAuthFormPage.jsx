@@ -168,9 +168,21 @@ function deriveCosts(items, section) {
   return costs;
 }
 
-// Forms saved before the table existed carry only the scalar columns. Rebuild
-// rows from them so an old draft opens populated rather than empty — the same
-// job ensureTreatments does for the repeatable treatments group.
+// Forms saved before the table existed — and AI-prefilled forms, which arrive
+// as scalars only — carry no `cost_items`. Rebuild the rows from the scalar
+// columns so the table opens populated rather than empty, the same job
+// ensureTreatments does for the repeatable treatments group.
+//
+// It then ALWAYS re-derives `total_cost` from those rows. That is deliberate:
+// room_rent and icu_charges are per-day RATES, and the only correct total
+// multiplies them by their day counts. deriveCosts does that; the AI does not.
+// The extractor used to emit its own `total_cost` by flat-summing the line
+// items, which understated any multi-day stay by rate x (days - 1) -- e.g. a
+// 5-day stay at Rs.12,000/day was requested as Rs.1,00,500 instead of
+// Rs.1,48,500. Because deriveCosts previously ran only on a cost-row edit, an
+// AI-filled form the user never touched saved that wrong figure, and the
+// provider's Part-D modal (which multiplies correctly) then refused to approve
+// with "Exceeds requested".
 function ensureCostItems(dataJson) {
   const dj = { ...(dataJson || {}) };
   const h = { ...(dj.hospitalization || {}) };
@@ -186,6 +198,9 @@ function ensureCostItems(dataJson) {
     }
     h.cost_items = rows;
   }
+  // Re-derive the flat mirror (total_cost included) from whatever rows we now
+  // hold, so an inherited or AI-supplied total can never disagree with them.
+  h.costs = { ...(h.costs || {}), ...deriveCosts(h.cost_items, h) };
   dj.hospitalization = h;
   return dj;
 }
@@ -1164,7 +1179,18 @@ export default function PreAuthFormPage() {
       }
     }
 
-    const SKIP_KEYS = new Set(['token', 'baseurl', 'clientId', 'provider_id', 'uhid', 'summary']);
+    // `investigation_cost` is dropped on purpose: it is the LEGACY single
+    // lumped bucket for all investigations, superseded by one row per named
+    // investigation (COST_INVESTIGATION_KEY) sourced from the Investigations
+    // section. Letting the extractor's figure through re-created that dead
+    // "Investigation Cost" row on every AI-filled form -- a line the "+ Add"
+    // menu deliberately no longer offers. Saved drafts that genuinely predate
+    // the table are unaffected: they never pass through this loop, so
+    // ensureCostItems still rebuilds their legacy row and loses nothing.
+    const SKIP_KEYS = new Set([
+      'token', 'baseurl', 'clientId', 'provider_id', 'uhid', 'summary',
+      'investigation_cost',
+    ]);
     const prefilled = {};
     for (const [key, rawValue] of Object.entries(aiData || {})) {
       if (rawValue === null || rawValue === undefined || rawValue === '' || SKIP_KEYS.has(key)) continue;
@@ -1218,8 +1244,12 @@ export default function PreAuthFormPage() {
           merged[section] = { ...(merged[section] || {}), ...fields };
         }
         // AI returns the treatment fields flat → fold them into a single
-        // treatment entry so the repeatable UI renders them.
-        return ensureTreatments(merged);
+        // treatment entry so the repeatable UI renders them. ensureCostItems
+        // then materialises the Cost Estimates rows and recomputes total_cost:
+        // without it an AI-filled form carried the extractor's flat sum and no
+        // cost_items at all, so nothing downstream could tell a per-day rate
+        // from a line total.
+        return ensureCostItems(ensureTreatments(merged));
       });
       setOpenSections((prev) => {
         const updated = { ...prev };

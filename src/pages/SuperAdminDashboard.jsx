@@ -111,9 +111,6 @@ export default function SuperAdminDashboard() {
 // ── KPI strip ───────────────────────────────────────────────────────
 
 function KPIStrip({ kpis, adoption, onNavigate }) {
-  const onboardedPct = adoption.onboarded_case_share != null
-    ? Math.round(adoption.onboarded_case_share * 100)
-    : null;
   const cards = [
     {
       key: 'hospitals',
@@ -143,30 +140,36 @@ function KPIStrip({ kpis, adoption, onNavigate }) {
       bg: '#fef3c7',
     },
     {
-      key: 'approved',
-      label: 'Approved',
-      value: formatCompactINR(kpis.approved_amount),
-      subtitle: kpis.approval_rate != null
-        ? `${kpis.approved_cases} cases · ${Math.round(kpis.approval_rate * 100)}% approval`
-        : `${kpis.approved_cases} cases`,
+      key: 'preauth_approved',
+      label: 'Pre-Auth Approved',
+      value: formatCompactINR(kpis.preauth_approved_amount),
+      subtitle: kpis.preauth_approval_rate != null
+        ? `${kpis.preauth_approved_cases} cases · ${Math.round(kpis.preauth_approval_rate * 100)}% approval`
+        : `${kpis.preauth_approved_cases} cases`,
       color: '#15803d',
       bg: '#dcfce7',
+    },
+    {
+      // Kept visually distinct from pre-auth: this is money against a real
+      // bill, not an authorisation, and the two must not read as one total.
+      key: 'claim_approved',
+      label: 'Claim Approved',
+      value: formatCompactINR(kpis.claim_approved_amount),
+      subtitle: kpis.claim_approval_rate != null
+        ? `${kpis.claim_approved_cases} cases · ${Math.round(kpis.claim_approval_rate * 100)}% approval`
+        : `${kpis.claim_approved_cases} cases`,
+      color: '#0369a1',
+      bg: '#e0f2fe',
     },
     {
       key: 'receivables',
       label: 'Outstanding Receivables',
       value: formatCompactINR(kpis.outstanding_receivables_amount),
-      subtitle: `Across ${kpis.outstanding_receivables_count} invoice${kpis.outstanding_receivables_count === 1 ? '' : 's'}`,
+      // Counts CASES, not invoices — the query groups hospitalization rows.
+      // Also a live balance, independent of the date range.
+      subtitle: `${kpis.outstanding_receivables_count} case${kpis.outstanding_receivables_count === 1 ? '' : 's'} awaiting settlement · all time`,
       color: '#1d4ed8',
       bg: '#dbeafe',
-    },
-    {
-      key: 'adoption',
-      label: 'Onboarded Path',
-      value: onboardedPct != null ? `${onboardedPct}%` : '—',
-      subtitle: `${adoption.onboarded_case_count} of ${adoption.onboarded_case_count + adoption.external_case_count} via app`,
-      color: '#be123c',
-      bg: '#ffe4e6',
     },
   ];
 

@@ -68,6 +68,7 @@ export function buildPartDFlat({
   deductionsDetail,
   discount,
   coPay,
+  zonal,
   deductibles,
   totalAuthorisedAmount,
   amountToBePaidByInsured,
@@ -151,6 +152,7 @@ export function buildPartDFlat({
   flat.deductions_detail = deductionsDetail || '';
   flat.discount = discount || '';
   flat.co_pay = coPay || '';
+  flat.zonal = zonal || '';
   flat.deductibles = deductibles || '';
   // Prefer explicit input; fall back to approveAmount so the form still
   // has a sensible value when only Approve modal data is supplied.

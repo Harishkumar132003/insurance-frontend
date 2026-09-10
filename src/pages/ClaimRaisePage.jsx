@@ -26,24 +26,28 @@ const lineAmount = (it) => (it?.perDay
 const mapBillItem = (i) => (i.rate != null
   ? {
     label: i.label,
+    billId: i.bill_id ?? '',
     perDay: true,
     rate: String(i.rate ?? ''),
     days: String(i.days ?? ''),
     amount: String(i.amount ?? ''),
   }
-  : { label: i.label, amount: String(i.amount ?? '') });
+  : { label: i.label, billId: i.bill_id ?? '', amount: String(i.amount ?? '') });
 
 // Map a local row → server bill_breakdown payload (per-day carries rate/days).
-const toBillPayload = (i) => (i.perDay
-  ? { label: i.label.trim(), amount: Number(lineAmount(i)), rate: Number(i.rate) || 0, days: Number(i.days) || 0 }
-  : { label: i.label.trim(), amount: Number(i.amount) });
+const toBillPayload = (i) => ({
+  label: i.label.trim(),
+  bill_id: (i.billId || '').trim() || null,
+  amount: Number(lineAmount(i)),
+  ...(i.perDay ? { rate: Number(i.rate) || 0, days: Number(i.days) || 0 } : {}),
+});
 
 // Mirrors the pre-auth Cost Estimates section: the two per-day room lines are
 // always present and not removable; every other head is added on demand, so a
 // claim only ever shows the lines actually being billed.
 const DEFAULT_LINE_ITEMS = [
-  { label: 'Non ICU Room (per day)', perDay: true, rate: '', days: '', amount: '' },
-  { label: 'ICU Charges (per day)', perDay: true, rate: '', days: '', amount: '' },
+  { label: 'Non ICU Room (per day)', billId: '', perDay: true, rate: '', days: '', amount: '' },
+  { label: 'ICU Charges (per day)', billId: '', perDay: true, rate: '', days: '', amount: '' },
 ];
 
 // Offered by "+ Add expense", once each.
@@ -491,7 +495,7 @@ export default function ClaimRaisePage() {
       return next;
     }));
   };
-  const addLine = (label) => setItems((prev) => [...prev, { label, amount: '' }]);
+  const addLine = (label) => setItems((prev) => [...prev, { label, billId: '', amount: '' }]);
 
   // Fixed categories not yet used, plus each pre-auth investigation not yet
   // used. Matching the pre-auth's "once each" rule keeps one row per head.
@@ -687,6 +691,16 @@ export default function ClaimRaisePage() {
       toast.error(`Total claim (${formatINR(claimedAmount)}) cannot exceed the approved amount (${formatINR(approvedCap)})`);
       return;
     }
+    // Every billed line must name the hospital bill it came from. Only the
+    // lines actually being submitted are checked — a zero-amount row is
+    // dropped by validItems, so an untouched room line can stay blank.
+    const missingBillIds = validItems
+      .filter((i) => !(i.billId || '').trim())
+      .map((i) => i.label);
+    if (missingBillIds.length > 0) {
+      toast.error(`Enter a Bill ID for: ${missingBillIds.join(', ')}`);
+      return;
+    }
 
     const missingCategories = CLAIM_DOCUMENT_TYPES.filter((c) => {
       const uploaded = (docsByType[c.key] || []).length;
@@ -858,7 +872,7 @@ export default function ClaimRaisePage() {
           cols={6}
         >
           {items.map((it, idx) => (
-            <div key={idx} style={{ gridColumn: 'span 6', display: 'grid', gridTemplateColumns: '3fr 2fr auto', gap: 8, alignItems: 'end' }}>
+            <div key={idx} style={{ gridColumn: 'span 6', display: 'grid', gridTemplateColumns: '3fr 1.5fr 2fr auto', gap: 8, alignItems: 'end' }}>
               <Field label={idx === 0 ? 'Line item' : undefined}>
                 <input
                   type="text"
@@ -867,6 +881,18 @@ export default function ClaimRaisePage() {
                   readOnly
                   placeholder="e.g. Surgery charges"
                   style={{ background: '#f3f4f6', cursor: 'default' }}
+                />
+              </Field>
+              {/* The hospital's own bill reference for this line. Required on
+                  submit, but only for lines carrying an amount. */}
+              <Field label={idx === 0 ? 'Bill ID' : undefined}>
+                <input
+                  type="text"
+                  value={it.billId || ''}
+                  disabled={readOnly}
+                  onChange={(e) => updateItem(idx, 'billId', e.target.value)}
+                  placeholder="e.g. INV-2291"
+                  aria-label={`Bill ID for ${it.label}`}
                 />
               </Field>
               {it.perDay ? (

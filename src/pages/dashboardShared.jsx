@@ -135,6 +135,11 @@ export function FunnelCard({ steps }) {
           const conv = prevAmount && prevAmount > 0
             ? Math.round(((Number(s.amount) || 0) / prevAmount) * 100)
             : null;
+          // The rupee shortfall against the previous stage. The % alone hides
+          // scale — 62% of a large ask and 62% of a small one look identical.
+          // Only shown when money was actually lost; a step that holds its
+          // value (or gains) gets nothing rather than a "-0" or a fake credit.
+          const drop = prevAmount != null ? prevAmount - (Number(s.amount) || 0) : null;
           return (
             <div key={s.key} className="funnel__row">
               <div className="funnel__label">
@@ -148,6 +153,14 @@ export function FunnelCard({ steps }) {
                 {conv != null && (
                   <span className={`funnel__conv ${conv >= 90 ? 'funnel__conv--good' : conv >= 60 ? 'funnel__conv--mid' : 'funnel__conv--low'}`}>
                     {conv}%
+                  </span>
+                )}
+                {drop != null && drop > 0 && (
+                  <span
+                    className={`funnel__drop ${conv >= 90 ? 'funnel__drop--good' : conv >= 60 ? 'funnel__drop--mid' : 'funnel__drop--low'}`}
+                    title={`${formatCompactINR(drop)} less than ${steps[i - 1].label}`}
+                  >
+                    {`\u2212${formatCompactINR(drop)}`}
                   </span>
                 )}
               </div>
@@ -265,7 +278,7 @@ export function VolumeTrendCard({ points }) {
     <section className="dashboard-card">
       <header className="dashboard-card__head">
         <h3>Weekly Volume</h3>
-        <span className="dashboard-card__hint">Submitted vs Settled</span>
+        <span className="dashboard-card__hint">Claims Submitted vs Settled</span>
       </header>
       {points.length === 0 ? (
         <div className="dashboard-card__empty">No data.</div>
@@ -273,7 +286,7 @@ export function VolumeTrendCard({ points }) {
         <>
           <div className="trend-legend">
             <span className="trend-legend__item">
-              <span className="trend-legend__swatch trend-legend__swatch--submitted" /> Submitted
+              <span className="trend-legend__swatch trend-legend__swatch--submitted" /> Claims Submitted
             </span>
             <span className="trend-legend__item">
               <span className="trend-legend__swatch trend-legend__swatch--settled" /> Settled
@@ -284,7 +297,7 @@ export function VolumeTrendCard({ points }) {
               const subPct = (p.submitted / max) * 100;
               const setPct = (p.settled / max) * 100;
               return (
-                <div key={p.week_start} className="trend__col" title={`Week of ${p.week_start}\nSubmitted ${p.submitted} · Settled ${p.settled}`}>
+                <div key={p.week_start} className="trend__col" title={`Week of ${p.week_start}\nClaims submitted ${p.submitted} · Settled ${p.settled}`}>
                   <div className="trend__bars">
                     <div className="trend__bar trend__bar--submitted" style={{ height: `${subPct}%` }} />
                     <div className="trend__bar trend__bar--settled" style={{ height: `${setPct}%` }} />
