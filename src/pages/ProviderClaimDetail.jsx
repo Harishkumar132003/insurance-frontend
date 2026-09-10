@@ -133,6 +133,11 @@ export default function ProviderClaimDetail() {
   const [claimApprovedLines, setClaimApprovedLines] = useState([]);
   const [claimApproveAmountFallback, setClaimApproveAmountFallback] = useState('');
   const [claimApproveRemarks, setClaimApproveRemarks] = useState('');
+  // Bill-level disallowances applied AFTER the per-line cuts. Amount + reason
+  // each; nothing in the system stores a zone or a co-pay rate to derive them.
+  const [claimDisallow, setClaimDisallow] = useState({
+    zonal: '', zonalReason: '', coPay: '', coPayReason: '',
+  });
   const [claimApproveFile, setClaimApproveFile] = useState(null);
   const [claimApproveSaving, setClaimApproveSaving] = useState(false);
   const [partD, setPartD] = useState({ open: false, emailId: null });
@@ -298,11 +303,32 @@ export default function ProviderClaimDetail() {
       ...RECONSIDER_TYPES,
       ...ADR_SUBMITTED_TYPES,
     ]);
+    const when = (e) => new Date(e.email_date || e.created_at || 0).getTime();
     const sent = (claimEmails || [])
       .filter((e) => e.direction === 'SENT' && REQUEST_TYPES.has(e.email_type))
-      .sort((a, b) => new Date(b.email_date || b.created_at || 0) - new Date(a.email_date || a.created_at || 0));
+      .sort((a, b) => when(b) - when(a));
     if (sent.length === 0) return null;
-    const latest = sent[0];
+
+    // The newest SENT email is not necessarily the one carrying this round's
+    // MONEY. An ADR response is a document reply *inside* an already-open
+    // round: it has no additional_amount, so taking it verbatim wiped the
+    // enhancement context and the provider was shown the original pre-auth
+    // approval form (capped at the full requested amount) instead of the
+    // enhancement top-up. Same hole existed for reconsider-then-ADR.
+    //
+    // So: among the requests raised SINCE THE LAST PROVIDER DECISION, prefer
+    // one that actually states an amount; otherwise fall back to the newest.
+    // Anchoring on the last decision is what stops an already-approved or
+    // denied enhancement being resurrected. ADR_NMI is deliberately NOT a
+    // decision — it is a query that leaves the round open.
+    const lastDecisionAt = (claimEmails || [])
+      .filter((e) => e.direction === 'RECEIVED' && /APPROVAL|DENIAL/.test(e.email_type || ''))
+      .reduce((max, e) => Math.max(max, when(e)), 0);
+    const statesAnAmount = (e) => {
+      const v = e.form_values || {};
+      return v.additional_amount != null || v.revised_total != null || v.approved_so_far != null;
+    };
+    const latest = sent.find((e) => when(e) > lastDecisionAt && statesAnAmount(e)) || sent[0];
     const fv = latest.form_values || {};
     const num = (v) => {
       const n = Number(v);
@@ -410,12 +436,16 @@ export default function ProviderClaimDetail() {
       label: it.label,
       claimed: Number(it.amount) || 0,
       approved: String(Number(it.amount) || 0), // default = full approval
+      // Why this line was cut. Only meaningful once approved < claimed;
+      // required before the decision can be submitted.
+      reason: '',
     })));
     setClaimApproveAmountFallback(
       items.length === 0 && claimData?.claimed_amount != null
         ? String(claimData.claimed_amount) : ''
     );
     setClaimApproveRemarks('');
+    setClaimDisallow({ zonal: '', zonalReason: '', coPay: '', coPayReason: '' });
     setClaimApproveFile(null);
     setClaimApproveOpen(true);
   };
@@ -437,12 +467,42 @@ export default function ProviderClaimDetail() {
     );
   };
 
+  const updateApprovedLineReason = (idx, value) =>
+    setClaimApprovedLines((prev) => prev.map((ln, i) => (i === idx ? { ...ln, reason: value } : ln)));
+
+  // A line is cut when approved is strictly BELOW claimed. Equal is not a
+  // reduction, and the input clamp already rules out approving more.
+  const claimLineReduced = (ln) => (Number(ln.approved) || 0) < (Number(ln.claimed) || 0);
+  const claimMissingLineReasons = claimApprovedLines
+    .filter((ln) => claimLineReduced(ln) && !(ln.reason || '').trim())
+    .map((ln) => ln.label || 'line item');
+
   const claimTotalClaimed = claimApprovedLines.reduce(
     (s, ln) => s + (Number(ln.claimed) || 0), 0,
   );
   const claimTotalApproved = claimApprovedLines.reduce(
     (s, ln) => s + (Number(ln.approved) || 0), 0,
   );
+
+  // Bill-level disallowances come off the line sum. `claimNetApproved` is the
+  // figure that must reach the server: claims.approved_amount is set straight
+  // from it, and both the invoice gate and the Raise Invoice prefill read that
+  // column — send the gross sum and the hospital gets invoiced for money that
+  // was deducted.
+  const _dn = (v) => Number(v) || 0;
+  const claimGross = claimApprovedLines.length > 0
+    ? claimTotalApproved : _dn(claimApproveAmountFallback);
+  const claimDeductions = _dn(claimDisallow.zonal) + _dn(claimDisallow.coPay);
+  const claimNetApproved = Math.max(0, claimGross - claimDeductions);
+
+  // A disallowance without an explanation is exactly what this prevents.
+  const CLAIM_DISALLOWANCES = [
+    ['zonal', 'zonalReason', 'Zonal Disallowance'],
+    ['coPay', 'coPayReason', 'Co-pay Disallowance'],
+  ];
+  const claimMissingDisallowReasons = CLAIM_DISALLOWANCES
+    .filter(([a, r]) => _dn(claimDisallow[a]) > 0 && !(claimDisallow[r] || '').trim())
+    .map(([, , label]) => label);
 
   const handleClaimApproveSubmit = async () => {
     if (!claim) return;
@@ -459,10 +519,21 @@ export default function ProviderClaimDetail() {
         return;
       }
     }
+    if (claimMissingLineReasons.length > 0) {
+      toast.error(`Give a disallowance reason for: ${claimMissingLineReasons.join(', ')}`);
+      return;
+    }
+    if (claimMissingDisallowReasons.length > 0) {
+      toast.error(`Give a reason for: ${claimMissingDisallowReasons.join(', ')}`);
+      return;
+    }
     const itemized = claimApprovedLines.length > 0;
-    const amt = itemized ? claimTotalApproved : Number(claimApproveAmountFallback);
+    // Net of the bill-level disallowances — this is what gets approved.
+    const amt = claimNetApproved;
     if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error('Approved amount must be greater than zero');
+      toast.error(claimDeductions > 0
+        ? 'Disallowances cannot reduce the approved amount to zero'
+        : 'Approved amount must be greater than zero');
       return;
     }
     const claimedTotal = itemized
@@ -481,8 +552,28 @@ export default function ProviderClaimDetail() {
             label: ln.label,
             claimed: ln.claimed,
             approved: Number(ln.approved) || 0,
+            // Fills the Reason column EmailFormValues already renders for the
+            // approved breakdown — dormant until now on the claim path.
+            reason: claimLineReduced(ln) ? (ln.reason || '').trim() : '',
           })),
         ));
+      }
+      // One grouped JSON field rather than four scalars: form_values is
+      // untyped JSONB, so this rides through the route and controller verbatim
+      // and stays extensible if another disallowance type is added.
+      if (claimDeductions > 0) {
+        fd.append('deductions', JSON.stringify({
+          zonal: {
+            amount: _dn(claimDisallow.zonal),
+            reason: (claimDisallow.zonalReason || '').trim(),
+          },
+          co_pay: {
+            amount: _dn(claimDisallow.coPay),
+            reason: (claimDisallow.coPayReason || '').trim(),
+          },
+          gross_approved: claimGross,
+          total: claimDeductions,
+        }));
       }
       if (claimApproveRemarks.trim()) fd.append('remarks', claimApproveRemarks.trim());
       if (claimApproveFile) fd.append('file', claimApproveFile);
@@ -753,6 +844,7 @@ export default function ProviderClaimDetail() {
                   <thead>
                     <tr>
                       <th>Line item</th>
+                      <th>Bill ID</th>
                       <th style={{ textAlign: 'right' }}>Amount</th>
                     </tr>
                   </thead>
@@ -760,11 +852,14 @@ export default function ProviderClaimDetail() {
                     {claimData.bill_breakdown.map((it, idx) => (
                       <tr key={idx}>
                         <td>{it.label}</td>
+                        {/* Claims raised before Bill ID existed have none. */}
+                        <td>{(it.bill_id || '').trim() || '—'}</td>
                         <td style={{ textAlign: 'right' }}>{formatINR(it.amount)}</td>
                       </tr>
                     ))}
                     <tr className="claim-review__total-row">
                       <td><strong>Total claim</strong></td>
+                      <td />
                       <td style={{ textAlign: 'right' }}><strong>{formatINR(claimData.claimed_amount)}</strong></td>
                     </tr>
                   </tbody>
@@ -834,14 +929,14 @@ export default function ProviderClaimDetail() {
       {claimApproveOpen && (() => {
         const itemized = claimApprovedLines.length > 0;
         const decisionLabel = itemized
-          ? (claimTotalApproved < claimTotalClaimed && claimTotalApproved > 0
+          ? (claimNetApproved < claimTotalClaimed && claimNetApproved > 0
               ? 'Partial approval'
-              : claimTotalApproved === claimTotalClaimed
+              : claimNetApproved === claimTotalClaimed
                 ? 'Full approval'
-                : claimTotalApproved === 0 ? '—' : 'Over-approval')
+                : claimNetApproved === 0 ? '—' : 'Over-approval')
           : null;
         return (
-          <Modal title="Approve Claim" onClose={closeClaimApprove}>
+          <Modal title="Approve Claim" size="lg" onClose={closeClaimApprove}>
             <div className="modal-form">
               <div className="form-group">
                 <label>Patient</label>
@@ -851,12 +946,13 @@ export default function ProviderClaimDetail() {
               {itemized ? (
                 <div className="form-group">
                   <label>Approved Breakdown <span style={{ color: '#b91c1c' }}>*</span></label>
-                  <table className="claim-review__table" style={{ width: '100%' }}>
+                  <table className="claim-review__table claim-review__table--lines">
                     <thead>
                       <tr>
                         <th>Line item</th>
                         <th style={{ textAlign: 'right' }}>Claimed</th>
                         <th style={{ textAlign: 'right' }}>Approved</th>
+                        <th>Disallowance Reason</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -872,8 +968,24 @@ export default function ProviderClaimDetail() {
                               onWheel={(e) => e.currentTarget.blur()}
                               min="0"
                               max={ln.claimed}
-                              style={{ width: 120, textAlign: 'right' }}
+                              style={{ textAlign: 'right' }}
                             />
+                          </td>
+                          {/* Only a cut line needs explaining — a line approved
+                              in full has nothing to disallow. */}
+                          <td>
+                            {claimLineReduced(ln) ? (
+                              <input
+                                type="text"
+                                value={ln.reason || ''}
+                                placeholder="Why was this reduced?"
+                                aria-label={`Disallowance reason for ${ln.label}`}
+                                style={(ln.reason || '').trim() ? undefined : { borderColor: '#b91c1c' }}
+                                onChange={(e) => updateApprovedLineReason(idx, e.target.value)}
+                              />
+                            ) : (
+                              <span className="claim-review__na">N/A</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -881,6 +993,7 @@ export default function ProviderClaimDetail() {
                         <td><strong>Total</strong></td>
                         <td style={{ textAlign: 'right' }}><strong>{formatINR(claimTotalClaimed)}</strong></td>
                         <td style={{ textAlign: 'right' }}><strong>{formatINR(claimTotalApproved)}</strong></td>
+                        <td />
                       </tr>
                     </tbody>
                   </table>
@@ -913,6 +1026,69 @@ export default function ProviderClaimDetail() {
                 </>
               )}
 
+              {/* Bill-level disallowances, applied after the per-line cuts.
+                  Shared by the itemized and fallback paths. */}
+              <div className="form-group">
+                <label>Disallowances</label>
+                <table className="claim-review__table claim-review__table--disallow">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Amount</th>
+                      <th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CLAIM_DISALLOWANCES.map(([amtKey, reasonKey, label]) => {
+                      const needsReason = _dn(claimDisallow[amtKey]) > 0;
+                      const filled = (claimDisallow[reasonKey] || '').trim();
+                      return (
+                        <tr key={amtKey}>
+                          <td>{label}</td>
+                          <td>
+                            <input
+                              type="number"
+                              min="0"
+                              value={claimDisallow[amtKey]}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              placeholder="0"
+                              aria-label={label}
+                              onChange={(e) => setClaimDisallow(
+                                (prev) => ({ ...prev, [amtKey]: e.target.value }),
+                              )}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              value={claimDisallow[reasonKey] || ''}
+                              disabled={!needsReason}
+                              placeholder={needsReason ? 'Why was this applied?' : 'N/A'}
+                              aria-label={`${label} reason`}
+                              style={needsReason && !filled
+                                ? { borderColor: '#b91c1c' } : undefined}
+                              onChange={(e) => setClaimDisallow(
+                                (prev) => ({ ...prev, [reasonKey]: e.target.value }),
+                              )}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="claim-review__total-row">
+                      <td><strong>Net Approved</strong></td>
+                      <td><strong>{formatINR(claimNetApproved)}</strong></td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+                {claimDeductions > 0 && (
+                  <p className="provider-approve__file-hint" style={{ marginTop: 6 }}>
+                    {`${formatINR(claimGross)} less ${formatINR(claimDeductions)} deducted`}
+                  </p>
+                )}
+              </div>
+
               <div className="form-group">
                 <label>Remarks</label>
                 <textarea
@@ -944,7 +1120,9 @@ export default function ProviderClaimDetail() {
                   type="button"
                   className="btn btn--primary"
                   onClick={handleClaimApproveSubmit}
-                  disabled={claimApproveSaving}
+                  disabled={claimApproveSaving
+                    || claimMissingLineReasons.length > 0
+                    || claimMissingDisallowReasons.length > 0}
                 >
                   {claimApproveSaving ? <Spinner size={16} /> : 'Submit'}
                 </button>

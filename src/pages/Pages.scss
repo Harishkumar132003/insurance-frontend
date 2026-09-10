@@ -4379,6 +4379,46 @@
     color: #b45309;
   }
 
+  &__bill-reason-col {
+    width: 220px;
+  }
+
+  // Only a reduced line gets an input here; a full-value line shows N/A.
+  &__bill-reason {
+    input {
+      width: 100%;
+      padding: $space-2 $space-3;
+      border: 1px solid $border-color;
+      border-radius: $radius-md;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      background: $bg-card;
+      outline: none;
+      transition: border-color $transition-fast, box-shadow $transition-fast;
+
+      &:focus {
+        border-color: $primary;
+        box-shadow: 0 0 0 3px rgba($primary, 0.1);
+      }
+    }
+
+    // Approval is blocked until this is filled, so flag it up front rather
+    // than only on the toast.
+    input.part-d-fill__bill-reason--missing {
+      border-color: $danger;
+      background: rgba($danger, 0.04);
+
+      &:focus {
+        box-shadow: 0 0 0 3px rgba($danger, 0.1);
+      }
+    }
+  }
+
+  &__bill-na {
+    font-size: $font-size-sm;
+    color: $text-light;
+  }
+
   &__bill-remove {
     width: 44px;
     text-align: center !important;
@@ -4412,6 +4452,17 @@
 
     &__bill-amount input {
       width: 100%;
+    }
+
+    &__bill-reason::before {
+      content: 'Disallowance reason';
+      display: block;
+      margin-bottom: $space-1;
+      font-size: $font-size-xs;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: $text-secondary;
     }
   }
 }
@@ -4471,6 +4522,51 @@
       color: #6b7280;
       background: #f9fafb;
     }
+  }
+
+  // The line table gained a 4th column (Disallowance Reason) holding a text
+  // input. Same reasoning as the disallowance table below: without a fixed
+  // layout the browser sizes columns from the inputs' intrinsic width and the
+  // last column gets pushed past the modal edge.
+  &__table--lines {
+    table-layout: fixed;
+
+    th:nth-child(1), td:nth-child(1) { width: 30%; }
+    th:nth-child(2), td:nth-child(2) { width: 15%; }
+    th:nth-child(3), td:nth-child(3) { width: 18%; }
+    th:nth-child(4), td:nth-child(4) { width: 37%; }
+
+    input {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+  }
+
+  &__na {
+    color: #9ca3af;
+    font-size: 12px;
+  }
+
+  // The disallowance table holds two inputs per row. Without a fixed layout the
+  // browser sizes columns from the inputs' intrinsic width, which pushed the
+  // Reason column past the modal edge. Fixed widths + min-width:0 let the
+  // inputs shrink into their cells instead.
+  &__table--disallow {
+    table-layout: fixed;
+
+    th:nth-child(1), td:nth-child(1) { width: 30%; }
+    th:nth-child(2), td:nth-child(2) { width: 24%; }
+    th:nth-child(3), td:nth-child(3) { width: 46%; }
+
+    input {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+
+    // Keeps "Net Approved" on one line rather than wrapping to two.
+    td:nth-child(1) { white-space: nowrap; }
   }
 
   &__total-row td {
