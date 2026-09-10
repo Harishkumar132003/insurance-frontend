@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Modal from './Modal';
 import Spinner from './Spinner';
 import { useToast } from './Toast';
+import { IconX } from './icons/Icons';
 import { formTemplateService, claimCaseService } from '../services/api';
 import { buildPartDFlat, renderTemplate, renderPartDPdfBlob } from './partDTemplate';
 
@@ -47,6 +48,9 @@ function printPartDHtml(html) {
 
 // Numeric Bill Breakdown lines, mirroring the pre-auth cost estimates.
 // [stateKey, apiKey, label, preAuthCostKey, perDay?]
+// Drives three things: the enhancement round's fixed form, synthesising rows
+// from the scalar columns for letters/pre-auths saved before the itemised
+// breakdown existed, and the cost-key → bd_* column mirror.
 const BILL_FIELDS = [
   ['roomRent', 'bd_room_rent', 'Non ICU Room (per day)', 'room_rent', true],
   ['icuCharges', 'bd_icu_charges', 'ICU Charges (per day)', 'icu_charges', true],
@@ -58,14 +62,6 @@ const BILL_FIELDS = [
   ['otherExpenses', 'bd_other_expenses', 'Other Expenses', 'other_expenses', false],
 ];
 
-// Editable deduction inputs in the Authorisation Summary. [stateKey, apiKey, label]
-const DEDUCTION_FIELDS = [
-  ['discount', 'as_discount', 'Discount'],
-  ['coPay', 'as_co_pay', 'Co-Pay'],
-  ['deductibles', 'as_deductibles', 'Deductibles'],
-  ['deductions', 'as_deductions', 'Other Deductions'],
-];
-
 const EMPTY_BILL = {
   roomRent: '', icuCharges: '', expectedDays: '', icuDays: '',
   investigationCost: '', otCharges: '', professionalFees: '',
@@ -74,6 +70,58 @@ const EMPTY_BILL = {
 };
 
 const _n = (v) => Number(v) || 0;
+
+// Rows carrying a named investigation all fold into the one bd_investigation_cost
+// column, matching how the pre-auth folds them into investigation_cost.
+const INVESTIGATION_KEY = 'investigation';
+
+// Always present on an enhancement round and never removable, mirroring the
+// hospital's Cost Estimates section.
+const CONSTANT_ROW_KEYS = ['room_rent', 'icu_charges'];
+
+// Offered by "+ Add expense", once each. Labels come from BILL_FIELDS so the
+// menu, the row label and the bd_* column can never drift apart.
+const ADDABLE_ROWS = BILL_FIELDS
+  .filter(([, , , costKey]) => !CONSTANT_ROW_KEYS.includes(costKey)
+    && costKey !== 'investigation_cost')
+  .map(([, , label, costKey]) => ({ key: costKey, label }));
+
+// pre-auth cost key → part_d_letters column, from BILL_FIELDS.
+const BD_COLUMN_BY_KEY = Object.fromEntries(
+  BILL_FIELDS.map(([, apiKey, , costKey]) => [costKey, apiKey]),
+);
+
+// One Cost Estimates row as the provider reviews it. `claimed` freezes the
+// hospital's ask so a reduced approval stays legible; `amount` is editable.
+const toBillItem = (key, label, description, amount) => ({
+  key, label, description: description || '', claimed: amount ?? '', amount: amount ?? '',
+});
+
+// Rebuild rows from the flat scalar columns — used for a pre-auth or a saved
+// letter that predates the itemised breakdown, so neither opens empty.
+const itemsFromScalars = (src, get) => BILL_FIELDS
+  .map(([, , label, costKey]) => [costKey, label, get(src, costKey)])
+  .filter(([, , amount]) => amount != null && amount !== '')
+  .map(([costKey, label, amount]) => toBillItem(costKey, label.replace(' (per day)', ''), '', amount));
+
+// The flat bd_* mirror every existing reader depends on — the printed letter,
+// buildFlatArgs() and the legacy template placeholders all read these, not the
+// rows. Investigation rows are summed; unused heads go to 0 as before.
+const deriveBdScalars = (items) => {
+  const out = {};
+  for (const [, apiKey] of BILL_FIELDS) out[apiKey] = 0;
+  let investigationTotal = 0;
+  for (const it of items || []) {
+    if (!it || !it.key) continue;
+    if (it.key === INVESTIGATION_KEY || it.key === 'investigation_cost') {
+      investigationTotal += _n(it.amount);
+    } else if (BD_COLUMN_BY_KEY[it.key]) {
+      out[BD_COLUMN_BY_KEY[it.key]] = _n(it.amount);
+    }
+  }
+  out.bd_investigation_cost = investigationTotal;
+  return out;
+};
 
 export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRequest, onClose, onSaved, onApproved }) {
   const toast = useToast();
@@ -92,12 +140,17 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   const [claimNumber, setClaimNumber] = useState('');
   const [remarks, setRemarks] = useState('');
   const [bill, setBill] = useState(EMPTY_BILL);
+  // The itemised breakdown (non-enhancement rounds). `bill` still holds the day
+  // counts and the deduction lines; enhancement rounds keep using it entirely.
+  const [items, setItems] = useState([]);
   // Saved stage → "Proceed" reveals the finalize panel (file upload + amount +
   // claim number + Approve). Optional signed-letter upload lives there.
   const [showApprovePanel, setShowApprovePanel] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
 
   const setBillField = (key, value) => setBill((prev) => ({ ...prev, [key]: value }));
+  const setItemAmount = (index, value) =>
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, amount: value } : it)));
 
   const fmtCap = (n) => Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
@@ -115,11 +168,39 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   // Original pre-auth: room_rent / icu_charges are per-day rates × day counts.
   // Enhancement: room / ICU are flat amounts (no day multiplication).
   const nonIcuDays = Math.max(0, _n(bill.expectedDays) - _n(bill.icuDays));
-  const roomRentTotal = isEnhancement ? _n(bill.roomRent) : _n(bill.roomRent) * nonIcuDays;
-  const icuChargesTotal = isEnhancement ? _n(bill.icuCharges) : _n(bill.icuCharges) * _n(bill.icuDays);
-  const flatTotal = _n(bill.investigationCost) + _n(bill.otCharges) + _n(bill.professionalFees)
-    + _n(bill.medicinesCost) + _n(bill.packageCharges) + _n(bill.otherExpenses);
-  const totalBill = roomRentTotal + icuChargesTotal + flatTotal;
+
+  // One line's contribution: the two room heads are per-day rates × their day
+  // count, everything else is flat — the same arithmetic the fixed form used,
+  // so identical inputs still produce an identical total.
+  const itemLineTotal = (it) => {
+    const amt = _n(it?.amount);
+    if (isEnhancement) return amt;
+    if (it?.key === 'room_rent') return amt * nonIcuDays;
+    if (it?.key === 'icu_charges') return amt * _n(bill.icuDays);
+    return amt;
+  };
+  const itemsTotal = items.reduce((sum, it) => sum + itemLineTotal(it), 0);
+
+  // Heads not yet on the breakdown, plus each investigation the hospital named
+  // on the pre-auth — the same menu the pre-auth form and Raise Claim offer.
+  const usedItemKeys = new Set(items.map((it) => it.key));
+  const usedInvestigationLabels = new Set(
+    items.filter((it) => it.key === INVESTIGATION_KEY).map((it) => it.label),
+  );
+  const addItemOptions = [
+    ...ADDABLE_ROWS.filter((r) => !usedItemKeys.has(r.key)),
+    ...(claim?.form_data_json?.hospitalization?.cost_items || [])
+      .filter((it) => it && it.key === INVESTIGATION_KEY && String(it.label || '').trim())
+      .map((it) => it.label.trim())
+      .filter((label, i, arr) => arr.indexOf(label) === i)
+      .filter((label) => !usedInvestigationLabels.has(label))
+      .map((label) => ({ key: INVESTIGATION_KEY, label })),
+  ];
+  const addItem = (opt) =>
+    setItems((prev) => [...prev, toBillItem(opt.key, opt.label, '', '')]);
+  const removeItem = (index) => setItems((prev) => prev.filter((_, i) => i !== index));
+
+  const totalBill = itemsTotal;
   const totalDeductions = _n(bill.discount) + _n(bill.coPay) + _n(bill.deductibles) + _n(bill.deductions);
   const totalAuthorised = Math.max(0, totalBill - totalDeductions);
 
@@ -134,6 +215,28 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
 
   // Bill Breakdown defaults pulled from the pre-auth cost estimates (already in
   // the claim payload — no extra fetch needed). Enhancement rounds start blank.
+  // The rows the hospital actually claimed. Falls back to the flat scalars for
+  // a pre-auth saved before Cost Estimates became a table, so old cases still
+  // render a breakdown instead of nothing.
+  const preauthItems = () => {
+    // An enhancement is a top-up, not a restatement of the original estimate,
+    // so it starts with just the two constants for the provider to fill in.
+    if (isEnhancement) {
+      return CONSTANT_ROW_KEYS.map((key) => {
+        const row = BILL_FIELDS.find(([, , , costKey]) => costKey === key);
+        return toBillItem(key, row[2].replace(' (per day)', ''), '', '');
+      });
+    }
+    const h = claim?.form_data_json?.hospitalization || {};
+    const costItems = Array.isArray(h.cost_items) ? h.cost_items : [];
+    if (costItems.length > 0) {
+      return costItems
+        .filter((it) => it && it.key)
+        .map((it) => toBillItem(it.key, it.label || it.key, it.description, it.amount));
+    }
+    return itemsFromScalars(h.costs || {}, (src, costKey) => src[costKey]);
+  };
+
   const preauthBill = () => {
     if (isEnhancement) return { ...EMPTY_BILL };
     const h = claim?.form_data_json?.hospitalization || {};
@@ -168,9 +271,21 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
     // A persisted row with numeric breakdown → load it. Otherwise (stub, or an
     // older row saved before the numeric fields existed) → prefill from the
     // pre-auth cost estimates.
+    // bd_items first: without it a saved itemised breakdown fails the scalar
+    // probe below and gets silently overwritten by the pre-auth prefill.
+    const savedItems = Array.isArray(data.bd_items) ? data.bd_items : null;
     const hasNumeric = data.bd_room_rent != null
       || data.bd_investigation_cost != null
       || data.as_total_bill_amount != null;
+    if (data.is_persisted && savedItems && savedItems.length > 0) {
+      setItems(savedItems.map((it) => toBillItem(it.key, it.label, it.description, it.amount)));
+    } else if (data.is_persisted && hasNumeric) {
+      // A letter saved before the itemised breakdown — rebuild rows from its
+      // own scalars so the provider's earlier edits survive.
+      setItems(itemsFromScalars(data, (src, costKey) => src[BD_COLUMN_BY_KEY[costKey]]));
+    } else {
+      setItems(preauthItems());
+    }
     if (data.is_persisted && hasNumeric) {
       setBill({
         roomRent: data.bd_room_rent ?? '',
@@ -232,6 +347,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
             // prefilled from the pre-auth cost estimates.
             setClaimNumber(claim?.claim_number || '');
             setBill(preauthBill());
+            setItems(preauthItems());
           }
         } else if (sc === 404 && emailId == null) {
           // GET returned 404 (no part-d row and no approval). Same as above:
@@ -239,6 +355,7 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
           if (!cancelled) {
             setClaimNumber(claim?.claim_number || '');
             setBill(preauthBill());
+            setItems(preauthItems());
           }
         } else if (sc === 404) {
           if (!cancelled) setUnavailable(true);
@@ -265,22 +382,33 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
   // the legacy placeholders, so map the numeric breakdown onto them (formatted)
   // until the template is updated to show the per-line pre-auth fields.
   const rs = (n) => `Rs.${_n(n).toLocaleString('en-IN')}`;
-  const buildFlatArgs = () => ({
+  const buildFlatArgs = () => {
+    // Read the flat mirror, not `bill` — on an itemised round the bill.* heads
+    // are no longer the source of truth, so taking them here would print an
+    // empty tariff block. `others` still lists the named investigations by name
+    // rather than one lumped figure.
+    const bd = deriveBdScalars(items);
+    const namedOthers = items
+      .filter((it) => it.key === INVESTIGATION_KEY && _n(it.amount) > 0)
+      .map((it) => `${it.label} ${rs(it.amount)}`);
+    return {
     claim,
     approveAmount: totalAuthorised,
     claimNumber,
     remarks,
-    roomRentPerDay: bill.roomRent !== '' ? `${rs(bill.roomRent)}/day` : '',
-    icuRentPerDay: bill.icuCharges !== '' ? `${rs(bill.icuCharges)}/day` : '',
+    roomRentPerDay: bd.bd_room_rent ? `${rs(bd.bd_room_rent)}/day` : '',
+    icuRentPerDay: bd.bd_icu_charges ? `${rs(bd.bd_icu_charges)}/day` : '',
     nursingChargesPerDay: '',
     consultantVisitChargesPerDay: '',
-    surgeonAnesthetistFee: bill.otCharges !== '' ? rs(bill.otCharges) : '',
+    surgeonAnesthetistFee: bd.bd_ot_charges ? rs(bd.bd_ot_charges) : '',
     others: [
-      bill.investigationCost !== '' ? `Investigation ${rs(bill.investigationCost)}` : '',
-      bill.professionalFees !== '' ? `Professional ${rs(bill.professionalFees)}` : '',
-      bill.medicinesCost !== '' ? `Medicines ${rs(bill.medicinesCost)}` : '',
-      bill.packageCharges !== '' ? `Package ${rs(bill.packageCharges)}` : '',
-      bill.otherExpenses !== '' ? `Other ${rs(bill.otherExpenses)}` : '',
+      ...(namedOthers.length
+        ? namedOthers
+        : [bd.bd_investigation_cost ? `Investigation ${rs(bd.bd_investigation_cost)}` : '']),
+      bd.bd_professional_fees ? `Professional ${rs(bd.bd_professional_fees)}` : '',
+      bd.bd_medicines_cost ? `Medicines ${rs(bd.bd_medicines_cost)}` : '',
+      bd.bd_package_charges ? `Package ${rs(bd.bd_package_charges)}` : '',
+      bd.bd_other_expenses ? `Other ${rs(bd.bd_other_expenses)}` : '',
     ].filter(Boolean).join(', '),
     totalBillAmount: rs(totalBill),
     deductionsDetail: '',
@@ -289,23 +417,27 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
     deductibles: bill.deductibles !== '' ? rs(bill.deductibles) : '',
     totalAuthorisedAmount: rs(totalAuthorised),
     amountToBePaidByInsured: rs(amountByInsured),
-  });
+    };
+  };
 
   // Build the field-value payload (snake_case) sent on Save / Approve.
   const fieldPayload = () => ({
     approved_amount: totalAuthorised,
     claim_number: claimNumber ?? '',
     remarks: remarks ?? '',
-    bd_room_rent: _n(bill.roomRent),
-    bd_icu_charges: _n(bill.icuCharges),
+    // The scalar bd_* columns stay the flat mirror the printed letter reads. On
+    // a normal round they are derived from the rows (investigations summed); an
+    // enhancement round has no rows and keeps writing its own fixed fields.
+    ...deriveBdScalars(items),
+    bd_items: items.map((it) => ({
+      key: it.key,
+      label: it.label ?? '',
+      description: it.description ?? '',
+      claimed: it.claimed === '' || it.claimed == null ? null : Number(it.claimed),
+      amount: _n(it.amount),
+    })),
     bd_expected_days: _n(bill.expectedDays),
     bd_icu_days: _n(bill.icuDays),
-    bd_investigation_cost: _n(bill.investigationCost),
-    bd_ot_charges: _n(bill.otCharges),
-    bd_professional_fees: _n(bill.professionalFees),
-    bd_medicines_cost: _n(bill.medicinesCost),
-    bd_package_charges: _n(bill.packageCharges),
-    bd_other_expenses: _n(bill.otherExpenses),
     as_total_bill_amount: totalBill,
     as_discount: _n(bill.discount),
     as_co_pay: _n(bill.coPay),
@@ -370,7 +502,11 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
         const blob = await renderPartDPdfBlob({ htmlTemplate: htmlRef.current, ...flatArgs });
         const filename = `PartD_${claimNumber || claim?.claim_number || claimCaseId}.pdf`;
         fd.append('email_id', String(resolvedEmailId));
-        Object.entries(fieldPayload()).forEach(([k, v]) => fd.append(k, v == null ? '' : String(v)));
+        Object.entries(fieldPayload()).forEach(([k, v]) => {
+          // Arrays (bd_items) must go as JSON; the route parses them back.
+          if (Array.isArray(v)) fd.append(k, JSON.stringify(v));
+          else fd.append(k, v == null ? '' : String(v));
+        });
         fd.append('file', blob, filename);
         const res = await claimCaseService.putPartD(claimCaseId, fd);
         afterSave(res.data);
@@ -440,6 +576,16 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
       fd.append('approved_amount', String(approved));
       if (claimNumber.trim()) fd.append('claim_number', claimNumber.trim());
       if (remarks.trim()) fd.append('remarks', remarks.trim());
+      // Itemised decision for the hospital's timeline. `approved_breakdown` is
+      // already parsed by the provider-action route and rendered by
+      // EmailFormValues' "Approved breakdown" table, so this needs no new UI.
+      if (items.length > 0) {
+        fd.append('approved_breakdown', JSON.stringify(items.map((it) => ({
+          label: it.label ?? '',
+          claimed: it.claimed === '' || it.claimed == null ? null : Number(it.claimed),
+          approved: _n(it.amount),
+        }))));
+      }
       fd.append('file', uploadedFile);
 
       await claimCaseService.providerAction(claimCaseId, fd);
@@ -628,26 +774,99 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                   {renderNumField('icuDays', 'ICU Days')}
                 </div>
               )}
-              <div className="form-row">
-                {renderNumField('roomRent', isEnhancement ? 'Non ICU Room' : 'Non ICU Room (per day)',
-                  (!isEnhancement && bill.roomRent !== '' && nonIcuDays > 0)
-                    ? `× ${nonIcuDays} day${nonIcuDays > 1 ? 's' : ''} = ${fmtCap(roomRentTotal)}` : '')}
-                {renderNumField('icuCharges', isEnhancement ? 'ICU Charges' : 'ICU Charges (per day)',
-                  (!isEnhancement && bill.icuCharges !== '' && _n(bill.icuDays) > 0)
-                    ? `× ${_n(bill.icuDays)} day${_n(bill.icuDays) > 1 ? 's' : ''} = ${fmtCap(icuChargesTotal)}` : '')}
-              </div>
-              <div className="form-row">
-                {renderNumField('investigationCost', 'Investigation Cost')}
-                {renderNumField('otCharges', 'OT Charges')}
-              </div>
-              <div className="form-row">
-                {renderNumField('professionalFees', 'Professional Fees')}
-                {renderNumField('medicinesCost', 'Medicines Cost')}
-              </div>
-              <div className="form-row">
-                {renderNumField('packageCharges', 'Package Charges')}
-                {renderNumField('otherExpenses', 'Other Expenses')}
-              </div>
+              {items.length === 0 ? (
+                <p className="part-d-fill__bill-empty">
+                  The hospital&rsquo;s pre-auth has no cost estimate lines.
+                </p>
+              ) : (
+                <div className="part-d-fill__bill-wrap">
+                  <table className="part-d-fill__bill">
+                    <thead>
+                      <tr>
+                        <th>Expense Category</th>
+                        <th>Description</th>
+                        <th className="part-d-fill__bill-amount-col">Approved (₹)</th>
+                        <th className="part-d-fill__bill-remove" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, idx) => {
+                        // An enhancement is a flat top-up: no rate x days.
+                        const perDay = !isEnhancement
+                          && (it.key === 'room_rent' || it.key === 'icu_charges');
+                        const days = it.key === 'icu_charges' ? _n(bill.icuDays) : nonIcuDays;
+                        const isConstant = CONSTANT_ROW_KEYS.includes(it.key);
+                        return (
+                          <tr key={`${it.key}-${idx}`}>
+                            <td>
+                              <span className="part-d-fill__bill-cat">{it.label}</span>
+                              {perDay && (
+                                <span className="part-d-fill__bill-perday">per day</span>
+                              )}
+                            </td>
+                            <td className="part-d-fill__bill-desc">{it.description || '—'}</td>
+                            <td className="part-d-fill__bill-amount">
+                              <input
+                                type="number"
+                                min="0"
+                                value={it.amount}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                onChange={(e) => setItemAmount(idx, e.target.value)}
+                              />
+                              {perDay && _n(it.amount) > 0 && days > 0 && (
+                                <small className="part-d-fill__bill-hint">
+                                  {`× ${days} day${days > 1 ? 's' : ''} = ${fmtCap(itemLineTotal(it))}`}
+                                </small>
+                              )}
+                              {/* What the hospital asked, when the provider has cut it. */}
+                              {it.claimed !== '' && it.claimed != null
+                                && _n(it.claimed) !== _n(it.amount) && (
+                                <small className="part-d-fill__bill-claimed">
+                                  {`Claimed ${fmtCap(it.claimed)}`}
+                                </small>
+                              )}
+                            </td>
+                            <td className="part-d-fill__bill-remove">
+                              {/* The two constants are always billable heads. */}
+                              {!isConstant && (
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--sm"
+                                  title={`Remove ${it.label}`}
+                                  onClick={() => removeItem(idx)}
+                                >
+                                  <IconX size={14} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {addItemOptions.length > 0 && (
+                <div>
+                  <select
+                    className="cost-table__add"
+                    value=""
+                    onChange={(e) => {
+                      const opt = addItemOptions.find(
+                        (o) => `${o.key}|${o.label}` === e.target.value,
+                      );
+                      if (opt) addItem(opt);
+                    }}
+                  >
+                    <option value="">+ Add expense…</option>
+                    {addItemOptions.map((o) => (
+                      <option key={`${o.key}|${o.label}`} value={`${o.key}|${o.label}`}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <h4 className="part-d-fill__group-title">Authorisation Summary</h4>
               <div className="form-row">
@@ -662,7 +881,12 @@ export default function PartDPrintModal({ claim, claimCaseId, emailId, pendingRe
                 {renderNumField('deductions', 'Other Deductions')}
                 {renderCalcField('Total Authorised Amount', totalAuthorised)}
               </div>
-              {renderCalcField('Amount to be paid by Insured', amountByInsured)}
+              <div className="form-row">
+                {renderCalcField('Amount to be paid by Insured', amountByInsured)}
+                {/* Spacer keeps the derived figure in the left column rather
+                    than stretching it across both. */}
+                <div className="form-group" aria-hidden="true" />
+              </div>
 
               <div className="form-group">
                 <label>Remarks</label>

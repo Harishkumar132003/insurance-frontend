@@ -1,10 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { aiAssistantService } from '../services/api';
+import { aiAssistantService, aiHybridService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { toast } from '../components/Toast';
 import { IconSend, IconPlus, IconTrash } from '../components/icons/Icons';
 import './AiAssistant.scss';
+
+// Which backend answers a question. `classic` is the production SSE pipeline with
+// persistent chats; `hybrid` is the experimental /ai2 retrieval pipeline, which
+// returns in one shot and stores nothing.
+const ENGINE_KEY = 'ai_assistant_engine';
+const ENGINES = { CLASSIC: 'classic', HYBRID: 'hybrid' };
 
 // Easy, verified-working examples (validated end-to-end against the agent).
 const SUGGESTIONS = [
@@ -55,11 +62,16 @@ function Message({ msg }) {
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
           </div>
           <ResultTable columns={msg.columns} rows={msg.rows} />
-          {msg.sql?.length > 0 && (
+          {(msg.sql?.length > 0 || msg.view) && (
             <div className="ai-assistant__sql">
-              <button className="ai-assistant__sql-toggle" onClick={() => setShowSql((s) => !s)}>
-                {showSql ? 'Hide' : 'Show'} SQL
-              </button>
+              {msg.sql?.length > 0 && (
+                <button className="ai-assistant__sql-toggle" onClick={() => setShowSql((s) => !s)}>
+                  {showSql ? 'Hide' : 'Show'} query
+                </button>
+              )}
+              {/* Hybrid derives the target view from the members it selected, so
+                  surfacing it makes a wrong answer traceable to a wrong view. */}
+              {msg.view && <span className="ai-assistant__view-tag">view: {msg.view}</span>}
               {showSql && <pre className="ai-assistant__sql-code">{msg.sql.join(';\n\n')}</pre>}
             </div>
           )}
@@ -77,8 +89,18 @@ export default function AiAssistant() {
   const [loading, setLoading] = useState(false);     // sending a message
   const [status, setStatus] = useState('');          // live progress line while loading
   const [loadingChat, setLoadingChat] = useState(false);
+  const [engine, setEngine] = useState(
+    () => localStorage.getItem(ENGINE_KEY) || ENGINES.CLASSIC,
+  );
   const scrollRef = useRef(null);
   const abortRef = useRef(null);
+  const { user } = useAuth();
+  const isHybrid = engine === ENGINES.HYBRID;
+
+  const switchEngine = (next) => {
+    setEngine(next);
+    localStorage.setItem(ENGINE_KEY, next);
+  };
 
   const refreshChats = useCallback(async () => {
     try { setChats(await aiAssistantService.listChats()); } catch { /* toast handles */ }
@@ -135,6 +157,32 @@ export default function AiAssistant() {
 
     const ac = new AbortController();
     abortRef.current = ac;
+
+    // Hybrid answers in a single request, so there is nothing to stream and no
+    // chat row to write to — messages stay in local state only.
+    if (isHybrid) {
+      try {
+        const data = await aiHybridService.query(q, {
+          hospitalId: user?.hospital_id ?? null,
+          signal: ac.signal,
+        });
+        const norm = aiHybridService.normalizeAnswer(data);
+        setMessages((m) => [...m, { role: 'assistant', ...norm }]);
+      } catch (err) {
+        if (err?.name !== 'AbortError' && err?.code !== 'ERR_CANCELED') {
+          setMessages((m) => [...m, {
+            role: 'assistant',
+            error: true,
+            content: err?.response?.data?.detail || 'The hybrid agent could not answer that.',
+          }]);
+        }
+      } finally {
+        setLoading(false);
+        setStatus('');
+        abortRef.current = null;
+      }
+      return;
+    }
 
     // Progress is driven off the planner's step purposes (e.g. "Find the
     // patient" → "Retrieve recent claims"); fall back to a tool label.
@@ -245,9 +293,34 @@ export default function AiAssistant() {
       {/* Right: conversation */}
       <section className="ai-assistant__main">
         <div className="ai-assistant__head">
-          <h1>AI Assistant</h1>
-          <p>Ask questions about your hospital's claims data in plain English.</p>
+          <div className="ai-assistant__head-text">
+            <h1>AI Assistant</h1>
+            <p>Ask questions about your hospital's claims data in plain English.</p>
+          </div>
+          <div className="ai-assistant__engine" role="group" aria-label="Answering engine">
+            <button
+              className={`ai-assistant__engine-btn ${!isHybrid ? 'is-active' : ''}`}
+              onClick={() => switchEngine(ENGINES.CLASSIC)}
+              disabled={loading}
+              title="Production pipeline — streams progress and saves your chat history"
+            >
+              Classic
+            </button>
+            <button
+              className={`ai-assistant__engine-btn ${isHybrid ? 'is-active' : ''}`}
+              onClick={() => switchEngine(ENGINES.HYBRID)}
+              disabled={loading}
+              title="Experimental hybrid retrieval — vector + keyword search with re-ranking"
+            >
+              Hybrid
+            </button>
+          </div>
         </div>
+        {isHybrid && (
+          <p className="ai-assistant__engine-note">
+            Hybrid mode is experimental — answers are not saved to your chat history.
+          </p>
+        )}
 
         <div className="ai-assistant__chat" ref={scrollRef}>
           {!loadingChat && messages.length === 0 && (

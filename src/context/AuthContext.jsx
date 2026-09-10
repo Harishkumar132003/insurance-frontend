@@ -52,7 +52,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-    const response = await api.post('/auth/login', { email, password });
+    // silent: Login.jsx renders the failure against the field that is wrong, so the
+    // global toast would just say the same thing twice.
+    const response = await api.post('/auth/login', { email, password }, { silent: true });
     const { access_token, hospital, provider, access } = response.data;
 
     localStorage.setItem('access_token', access_token);

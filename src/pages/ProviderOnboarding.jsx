@@ -23,6 +23,8 @@ function chargesSummary(rc) {
   if (rooms) bits.push(`${rooms} room type${rooms > 1 ? 's' : ''}`);
   if (rc.icu != null) bits.push(`ICU ₹${rc.icu}`);
   if (rc.ot_charge != null) bits.push(`OT ₹${rc.ot_charge}`);
+  const dx = Array.isArray(rc.diagnoses) ? rc.diagnoses.length : 0;
+  if (dx) bits.push(`${dx} diagnosis${dx > 1 ? 'es' : ''}`);
   return bits.length ? bits.join(' · ') : '—';
 }
 
@@ -184,6 +186,12 @@ function ProviderForm({ mapping, onClose, onSaved }) {
   );
   const [icu, setIcu] = useState(rc.icu ?? '');
   const [otCharge, setOtCharge] = useState(rc.ot_charge ?? '');
+  // Conditions/procedures this insurer covers here — drives the pre-auth
+  // Provisional Diagnosis dropdown. Absent on mappings saved before this
+  // existed, which read as an empty list.
+  const [diagnoses, setDiagnoses] = useState(
+    Array.isArray(rc.diagnoses) ? rc.diagnoses : []
+  );
   const [mouFile, setMouFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -226,7 +234,7 @@ function ProviderForm({ mapping, onClose, onSaved }) {
   };
 
   // Charges the admin would lose if an extraction overwrote them.
-  const hasCharges = roomTypes.length > 0 || icu !== '' || otCharge !== '';
+  const hasCharges = roomTypes.length > 0 || icu !== '' || otCharge !== '' || diagnoses.length > 0;
   // A document is already on file, so this is a replacement, not a first upload.
   const hasMou = isEdit && !!currentMou;
   const extractLabel = !isEdit
@@ -240,6 +248,7 @@ function ProviderForm({ mapping, onClose, onSaved }) {
     setRoomTypes(Array.isArray(data.room_type) ? data.room_type : []);
     setIcu(data.icu ?? '');
     setOtCharge(data.ot_charge ?? '');
+    setDiagnoses(Array.isArray(data.diagnoses) ? data.diagnoses : []);
   };
 
   // Create: extraction is a pure preview and the file rides along with the save.
@@ -314,6 +323,11 @@ function ProviderForm({ mapping, onClose, onSaved }) {
     setRoomTypes((r) => r.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
   const removeRoom = (i) => setRoomTypes((r) => r.filter((_, idx) => idx !== i));
 
+  const addDiagnosis = () => setDiagnoses((d) => [...d, { name: '' }]);
+  const setDiagnosis = (i, val) =>
+    setDiagnoses((d) => d.map((row, idx) => (idx === i ? { ...row, name: val } : row)));
+  const removeDiagnosis = (i) => setDiagnoses((d) => d.filter((_, idx) => idx !== i));
+
   const buildRoomCharges = () => ({
     room_type: roomTypes
       .filter((r) => String(r.room || '').trim())
@@ -323,6 +337,11 @@ function ProviderForm({ mapping, onClose, onSaved }) {
       })),
     icu: icu === '' || icu == null ? null : Number(icu),
     ot_charge: otCharge === '' || otCharge == null ? null : Number(otCharge),
+    // Always sent, even when empty: the backend replaces room_charges wholesale,
+    // so a missing key would wipe the saved list.
+    diagnoses: diagnoses
+      .filter((d) => String(d.name || '').trim())
+      .map((d) => ({ name: d.name.trim() })),
   });
 
   const isExisting = !isEdit && mode === 'existing';
@@ -538,6 +557,29 @@ function ProviderForm({ mapping, onClose, onSaved }) {
               <input type="number" value={otCharge} onChange={(e) => setOtCharge(e.target.value)} onWheel={(e) => e.currentTarget.blur()} />
             </div>
           </div>
+
+          <div className="po-form__charges-head">
+            <h4>Covered Diagnoses</h4>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={addDiagnosis}>
+              <IconPlus size={14} /> Add diagnosis
+            </button>
+          </div>
+          <p className="po-form__hint po-form__hint--block">
+            These become the Provisional Diagnosis options on the pre-auth form for this provider.
+          </p>
+          {diagnoses.length === 0 && <p className="po-form__hint">No diagnoses yet. Upload an MOU or add manually.</p>}
+          {diagnoses.map((row, i) => (
+            <div className="po-form__diagnosis-row" key={i}>
+              <input
+                placeholder="Diagnosis or procedure (e.g. Acute Appendicitis)"
+                value={row.name ?? ''}
+                onChange={(e) => setDiagnosis(i, e.target.value)}
+              />
+              <button type="button" className="btn btn--ghost btn--sm po-card__delete" onClick={() => removeDiagnosis(i)}>
+                <IconTrash size={14} />
+              </button>
+            </div>
+          ))}
         </div>
 
         <div className="modal-actions">

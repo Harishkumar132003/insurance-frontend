@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { formDataService, claimCaseService, policyProviderService, documentService, formTemplateService, aiAssistantService, workflowService } from '../services/api';
-import { IconArrowLeft } from '../components/icons/Icons';
+import { IconArrowLeft, IconTrash } from '../components/icons/Icons';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import './Pages.scss';
@@ -100,6 +100,93 @@ function ensureTreatments(dataJson) {
     td.treatments = hasAny ? [legacy] : [{}];
   }
   dj.treating_doctor = td;
+  return dj;
+}
+
+// ── Cost Estimates table ────────────────────────────────────────────────
+// Always present and not removable. `amount` on these two is a PER-DAY rate
+// that multiplies by the stay days, which is why they keep their own column.
+const COST_CONSTANT_ROWS = [
+  { key: 'room_rent', label: 'Non ICU Room' },
+  { key: 'icu_charges', label: 'ICU Charges' },
+];
+
+// Offered by "+ Add", once each — one row maps to one scalar column.
+const COST_ADDABLE_CATEGORIES = [
+  { key: 'ot_charges', label: 'OT Charges' },
+  { key: 'professional_fees', label: 'Professional Fees' },
+  { key: 'medicines_cost', label: 'Medicines Cost' },
+  { key: 'package_charges', label: 'Package Charges' },
+  { key: 'other_expenses', label: 'Other Expenses' },
+];
+
+// Rows added from the Investigations section carry this key and the
+// investigation's own name as their label. Several can coexist; they all sum
+// into the single investigation_cost column.
+const COST_INVESTIGATION_KEY = 'investigation';
+
+// Written by forms that predate the table. Still rendered so nothing is lost,
+// but no longer offered in "+ Add" — investigations come from upstream now.
+const COST_LEGACY_ROWS = [
+  { key: 'investigation_cost', label: 'Investigation Cost' },
+];
+
+const COST_FLAT_COLUMNS = [
+  'investigation_cost', 'ot_charges', 'professional_fees',
+  'medicines_cost', 'other_expenses', 'package_charges',
+];
+
+const blankCostRow = (c) => ({ key: c.key, label: c.label, description: '', amount: '' });
+
+// Derive the flat `costs` object from the table rows. This is the contract every
+// downstream consumer reads — Part C/D printing, requested_amount, the approval
+// caps and the dashboard funnel — so it must keep its exact original shape and
+// its original total formula.
+function deriveCosts(items, section) {
+  const costs = {
+    room_rent: '', icu_charges: '', ot_charges: '', professional_fees: '',
+    medicines_cost: '', package_charges: '', other_expenses: '', investigation_cost: '',
+  };
+  let investigationTotal = 0;
+  let sawInvestigation = false;
+  for (const it of items || []) {
+    if (!it || !it.key) continue;
+    if (it.key === COST_INVESTIGATION_KEY || it.key === 'investigation_cost') {
+      investigationTotal += Number(it.amount) || 0;
+      sawInvestigation = true;
+    } else if (it.key in costs) {
+      costs[it.key] = it.amount === '' || it.amount == null ? '' : Number(it.amount);
+    }
+  }
+  if (sawInvestigation) costs.investigation_cost = investigationTotal;
+  const icuDays = Number(section.icu_days) || 0;
+  const nonIcuDays = Math.max(0, (Number(section.expected_days) || 0) - icuDays);
+  costs.total_cost =
+    (Number(costs.room_rent) || 0) * nonIcuDays
+    + (Number(costs.icu_charges) || 0) * icuDays
+    + COST_FLAT_COLUMNS.reduce((acc, k) => acc + (Number(costs[k]) || 0), 0);
+  return costs;
+}
+
+// Forms saved before the table existed carry only the scalar columns. Rebuild
+// rows from them so an old draft opens populated rather than empty — the same
+// job ensureTreatments does for the repeatable treatments group.
+function ensureCostItems(dataJson) {
+  const dj = { ...(dataJson || {}) };
+  const h = { ...(dj.hospitalization || {}) };
+  if (!Array.isArray(h.cost_items) || h.cost_items.length === 0) {
+    const costs = h.costs || {};
+    const rows = COST_CONSTANT_ROWS.map((c) => ({
+      ...blankCostRow(c),
+      amount: costs[c.key] ?? '',
+    }));
+    for (const c of [...COST_LEGACY_ROWS, ...COST_ADDABLE_CATEGORIES]) {
+      const amt = costs[c.key];
+      if (amt != null && amt !== '') rows.push({ ...blankCostRow(c), amount: amt });
+    }
+    h.cost_items = rows;
+  }
+  dj.hospitalization = h;
   return dj;
 }
 
@@ -520,6 +607,123 @@ export const FORM_SECTIONS = [
 
 // ── Field renderer ──────────────────────────────────────────────────
 
+// A dropdown with a search box, for MOU-driven option lists that can run to
+// dozens of entries. Typing filters the list; picking an option commits it.
+//
+// Text that matches no option can still be committed through an explicit
+// "Use ..." entry. That escape hatch is deliberate: a provider whose MOU lists
+// no diagnoses yet would otherwise have an unusable field, and an AI-filled or
+// legacy value that the MOU doesn't name has to stay editable.
+function SearchableSelect({ value, options, onChange, placeholder = 'Select…' }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const wrapRef = useRef(null);
+
+  const current = value == null ? '' : String(value);
+  const norm = (v) => String(v ?? '').trim().toLowerCase();
+
+  const list = (options || []).map((o) => (
+    typeof o === 'object' ? { value: o.value, label: o.label } : { value: o, label: o }
+  ));
+  const typed = query.trim();
+  const filtered = typed ? list.filter((o) => norm(o.label).includes(norm(typed))) : list;
+  const isNew = typed && !list.some((o) => norm(o.label) === norm(typed));
+  const items = isNew
+    ? [...filtered, { value: typed, label: typed, isNew: true }]
+    : filtered;
+
+  const close = useCallback(() => { setOpen(false); setQuery(''); }, []);
+
+  // Close on outside click / Esc, matching the RangePicker popover.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) close();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, close]);
+
+  const commit = (v) => { onChange(String(v)); close(); };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!open) { setOpen(true); return; }
+      setHighlight((h) => Math.min(h + 1, items.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === 'Enter' && open) {
+      // Always swallow Enter while the menu is open so it can never submit.
+      e.preventDefault();
+      if (items[highlight]) commit(items[highlight].value);
+    }
+  };
+
+  return (
+    <div className="searchable-select" ref={wrapRef}>
+      <input
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        className="searchable-select__input"
+        // Closed, the input is the value display; open, it is the search box,
+        // with the committed value falling back to the placeholder.
+        value={open ? query : current}
+        placeholder={open && current ? current : placeholder}
+        onChange={(e) => { setQuery(e.target.value); setHighlight(0); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onMouseDown={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+      />
+      {current && !open && (
+        <button
+          type="button"
+          className="searchable-select__clear"
+          aria-label="Clear"
+          onClick={() => { onChange(''); close(); }}
+        >
+          ×
+        </button>
+      )}
+      {open && (
+        <ul className="searchable-select__menu" role="listbox">
+          {items.length === 0 && (
+            <li className="searchable-select__empty">No matches</li>
+          )}
+          {items.map((it, i) => (
+            <li
+              key={`${it.isNew ? 'new' : 'opt'}:${it.value}`}
+              role="option"
+              aria-selected={String(it.value) === current}
+              className={[
+                'searchable-select__opt',
+                i === highlight ? 'is-active' : '',
+                String(it.value) === current ? 'is-selected' : '',
+                it.isNew ? 'is-new' : '',
+              ].filter(Boolean).join(' ')}
+              onMouseEnter={() => setHighlight(i)}
+              // Keep focus on the input so the blur/close race never fires.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => commit(it.value)}
+            >
+              {it.isNew ? `Use “${it.label}”` : it.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function FieldInput({ field, value, onChange }) {
   const { key, type, options } = field;
 
@@ -534,6 +738,16 @@ function FieldInput({ field, value, onChange }) {
         <span className="preauth-toggle__slider" />
         <span className="preauth-toggle__label">{value ? 'Yes' : 'No'}</span>
       </label>
+    );
+  }
+
+  if (type === 'searchable-select') {
+    return (
+      <SearchableSelect
+        value={value}
+        options={options}
+        onChange={(v) => onChange(key, v)}
+      />
     );
   }
 
@@ -842,7 +1056,7 @@ export default function PreAuthFormPage() {
           : null;
 
         if (latestForm?.sections) {
-          setFormData(ensureTreatments(latestForm.sections));
+          setFormData(ensureCostItems(ensureTreatments(latestForm.sections)));
         }
         if (latestForm?.id) {
           setFormDataId(latestForm.id);
@@ -1204,8 +1418,14 @@ export default function PreAuthFormPage() {
       const payload = buildPayload();
 
       if (formDataId) {
-        // Edit mode — same PATCH for both buttons
-        await formDataService.update(formDataId, { sections: payload });
+        // Edit mode — same PATCH for both buttons. UHID and provider live on the
+        // parent claim case and must be sent explicitly; omitting them silently
+        // discarded any change the user made to either.
+        await formDataService.update(formDataId, {
+          sections: payload,
+          uhid: uhid.trim(),
+          policy_provider_id: selectedProviderId,
+        });
         if (files.length > 0) {
           const fd = new FormData();
           files.forEach((file) => fd.append('files', file));
@@ -1476,7 +1696,9 @@ export default function PreAuthFormPage() {
     return undefined;
   };
 
-  // Room Type options come from the selected provider's MOU room charges.
+  // Room Type and Provisional Diagnosis options both come from the selected
+  // provider's MOU. The MOU is stored per (hospital, provider) pair, so the same
+  // insurer can support a different list at each hospital.
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
   const roomTypeOptions = (selectedProvider?.room_charges?.room_type || [])
     .filter((r) => r && r.room)
@@ -1484,6 +1706,24 @@ export default function PreAuthFormPage() {
       value: r.room,
       label: r.room,
     }));
+  const diagnosisOptions = (selectedProvider?.room_charges?.diagnoses || [])
+    .filter((d) => d && d.name)
+    .map((d) => ({
+      value: d.name,
+      label: d.name,
+    }));
+
+  // Fields declared as plain text in FORM_SECTIONS but rendered as MOU-driven
+  // selects. Kept as a map rather than a chain so adding a third is one line.
+  // An empty list still yields a select (unchanged room_type behaviour), and an
+  // off-list saved value — a legacy free-text draft, or an AI-filled diagnosis
+  // the MOU doesn't name — is preserved by FieldInput's stand-in option.
+  const mouDrivenFields = {
+    room_type: { type: 'select', options: roomTypeOptions },
+    // Searchable: a hospital's covered-diagnosis list is long enough that
+    // scrolling a plain select is impractical.
+    provisional_diagnosis: { type: 'searchable-select', options: diagnosisOptions },
+  };
 
   // MOU coverage hint shown under cost-estimate fields (Room Rent / ICU / OT).
   const mouCoverageHint = (fieldKey, sectionName) => {
@@ -1499,12 +1739,167 @@ export default function PreAuthFormPage() {
     return '';
   };
 
+  // ── Cost Estimates table state ──
+  // Falls back to the two constant rows so a brand-new form starts with them,
+  // mirroring how renderRepeatableGroups materialises one blank card.
+  const savedCostItems = formData.hospitalization?.cost_items;
+  const costItems = Array.isArray(savedCostItems) && savedCostItems.length
+    ? savedCostItems
+    : COST_CONSTANT_ROWS.map(blankCostRow);
+
+  // Every write re-derives the flat `costs` mirror, so total_cost and the scalar
+  // columns stay in step with the table on every keystroke.
+  const writeCostItems = (nextItems) => {
+    setFormData((prev) => {
+      const section = { ...(prev.hospitalization || {}) };
+      section.cost_items = nextItems;
+      section.costs = { ...(section.costs || {}), ...deriveCosts(nextItems, section) };
+      return { ...prev, hospitalization: section };
+    });
+  };
+
+  const setCostItem = (index, key, value) =>
+    writeCostItems(costItems.map((r, i) => (i === index ? { ...r, [key]: value } : r)));
+  const removeCostItem = (index) =>
+    writeCostItems(costItems.filter((_, i) => i !== index));
+  const addCostItem = (opt) =>
+    writeCostItems([...costItems, blankCostRow(opt)]);
+
+  // "+ Add" offers the fixed categories not yet used, plus every investigation
+  // named upstream — so each investigation's cost is captured against itself
+  // rather than lumped into one box. Once each, so used entries drop out.
+  const costConstantKeys = new Set(COST_CONSTANT_ROWS.map((c) => c.key));
+  const usedCostKeys = new Set(costItems.map((r) => r.key));
+  const usedInvestigationLabels = new Set(
+    costItems.filter((r) => r.key === COST_INVESTIGATION_KEY).map((r) => r.label),
+  );
+  const addCostOptions = [
+    ...COST_ADDABLE_CATEGORIES.filter((c) => !usedCostKeys.has(c.key)),
+    ...(formData.treating_doctor?.investigations || [])
+      .map((iv) => iv && iv.investigation_name)
+      .filter((n) => n && String(n).trim())
+      .filter((n, i, arr) => arr.indexOf(n) === i)
+      .filter((n) => !usedInvestigationLabels.has(n))
+      .map((n) => ({ key: COST_INVESTIGATION_KEY, label: n })),
+  ];
+
+  // Days that multiply a per-day row. Non-ICU days for the room, ICU days for ICU.
+  const costRowDays = (rowKey) => {
+    const icuDays = Number(getValue('hospitalization', 'icu_days')) || 0;
+    if (rowKey === 'icu_charges') return icuDays;
+    if (rowKey === 'room_rent') {
+      return Math.max(0, (Number(getValue('hospitalization', 'expected_days')) || 0) - icuDays);
+    }
+    return 0;
+  };
+
+  const renderCostTable = (sectionName) => {
+    const total = Number(formData.hospitalization?.costs?.total_cost) || 0;
+    return (
+      <div className="cost-table">
+        <div className="cost-table__row cost-table__row--head">
+          <span>Expense Category</span>
+          <span>Description</span>
+          <span>Amount (₹)</span>
+          <span className="cost-table__action-col" />
+        </div>
+
+        {costItems.map((row, i) => {
+          const perDay = costConstantKeys.has(row.key);
+          const days = perDay ? costRowDays(row.key) : 0;
+          const rate = Number(row.amount) || 0;
+          const mouHint = mouCoverageHint(row.key, sectionName);
+          const policyHint = getPolicySuggestion('costs', row.key);
+          return (
+            <div className="cost-table__row" key={`${row.key}-${i}`}>
+              <div className="cost-table__cell">
+                {/* Read-only: the category is chosen via "+ Add" (or is one of
+                    the two constants), never typed. Rendered as an input so the
+                    column lines up with Description and Amount. "(per day)" is
+                    appended for display only — the stored label stays bare, so
+                    it still matches the migration backfill and the cost columns. */}
+                <input
+                  type="text"
+                  className="cost-table__category"
+                  value={perDay ? `${row.label} (per day)` : (row.label ?? '')}
+                  readOnly
+                  tabIndex={-1}
+                />
+              </div>
+              <div className="cost-table__cell">
+                <input
+                  type="text"
+                  value={row.description ?? ''}
+                  placeholder="Description"
+                  onChange={(e) => setCostItem(i, 'description', e.target.value)}
+                />
+              </div>
+              <div className="cost-table__cell">
+                <input
+                  type="number"
+                  min="0"
+                  value={row.amount ?? ''}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  onChange={(e) => setCostItem(i, 'amount', e.target.value)}
+                />
+                {perDay && rate > 0 && days > 0 && (
+                  <small className="policy-suggestion">
+                    {`× ${days} day${days > 1 ? 's' : ''} = ₹${(rate * days).toLocaleString('en-IN')}`}
+                  </small>
+                )}
+                {mouHint && <small className="mou-coverage-hint">{mouHint}</small>}
+                {typeof policyHint === 'string' && policyHint.trim() && (
+                  <small className="policy-suggestion">{policyHint}</small>
+                )}
+              </div>
+              <div className="cost-table__cell cost-table__cell--action">
+                {/* The two constant rows are always available, so no remove. */}
+                {!perDay && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    title={`Remove ${row.label}`}
+                    onClick={() => removeCostItem(i)}
+                  >
+                    <IconTrash size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        <div className="cost-table__foot">
+          {addCostOptions.length > 0 ? (
+            <select
+              className="cost-table__add"
+              value=""
+              onChange={(e) => {
+                const opt = addCostOptions.find((o) => `${o.key}|${o.label}` === e.target.value);
+                if (opt) addCostItem(opt);
+              }}
+            >
+              <option value="">+ Add expense…</option>
+              {addCostOptions.map((o) => (
+                <option key={`${o.key}|${o.label}`} value={`${o.key}|${o.label}`}>{o.label}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="cost-table__all-added">All categories added.</span>
+          )}
+          <div className="cost-table__total">
+            <span>Total Cost</span>
+            <strong>{`₹${total.toLocaleString('en-IN')}`}</strong>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderFields = (fields, sectionName, subgroupKey) =>
     fields.filter((f) => shouldShow(f, sectionName)).map((rawField) => {
-      const field =
-        rawField.key === 'room_type'
-          ? { ...rawField, type: 'select', options: roomTypeOptions }
-          : rawField;
+      const mouOverride = mouDrivenFields[rawField.key];
+      const field = mouOverride ? { ...rawField, ...mouOverride } : rawField;
       const suggestion = getPolicySuggestion(subgroupKey, field.key);
       const fieldValue = getValue(sectionName, field.key, subgroupKey);
       // Chronic-conditions: only show the suggestion when the user has
@@ -1608,9 +2003,14 @@ export default function PreAuthFormPage() {
       .map((sg) => (
         <div key={sg.key} className="preauth-subgroup">
           <h4 className="preauth-subgroup__title">{sg.label}</h4>
-          <div className="preauth-section__fields">
-            {renderFields(sg.fields, sectionName, sg.key)}
-          </div>
+          {/* Cost Estimates is a line-item table, not a field grid. The subgroup
+              stays declared in FORM_SECTIONS because ReadOnlyForm uses that
+              declaration as its schema for the insurer-side review. */}
+          {sg.key === 'costs' ? renderCostTable(sectionName) : (
+            <div className="preauth-section__fields">
+              {renderFields(sg.fields, sectionName, sg.key)}
+            </div>
+          )}
           {/* A subgroup may host its own repeatable groups (e.g. Treatment
               Plan → Investigations) so they render inside its card. Their
               values still live at section level, hence sectionName. */}

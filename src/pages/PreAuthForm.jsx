@@ -673,6 +673,7 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
   // chosen file is POSTed to /claim-cases/:id/documents right away, and
   // each chip can be deleted via DELETE /documents/:id.
   const [localDocs, setLocalDocs] = useState(submitResult.documents || []);
+  const [confirmNoDocs, setConfirmNoDocs] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState(null);
   const fileInputRef = useRef(null);
@@ -746,7 +747,19 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
   const isEdited = editedBody !== null;
   const body = isEdited ? editedBody : autoBody;
 
+  // Submitting with nothing attached is allowed but rarely intended — the
+  // Attachments section calls Part C / ID proof / insurance card mandatory.
+  // Warn once, then let the user through.
   const handleSubmit = () => {
+    if (!canSubmit) return;
+    if (localDocs.length === 0) {
+      setConfirmNoDocs(true);
+      return;
+    }
+    doSubmit();
+  };
+
+  const doSubmit = () => {
     if (!canSubmit) return;
     // Files are already uploaded to the claim's documents endpoint, so
     // we don't re-attach them via the email FormData. Persist a structured
@@ -870,6 +883,33 @@ function SubmitPortalForm({ submitResult, onClose, onSubmit, sending, onDocument
         onRegenerate={() => setEditedBody(null)}
       />
 
+      {confirmNoDocs && (
+        <Modal title="Submit without attachments?" onClose={() => setConfirmNoDocs(false)}>
+          <div className="delete-confirm">
+            <p>
+              This pre-auth has <strong>no documents attached</strong>. Insurers
+              normally require a signed Part C, ID proof and the insurance card,
+              and may raise a query without them.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setConfirmNoDocs(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => { setConfirmNoDocs(false); doSubmit(); }}
+              >
+                Submit anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {docViewUrl && (
         <Modal title={docViewName} onClose={closeDocView} size="lg">
           <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
